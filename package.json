@@ -1,0 +1,21 @@
+{
+  "name": "uzuvid",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/view": "^6.39.16",
+    "@strudel/core": "^1.2.6",
+    "@strudel/mini": "^1.2.6",
+    "codemirror": "^6.0.2",
+    "vite": "^6.4.1"
+  }
+}

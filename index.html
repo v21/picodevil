@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>uzuvid</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+    }
+    #editor-wrap {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 10;
+    }
+    .cm-editor { background: transparent !important; height: 100%; }
+    .cm-editor .cm-scroller { font-family: "Berkeley Mono", "Roboto Mono", monospace; font-size: 20px; }
+    .cm-editor .cm-gutters { background: none !important; border: none !important; }
+    .cm-editor .cm-line {
+      background: hsla(50, 23%, 5%, 0.6);
+      max-width: fit-content;
+      padding: 0;
+    }
+    .cm-editor .cm-activeLine { background: hsla(50, 23%, 5%, 0.6) !important; max-width: fit-content; }
+    .cm-editor .cm-activeLineGutter { background: transparent !important; }
+    .cm-editor .cm-content { padding: 15px; white-space: break-spaces; width: 100%; }
+    .cm-editor .cm-focused { outline: none; }
+    .cm-cursor, .cm-dropCursor { border-left: 3px solid #999 !important; border-right: none !important; width: 0 !important; }
+    .cm-editor, .cm-editor .cm-content { color: white; }
+    @keyframes cm-eval-flash {
+      from { box-shadow: inset 0 0 0 100vw rgba(255,255,255,0.8); }
+      to { box-shadow: inset 0 0 0 100vw rgba(255,255,255,0); }
+    }
+    .cm-editor .cm-evaluated { animation: cm-eval-flash 0.7s; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="editor-wrap"></div>
+  <script type="module" src="main.js"></script>
+</body>
+</html>
