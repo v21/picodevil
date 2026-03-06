@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
-import { VideoPattern } from "./video-pattern.js";
+import { VideoPattern } from "./video-pattern";
 
-function vp(src) {
+function vp(src: string) {
   return new VideoPattern(mini(src), {}, mini);
 }
 

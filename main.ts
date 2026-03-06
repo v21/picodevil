@@ -1,10 +1,11 @@
 import { mini } from "@strudel/mini";
-import { setupEditor } from "./editor.js";
-import { VideoPattern } from "./video-pattern.js";
-import { REVERSE_SEEK_INTERVAL, VIDEO_BASE, CYCLES_PER_SECOND } from "./config.js";
+import type { Pattern } from "@strudel/mini";
+import { setupEditor } from "./editor";
+import { VideoPattern } from "./video-pattern";
+import { REVERSE_SEEK_INTERVAL, VIDEO_BASE, CYCLES_PER_SECOND } from "./config";
 
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+const canvas = document.getElementById("c") as HTMLCanvasElement;
+const ctx = canvas.getContext("2d")!;
 
 function resize() {
   canvas.width = window.innerWidth * devicePixelRatio;
@@ -14,26 +15,26 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- state ---
-let pattern = mini("red blue [green yellow] purple");
-let cyclesPerSecond = CYCLES_PER_SECOND;
+let pattern: Pattern = mini("red blue [green yellow] purple");
+const cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
-let videoPattern = null;
-const videoPool = new Map(); // name -> <video> element
+let videoPattern: VideoPattern | null = null;
+const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number }>();
 
-function getVideoEl(name) {
-  if (videoPool.has(name)) return videoPool.get(name);
-  const el = document.createElement("video");
+function getVideoEl(name: string): HTMLVideoElement {
+  if (videoPool.has(name)) return videoPool.get(name)!;
+  const el = document.createElement("video") as HTMLVideoElement & { _reverseAcc?: number };
   el.loop = true;
   el.muted = true;
   el.playsInline = true;
   el.src = VIDEO_BASE + name;
-  el.play().catch(e => { if (e.name !== "AbortError") throw e; }) // play() rejects if interrupted by pause() before starting;
+  el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
   videoPool.set(name, el);
   return el;
 }
 
-function video(pat) {
+function video(pat: string): VideoPattern {
   const srcPattern = mini(pat);
   const probe = srcPattern.queryArc(0, 1);
   for (const ev of probe) getVideoEl(ev.value);
@@ -49,13 +50,13 @@ function clearVideos() {
   videoPattern = null;
 }
 
-function color(pat) {
+function color(pat: string): Pattern {
   clearVideos();
   return mini(pat);
 }
 
 // called from editor on ctrl+enter
-window.uzuEval = (code) => {
+window.uzuEval = (code: string) => {
   try {
     const result = new Function("mini", "color", "video", code)(
       mini,
@@ -79,7 +80,7 @@ window.uzuEval = (code) => {
 };
 
 // --- color lookup ---
-const COLORS = {
+const COLORS: Record<string, [number, number, number]> = {
   red: [1, 0, 0],
   green: [0, 1, 0],
   blue: [0, 0, 1],
@@ -93,7 +94,7 @@ const COLORS = {
   pink: [1, 0.4, 0.7],
 };
 
-function parseColor(val) {
+function parseColor(val: string): [number, number, number] {
   if (typeof val === "string" && COLORS[val]) return COLORS[val];
   if (typeof val === "string" && val.startsWith("#") && val.length === 7) {
     return [
@@ -118,13 +119,13 @@ function frame() {
   const events = pattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
 
   // find the "current" event (the one whose whole span contains now)
-  let color = [0, 0, 0];
+  let currentColor: [number, number, number] = [0, 0, 0];
   for (const ev of events) {
-    color = parseColor(ev.value);
+    currentColor = parseColor(ev.value);
     break;
   }
 
-  ctx.fillStyle = `rgb(${color[0] * 255}, ${color[1] * 255}, ${color[2] * 255})`;
+  ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   // draw video frame from pattern
@@ -146,7 +147,7 @@ function frame() {
           }
         } else {
           el._reverseAcc = 0;
-          if (el.paused) el.play().catch(e => { if (e.name !== "AbortError") throw e; }) // play() rejects if interrupted by pause() before starting;
+          if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
           if (el.playbackRate !== speed) el.playbackRate = speed;
         }
       }
@@ -170,4 +171,4 @@ function frame() {
 requestAnimationFrame(frame);
 
 // --- editor ---
-setupEditor(document.getElementById("editor-wrap"));
+setupEditor(document.getElementById("editor-wrap")!);
