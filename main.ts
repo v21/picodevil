@@ -4,7 +4,7 @@ import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { REVERSE_SEEK_INTERVAL, VIDEO_BASE, CYCLES_PER_SECOND } from "./config";
-import { setPlaybackRate } from "./playback-rate";
+import { setPlaybackRate, isNativeRate } from "./playback-rate";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -141,14 +141,20 @@ function frame() {
       const el = videoPool.get(src);
       if (el) {
         const dt = now - lastFrameTime;
-        if (speed < 0) {
+        if (speed < 0 || !isNativeRate(speed)) {
           if (!el.paused) el.pause();
           if (!el._reverseAcc) el._reverseAcc = 0;
           el._reverseAcc += dt;
           if (el._reverseAcc >= REVERSE_SEEK_INTERVAL) {
-            el.currentTime = Math.max(0, el.currentTime - (el._reverseAcc / 1000) * Math.abs(speed));
+            const seekDelta = (el._reverseAcc / 1000) * Math.abs(speed);
+            if (speed < 0) {
+              el.currentTime = Math.max(0, el.currentTime - seekDelta);
+              if (el.currentTime <= 0) el.currentTime = el.duration || 0;
+            } else {
+              el.currentTime = el.currentTime + seekDelta;
+              if (el.currentTime >= (el.duration || Infinity)) el.currentTime = 0;
+            }
             el._reverseAcc = 0;
-            if (el.currentTime <= 0) el.currentTime = el.duration || 0;
           }
         } else {
           el._reverseAcc = 0;
