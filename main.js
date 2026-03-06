@@ -1,5 +1,7 @@
 import { mini } from "@strudel/mini";
 import { setupEditor } from "./editor.js";
+import { VideoPattern } from "./video-pattern.js";
+import { REVERSE_SEEK_INTERVAL, VIDEO_BASE, CYCLES_PER_SECOND } from "./config.js";
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
@@ -13,10 +15,9 @@ resize();
 
 // --- state ---
 let pattern = mini("red blue [green yellow] purple");
-let cyclesPerSecond = 0.5;
+let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
-const VIDEO_BASE = "http://localhost:3456/videos/";
 let videoPattern = null;
 const videoPool = new Map(); // name -> <video> element
 
@@ -27,17 +28,16 @@ function getVideoEl(name) {
   el.muted = true;
   el.playsInline = true;
   el.src = VIDEO_BASE + name;
-  el.play();
+  el.play().catch(e => { if (e.name !== "AbortError") throw e; }) // play() rejects if interrupted by pause() before starting;
   videoPool.set(name, el);
   return el;
 }
 
 function video(pat) {
-  videoPattern = mini(pat);
-  // pre-create video elements for all unique sources
-  const probe = videoPattern.queryArc(0, 1);
+  const srcPattern = mini(pat);
+  const probe = srcPattern.queryArc(0, 1);
   for (const ev of probe) getVideoEl(ev.value);
-  return videoPattern;
+  return new VideoPattern(srcPattern, {}, mini);
 }
 
 function clearVideos() {
@@ -63,7 +63,14 @@ window.uzuEval = (code) => {
       video,
     );
     if (result && typeof result.queryArc === "function") {
-      pattern = result;
+      if (result instanceof VideoPattern) {
+        videoPattern = result;
+        console.log("videoPattern set:", result);
+      } else {
+        clearVideos();
+        pattern = result;
+        console.log("pattern set:", result);
+      }
     }
     console.log("evaluated:", code);
   } catch (e) {
@@ -100,6 +107,7 @@ function parseColor(val) {
 
 // --- render loop ---
 const startTime = performance.now() / 1000;
+let lastFrameTime = startTime;
 
 function frame() {
   const now = performance.now() / 1000 - startTime;
@@ -123,8 +131,26 @@ function frame() {
   if (videoPattern) {
     const vidEvents = videoPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
     for (const ev of vidEvents) {
-      const el = videoPool.get(ev.value);
-      if (el && el.readyState >= 2) {
+      const { src, speed } = ev.value;
+      const el = videoPool.get(src);
+      if (el) {
+        const dt = now - lastFrameTime;
+        if (speed < 0) {
+          if (!el.paused) el.pause();
+          if (!el._reverseAcc) el._reverseAcc = 0;
+          el._reverseAcc += Math.abs(speed) * dt;
+          if (el._reverseAcc >= REVERSE_SEEK_INTERVAL) {
+            el.currentTime = Math.max(0, el.currentTime - el._reverseAcc);
+            el._reverseAcc = 0;
+            if (el.currentTime <= 0) el.currentTime = el.duration || 0;
+          }
+        } else {
+          el._reverseAcc = 0;
+          if (el.paused) el.play().catch(e => { if (e.name !== "AbortError") throw e; }) // play() rejects if interrupted by pause() before starting;
+          if (el.playbackRate !== speed) el.playbackRate = speed;
+        }
+      }
+      if (el && el.videoWidth > 0) {
         const vw = el.videoWidth;
         const vh = el.videoHeight;
         const cw = canvas.width;
@@ -138,6 +164,7 @@ function frame() {
     }
   }
 
+  lastFrameTime = now;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

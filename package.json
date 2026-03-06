@@ -1,9 +1,11 @@
 {
   "name": "uzuvid",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -17,5 +19,11 @@
     "@strudel/mini": "^1.2.6",
     "codemirror": "^6.0.2",
     "vite": "^6.4.1"
+  },
+  "devDependencies": {
+    "@vitest/browser": "^4.0.18",
+    "@vitest/browser-playwright": "^4.0.18",
+    "playwright": "^1.58.2",
+    "vitest": "^4.0.18"
   }
 }

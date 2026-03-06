@@ -3,7 +3,7 @@ import { EditorState, Prec } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 
-const defaultCode = `return color("red blue [green yellow] purple")`;
+const defaultCode = `return video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
 
 export function setupEditor(parent) {
   const evalKeymap = Prec.highest(keymap.of([
@@ -33,6 +33,9 @@ export function setupEditor(parent) {
       extensions: [basicSetup, javascript(), evalKeymap],
     }),
   });
+
+  // evaluate default code at startup
+  window.uzuEval(defaultCode);
 
   return view;
 }
