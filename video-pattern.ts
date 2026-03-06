@@ -1,4 +1,5 @@
 import type { Pattern, Hap } from "@strudel/mini";
+import type { Outputable } from "./outputable";
 
 export interface VideoValue {
   src: string;
@@ -8,25 +9,31 @@ export interface VideoValue {
 
 type MiniParser = (input: string) => Pattern;
 
-export class VideoPattern {
+export class VideoPattern implements Outputable {
   srcPattern: Pattern;
   props: Record<string, Pattern>;
   private _parseMini: MiniParser;
+  private _onOut?: (vp: VideoPattern) => void;
 
-  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser) {
+  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void) {
     this.srcPattern = srcPattern;
     this.props = props;
     this._parseMini = parseMini;
+    this._onOut = onOut;
   }
 
   private _with(name: string, pat: string | number): VideoPattern {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: this._parseMini(String(pat)),
-    }, this._parseMini);
+    }, this._parseMini, this._onOut);
   }
 
   speed(pat: string | number): VideoPattern { return this._with("speed", pat); }
+
+  out(): void {
+    if (this._onOut) this._onOut(this);
+  }
 
   queryArc(begin: number, end: number): Hap<VideoValue>[] {
     const srcEvents = this.srcPattern.queryArc(begin, end);

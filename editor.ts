@@ -9,7 +9,7 @@ declare global {
   }
 }
 
-const defaultCode = `return video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
+const defaultCode = `video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1").out()`;
 
 export function setupEditor(parent: HTMLElement): EditorView {
   const evalKeymap = Prec.highest(keymap.of([

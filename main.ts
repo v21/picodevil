@@ -1,8 +1,10 @@
 import { mini } from "@strudel/mini";
 import type { Pattern } from "@strudel/mini";
 import { setupEditor } from "./editor";
+import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { REVERSE_SEEK_INTERVAL, VIDEO_BASE, CYCLES_PER_SECOND } from "./config";
+import { setPlaybackRate } from "./playback-rate";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -29,6 +31,7 @@ function getVideoEl(name: string): HTMLVideoElement {
   el.muted = true;
   el.playsInline = true;
   el.src = VIDEO_BASE + name;
+  el.addEventListener("loadeddata", () => console.log("video loaded:", name));
   el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
   videoPool.set(name, el);
   return el;
@@ -38,7 +41,12 @@ function video(pat: string): VideoPattern {
   const srcPattern = mini(pat);
   const probe = srcPattern.queryArc(0, 1);
   for (const ev of probe) getVideoEl(ev.value);
-  return new VideoPattern(srcPattern, {}, mini);
+  return new VideoPattern(srcPattern, {}, mini, applyVideo);
+}
+
+function applyVideo(vp: VideoPattern) {
+  videoPattern = vp;
+  console.log("videoPattern set:", vp);
 }
 
 function clearVideos() {
@@ -50,29 +58,25 @@ function clearVideos() {
   videoPattern = null;
 }
 
-function color(pat: string): Pattern {
+function color(pat: string): ColorPattern {
   clearVideos();
-  return mini(pat);
+  return new ColorPattern(mini(pat), applyColor);
+}
+
+function applyColor(cp: ColorPattern) {
+  clearVideos();
+  pattern = cp.pattern;
+  console.log("pattern set:", cp.pattern);
 }
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
   try {
-    const result = new Function("mini", "color", "video", code)(
+    new Function("mini", "color", "video", code)(
       mini,
       color,
       video,
     );
-    if (result && typeof result.queryArc === "function") {
-      if (result instanceof VideoPattern) {
-        videoPattern = result;
-        console.log("videoPattern set:", result);
-      } else {
-        clearVideos();
-        pattern = result;
-        console.log("pattern set:", result);
-      }
-    }
     console.log("evaluated:", code);
   } catch (e) {
     console.error("eval error:", e);
@@ -107,13 +111,14 @@ function parseColor(val: string): [number, number, number] {
 }
 
 // --- render loop ---
-const startTime = performance.now() / 1000;
+const startTime = performance.now();
 let lastFrameTime = startTime;
 
 function frame() {
-  const now = performance.now() / 1000 - startTime;
-  const cyclePos = (now * cyclesPerSecond) % 1;
-  const cycleNum = Math.floor(now * cyclesPerSecond);
+  const now = performance.now() - startTime;
+  const nowSec = now / 1000;
+  const cyclePos = (nowSec * cyclesPerSecond) % 1;
+  const cycleNum = Math.floor(nowSec * cyclesPerSecond);
 
   // query the pattern for the current cycle
   const events = pattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
@@ -139,16 +144,16 @@ function frame() {
         if (speed < 0) {
           if (!el.paused) el.pause();
           if (!el._reverseAcc) el._reverseAcc = 0;
-          el._reverseAcc += Math.abs(speed) * dt;
+          el._reverseAcc += dt;
           if (el._reverseAcc >= REVERSE_SEEK_INTERVAL) {
-            el.currentTime = Math.max(0, el.currentTime - el._reverseAcc);
+            el.currentTime = Math.max(0, el.currentTime - (el._reverseAcc / 1000) * Math.abs(speed));
             el._reverseAcc = 0;
             if (el.currentTime <= 0) el.currentTime = el.duration || 0;
           }
         } else {
           el._reverseAcc = 0;
           if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
-          if (el.playbackRate !== speed) el.playbackRate = speed;
+          if (el.playbackRate !== speed) setPlaybackRate(el, speed);
         }
       }
       if (el && el.videoWidth > 0) {
