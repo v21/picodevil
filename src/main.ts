@@ -1,5 +1,4 @@
 import { mini } from "@strudel/mini";
-import type { Pattern } from "@strudel/mini";
 import {
   sine, sine2, cosine, cosine2,
   saw, saw2, isaw, isaw2,
@@ -29,11 +28,11 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- state ---
-let pattern: Pattern | null = null;
+type Screen = ColorPattern | VideoPattern;
+let screens: Screen[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
-let videoLayers: VideoPattern[] = [];
 const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean }>();
 
 function getVideoEl(name: string): HTMLVideoElement {
@@ -59,9 +58,8 @@ function video(pat: string): VideoPattern {
 }
 
 function applyVideo(vp: VideoPattern) {
-  videoLayers.push(vp);
-  pattern = null;
-  console.log("videoPattern added, layer count:", videoLayers.length);
+  screens.push(vp);
+  console.log("video screen added, screen count:", screens.length);
 }
 
 function clearVideos() {
@@ -70,11 +68,9 @@ function clearVideos() {
     el.removeAttribute("src");
   }
   videoPool.clear();
-  videoLayers = [];
 }
 
 function color(pat: string): ColorPattern {
-  clearVideos();
   return new ColorPattern(mini(pat), applyColor);
 }
 
@@ -83,16 +79,15 @@ function setCps(cps: number) {
 }
 
 function applyColor(cp: ColorPattern) {
-  clearVideos();
-  pattern = cp.pattern;
-  console.log("pattern set:", cp.pattern);
+  screens.push(cp);
+  console.log("color screen added, screen count:", screens.length);
 }
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
   clearVideos();
-  pattern = null;
-  lastVideoVals = [];
+  screens = [];
+  lastScreenVals = [];
   try {
     const signals = {
       sine, sine2, cosine, cosine2,
@@ -145,8 +140,18 @@ function parseColor(val: string): [number, number, number] {
 // --- render loop ---
 const startTime = performance.now();
 let lastFrameTime = startTime;
-let lastColorVal: string | null = null;
-let lastVideoVals: (string | null)[] = [];
+let lastScreenVals: (string | null)[] = [];
+
+function renderColorScreen(screen: ColorPattern, cyclePos: number, cycleNum: number) {
+  const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+  let currentColor: [number, number, number] = [0, 0, 0];
+  for (const ev of events) {
+    currentColor = parseColor(ev.value);
+    break;
+  }
+  ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
 
 function frame() {
   const now = performance.now() - startTime;
@@ -154,33 +159,23 @@ function frame() {
   const cyclePos = (nowSec * cyclesPerSecond) % 1;
   const cycleNum = Math.floor(nowSec * cyclesPerSecond);
 
-  // draw color background (only if a color pattern is active)
-  if (pattern) {
-    const events = pattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-    let currentColor: [number, number, number] = [0, 0, 0];
-    for (const ev of events) {
-      currentColor = parseColor(ev.value);
-      if (ev.value !== lastColorVal) {
-        lastColorVal = ev.value;
-      }
-      break;
-    }
-    ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  } else {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // draw video layers in order
-  for (let i = 0; i < videoLayers.length; i++) {
-    const videoResult = renderVideoFrame({
-      videoPattern: videoLayers[i],
-      videoPool, canvas, ctx,
-      now, dt: now - lastFrameTime,
-      cyclePos, cycleNum,
-      lastVideoVal: lastVideoVals[i] ?? null,
-    });
-    lastVideoVals[i] = videoResult.lastVideoVal;
+  // draw screens in order
+  for (let i = 0; i < screens.length; i++) {
+    const screen = screens[i];
+    if (screen instanceof ColorPattern) {
+      renderColorScreen(screen, cyclePos, cycleNum);
+    } else {
+      const videoResult = renderVideoFrame({
+        videoPattern: screen,
+        videoPool, canvas, ctx,
+        now, dt: now - lastFrameTime,
+        cyclePos, cycleNum,
+        lastVideoVal: lastScreenVals[i] ?? null,
+      });
+      lastScreenVals[i] = videoResult.lastVideoVal;
+    }
   }
 
   lastFrameTime = now;
