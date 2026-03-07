@@ -4,6 +4,8 @@ import type { Outputable } from "./outputable";
 export interface VideoValue {
   src: string;
   speed: number;
+  start: number;
+  end: number;
   [key: string]: string | number;
 }
 
@@ -30,6 +32,8 @@ export class VideoPattern implements Outputable {
   }
 
   speed(pat: string | number): VideoPattern { return this._with("speed", pat); }
+  start(pat: string | number): VideoPattern { return this._with("start", pat); }
+  end(pat: string | number): VideoPattern { return this._with("end", pat); }
 
   out(): void {
     if (this._onOut) this._onOut(this);
@@ -38,7 +42,7 @@ export class VideoPattern implements Outputable {
   queryArc(begin: number, end: number): Hap<VideoValue>[] {
     const srcEvents = this.srcPattern.queryArc(begin, end);
     return srcEvents.map((ev) => {
-      const resolved: VideoValue = { src: ev.value, speed: 1 };
+      const resolved: VideoValue = { src: ev.value, speed: 1, start: 0, end: Infinity };
       for (const [k, p] of Object.entries(this.props)) {
         const propEvs = p.queryArc(begin, end);
         if (propEvs.length) {

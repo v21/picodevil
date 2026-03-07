@@ -137,29 +137,77 @@ function frame() {
   if (videoPattern) {
     const vidEvents = videoPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
     for (const ev of vidEvents) {
-      const { src, speed } = ev.value;
+      const { src, speed, start, end: endProp } = ev.value;
       const el = videoPool.get(src);
       if (el) {
         const dt = now - lastFrameTime;
+        const dur = el.duration || Infinity;
+        const loopStart = start;
+        const loopEnd = endProp === Infinity ? dur : endProp;
+        const wrapped = loopStart > loopEnd; // loop wraps around clip boundary
+        function inRange(t: number): boolean {
+          if (wrapped) return t >= loopStart || t <= loopEnd;
+          return t >= loopStart && t <= loopEnd;
+        }
+
+        function wrapForward(t: number): number {
+          if (wrapped) {
+            if (t >= dur) return t - dur;
+            if (t > loopEnd && t < loopStart) return loopStart;
+          } else {
+            if (t >= loopEnd) return loopStart + (t - loopEnd);
+          }
+          return t;
+        }
+
+        function wrapBackward(t: number): number {
+          if (wrapped) {
+            if (t < 0) return dur + t;
+            if (t > loopEnd && t < loopStart) return loopEnd;
+          } else {
+            if (t <= loopStart) return loopEnd - (loopStart - t);
+          }
+          return t;
+        }
+
         if (speed < 0 || !isNativeRate(speed)) {
           if (!el.paused) el.pause();
           if (!el._reverseAcc) el._reverseAcc = 0;
           el._reverseAcc += dt;
-          if (el._reverseAcc >= REVERSE_SEEK_INTERVAL) {
+
+          let target = el.currentTime;
+          let needsSeek = false;
+
+          if (!inRange(target)) {
+            target = speed < 0 ? loopEnd : loopStart;
+            needsSeek = true;
+            el._reverseAcc = 0;
+          } else if (el._reverseAcc >= REVERSE_SEEK_INTERVAL) {
             const seekDelta = (el._reverseAcc / 1000) * Math.abs(speed);
             if (speed < 0) {
-              el.currentTime = Math.max(0, el.currentTime - seekDelta);
-              if (el.currentTime <= 0) el.currentTime = el.duration || 0;
+              target = wrapBackward(target - seekDelta);
             } else {
-              el.currentTime = el.currentTime + seekDelta;
-              if (el.currentTime >= (el.duration || Infinity)) el.currentTime = 0;
+              target = wrapForward(target + seekDelta);
             }
+            needsSeek = true;
             el._reverseAcc = 0;
           }
+
+          if (needsSeek) el.currentTime = target;
         } else {
           el._reverseAcc = 0;
           if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
           if (el.playbackRate !== speed) setPlaybackRate(el, speed);
+          if (!inRange(el.currentTime)) {
+            el.currentTime = loopStart;
+          }
+          // for native playback with wrapped range, handle the clip-end crossing
+          if (wrapped && el.currentTime >= dur - 0.05) {
+            el.currentTime = 0;
+          }
+          if (!wrapped && el.currentTime >= loopEnd) {
+            el.currentTime = loopStart;
+          }
         }
       }
       if (el && el.videoWidth > 0) {

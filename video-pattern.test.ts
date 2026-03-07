@@ -102,4 +102,89 @@ describe("VideoPattern", () => {
       }
     }
   });
+
+  // --- start/end props ---
+
+  it("defaults: start=0, end=Infinity", () => {
+    const evs = vp("a.mp4").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(0);
+    expect(evs[0].value.end).toBe(Infinity);
+  });
+
+  it("start() sets start prop", () => {
+    const evs = vp("a.mp4").start("5").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(5);
+    expect(evs[0].value.end).toBe(Infinity);
+  });
+
+  it("end() sets end prop", () => {
+    const evs = vp("a.mp4").end("10").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(0);
+    expect(evs[0].value.end).toBe(10);
+  });
+
+  it("start and end together", () => {
+    const evs = vp("a.mp4").start("5").end("10").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(5);
+    expect(evs[0].value.end).toBe(10);
+  });
+
+  it("start/end with speed", () => {
+    const evs = vp("a.mp4").start("2").end("8").speed("-1").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(2);
+    expect(evs[0].value.end).toBe(8);
+    expect(evs[0].value.speed).toBe(-1);
+  });
+
+  it("start/end patterns vary across cycle", () => {
+    const p = vp("a.mp4").start("0 5").end("10 20");
+    const first = p.queryArc(0, 0.001);
+    const second = p.queryArc(0.5, 0.501);
+    expect(first[0].value.start).toBe(0);
+    expect(first[0].value.end).toBe(10);
+    expect(second[0].value.start).toBe(5);
+    expect(second[0].value.end).toBe(20);
+  });
+
+  it("start/end patterns with two videos", () => {
+    const p = vp("a.mp4 b.mp4").start("1 2").end("5 10");
+    const first = p.queryArc(0, 0.001);
+    const second = p.queryArc(0.5, 0.501);
+    expect(first[0].value.src).toBe("a.mp4");
+    expect(first[0].value.start).toBe(1);
+    expect(first[0].value.end).toBe(5);
+    expect(second[0].value.src).toBe("b.mp4");
+    expect(second[0].value.start).toBe(2);
+    expect(second[0].value.end).toBe(10);
+  });
+
+  it("three speeds with start/end: every point has valid values", () => {
+    const p = vp("a.mp4 b.mp4").speed("0.5 1 -1").start("5").end("15");
+    for (let i = 0; i < 20; i++) {
+      const t = i / 20;
+      const evs = p.queryArc(t, t + 0.001);
+      expect(evs.length).toBeGreaterThanOrEqual(1);
+      const v = evs[0].value;
+      expect(v.src).toMatch(/\.mp4$/);
+      expect(v.start).toBe(5);
+      expect(v.end).toBe(15);
+      expect(typeof v.speed).toBe("number");
+    }
+  });
+
+  it("start/end chaining is immutable", () => {
+    const p1 = vp("a.mp4");
+    const p2 = p1.start("5").end("10");
+    expect(p1.queryArc(0, 1)[0].value.start).toBe(0);
+    expect(p1.queryArc(0, 1)[0].value.end).toBe(Infinity);
+    expect(p2.queryArc(0, 1)[0].value.start).toBe(5);
+    expect(p2.queryArc(0, 1)[0].value.end).toBe(10);
+  });
+
+  it("mini subdivision works for start/end", () => {
+    const p = vp("a.mp4").start("[1 2] 3").end("[10 20] 30");
+    const evs = p.queryArc(0, 0.001);
+    expect(evs[0].value.start).toBe(1);
+    expect(evs[0].value.end).toBe(10);
+  });
 });
