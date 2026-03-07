@@ -22,5 +22,13 @@
       "Invalid time value: \"true\""
     ],
     "timestamp": "2026-03-07T01:58:57.557Z"
+  },
+  {
+    "code": "video(\"6dca7430d24af6c8a0dc337bd09e333e.mp4*4 BalgIMSzY3k.mp4 <{HCP-4P0eoOo.mp4(5,8)!2 iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4?0.6 hXJaBfcdCKM.mp4}%3 [BalgIMSzY3k.mp4!3/2](3,7,0)?0.7> 6dca7430d24af6c8a0dc337bd09e333e.mp4*4\").dur(rand.lerp(\"cubic\", \"in\")).duration(choose(0.25, 8, -0.5, -2)).scrub(brand).end(\"3881ms 4158ms*2*4, 5.1s 8.0s(2,6) 8.0s(5,6)@4 3881ms, 3881ms 3881ms@3 8.0s 866ms\").speed(0).speed(\"-1 [<0.5 0.1 -1>] [0.5(4,8) [1*3@3] [0.1 1 -2](4,8) [0.5!3*4 0.5]]\").out()",
+    "description": "video: 6dca7430d24af6c8a0dc337bd09e333e.mp4*4 BalgIMSzY3k.mp4 <{HCP-4P0eoOo.mp4(5,8)!2 iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4?0.6 hXJaBfcdCKM.mp4}%3 [BalgIMSzY3k.mp4!3/2](3,7,0)?0.7> 6dca7430d24af6c8a0dc337bd09e333e.mp4*4 dur(rand.lerp(\"cubic\", \"in\")) dur(choose(0.25, 8, -0.5, -2)) scrub(brand) end(\"3881ms 4158ms*2*4, 5.1s 8.0s(2,6) 8.0s(5,6)@4 3881ms, 3881ms 3881ms@3 8.0s 866ms\") speed(0) speed(\"-1 [<0.5 0.1 -1>] [0.5(4,8) [1*3@3] [0.1 1 -2](4,8) [0.5!3*4 0.5]]\")",
+    "errors": [
+      "Invalid time value: \"true\""
+    ],
+    "timestamp": "2026-03-07T08:25:57.035Z"
   }
 ]
