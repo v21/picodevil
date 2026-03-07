@@ -6,6 +6,7 @@ import { basicSetup } from "codemirror";
 declare global {
   interface Window {
     uzuEval: (code: string) => void;
+    uzuSetCode: (code: string) => void;
   }
 }
 
@@ -42,6 +43,12 @@ export function setupEditor(parent: HTMLElement): EditorView {
       extensions: [basicSetup, javascript(), evalKeymap],
     }),
   });
+
+  window.uzuSetCode = (code: string) => {
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: code },
+    });
+  };
 
   // evaluate initial code at startup
   window.uzuEval(savedCode ?? defaultCode);

@@ -85,15 +85,22 @@ const CONTINUOUS_SIGNALS = [
   "rand", "rand2", "perlin",
 ];
 
-// Discrete pattern signals: no .lerp()/.spline() but are pattern objects
-const DISCRETE_SIGNALS = ["brand", "time"];
+// Discrete numeric signals: no .lerp()/.spline() but are pattern objects with numeric values
+const DISCRETE_NUMERIC_SIGNALS = ["time"];
 
-// Functions that return patterns (need args) — used separately
-const SIGNAL_FUNCTIONS = [
+// Discrete boolean signals: only valid for speed, not for time args
+const DISCRETE_BOOLEAN_SIGNALS = ["brand"];
+
+// Functions that return numeric patterns (need args)
+const NUMERIC_SIGNAL_FUNCTIONS = [
   { name: "irand", arg: () => String(randInt(2, 10)) },
-  { name: "brandBy", arg: () => randFloat(0.1, 0.9).toFixed(2) },
   { name: "choose", arg: () => pickN(SPEED_LITERALS.filter(s => s !== "0"), 2, 5).join(", ") },
   { name: "chooseCycles", arg: () => pickN(SPEED_LITERALS.filter(s => s !== "0"), 2, 5).join(", ") },
+];
+
+// Functions that return boolean patterns
+const BOOLEAN_SIGNAL_FUNCTIONS = [
+  { name: "brandBy", arg: () => randFloat(0.1, 0.9).toFixed(2) },
 ];
 
 const EASING_CURVES = [
@@ -105,7 +112,14 @@ const EASING_DIRS = ["in", "out", "inout"];
 
 const SPEED_LITERALS = ["-2", "-1", "-0.5", "0", "0.1", "0.25", "0.5", "1", "2", "4", "8", "16"];
 
-const CPS_VALUES = ["0.25", "0.5", "1", "2", "4"];
+function randomCps(): string {
+  const r = Math.random();
+  if (r < 0.05) return "0";
+  if (r < 0.1) return randFloat(0.01, 0.5).toFixed(2);
+  if (r < 0.3) return randFloat(0.5, 2).toFixed(1);
+  if (r < 0.95) return randFloat(2, 10).toFixed(1);
+  return randFloat(10, 1000).toFixed(0);
+}
 
 // ============================================================
 // Random helpers
@@ -236,28 +250,39 @@ function miniOf(pool: string[], _min = 1, _max = 4): string {
 // Grammar: signal expressions
 // ============================================================
 
+function continuousSignalExpr(): string {
+  const sig = pick(CONTINUOUS_SIGNALS);
+  const parts: string[] = [sig];
+  if (maybe(0.3)) {
+    parts.push(`.lerp("${pick(EASING_CURVES)}", "${pick(EASING_DIRS)}")`);
+  } else if (maybe(0.2)) {
+    parts.push(`.spline(${randFloat(0.1, 1.0).toFixed(2)})`);
+  }
+  if (maybe(0.3)) {
+    parts.push(pick([".sec()", ".ms()"]));
+  }
+  return parts.join("");
+}
+
+/** Numeric signal expression — safe for time args (no booleans). */
+function numericSignalExpr(): string {
+  const r = Math.random();
+  if (r < 0.6) return continuousSignalExpr();
+  if (r < 0.8) return pick(DISCRETE_NUMERIC_SIGNALS);
+  const fn = pick(NUMERIC_SIGNAL_FUNCTIONS);
+  return `${fn.name}(${fn.arg()})`;
+}
+
+/** Any signal expression — may produce booleans, use for speed only. */
 function signalExpr(): string {
   const r = Math.random();
-  if (r < 0.6) {
-    // continuous signal — may chain .lerp/.spline/.sec/.ms
-    const sig = pick(CONTINUOUS_SIGNALS);
-    const parts: string[] = [sig];
-    if (maybe(0.3)) {
-      parts.push(`.lerp("${pick(EASING_CURVES)}", "${pick(EASING_DIRS)}")`);
-    } else if (maybe(0.2)) {
-      parts.push(`.spline(${randFloat(0.1, 1.0).toFixed(2)})`);
-    }
-    if (maybe(0.3)) {
-      parts.push(pick([".sec()", ".ms()"]));
-    }
-    return parts.join("");
+  if (r < 0.6) return continuousSignalExpr();
+  if (r < 0.75) return pick([...DISCRETE_NUMERIC_SIGNALS, ...DISCRETE_BOOLEAN_SIGNALS]);
+  if (r < 0.9) {
+    const fn = pick(NUMERIC_SIGNAL_FUNCTIONS);
+    return `${fn.name}(${fn.arg()})`;
   }
-  if (r < 0.8) {
-    // discrete pattern signal — no chaining
-    return pick(DISCRETE_SIGNALS);
-  }
-  // signal function — needs args
-  const fn = pick(SIGNAL_FUNCTIONS);
+  const fn = pick(BOOLEAN_SIGNAL_FUNCTIONS);
   return `${fn.name}(${fn.arg()})`;
 }
 
@@ -284,7 +309,7 @@ function timeMini(): string {
 }
 
 function timeArg(): string {
-  if (maybe(0.35)) return signalExpr();
+  if (maybe(0.35)) return numericSignalExpr();
   return `"${timeMini()}"`;
 }
 
@@ -340,10 +365,11 @@ function videoChain(): { code: string; desc: string } {
 //   video_expr → video(mini(VIDEOS)) video_chain .out()
 // ============================================================
 
-function generate(): { code: string; description: string } {
+function generate(): { code: string; description: string; isVideo: boolean } {
   // optionally prefix with setCps
-  const cpsPrefix = maybe(0.15)
-    ? { code: `setCps(${pick(CPS_VALUES)}); `, desc: `cps=${pick(CPS_VALUES)} ` }
+  const cpsVal = randomCps();
+  const cpsPrefix = maybe(0.7)
+    ? { code: `setCps(${cpsVal}); `, desc: `cps=${cpsVal} ` }
     : { code: "", desc: "" };
 
   if (maybe(0.2)) {
@@ -352,6 +378,7 @@ function generate(): { code: string; description: string } {
     return {
       code: `${cpsPrefix.code}color("${pat}").out()`,
       description: `${cpsPrefix.desc}color: ${pat}`,
+      isVideo: false,
     };
   }
 
@@ -361,6 +388,7 @@ function generate(): { code: string; description: string } {
   return {
     code: `${cpsPrefix.code}video("${pat}")${chain.code}.out()`,
     description: `${cpsPrefix.desc}video: ${pat} ${chain.desc}`.trim(),
+    isVideo: true,
   };
 }
 
@@ -374,7 +402,8 @@ async function runCase(
   description: string,
   delayMs: number,
   url: string,
-): Promise<{ ok: boolean; errors: string[] }> {
+  isVideo: boolean,
+): Promise<{ ok: boolean; errors: string[]; warnings: string[] }> {
   const caseErrors: string[] = [];
 
   // Collect errors that happen during this case
@@ -395,6 +424,7 @@ async function runCase(
   try {
     const evalError = await page.evaluate((c: string) => {
       try {
+        if (typeof window.uzuSetCode === "function") window.uzuSetCode(c);
         window.uzuEval(c);
         return null;
       } catch (e: any) {
@@ -424,7 +454,19 @@ async function runCase(
     page.off("pageerror", onPageError);
   }
 
-  return { ok: caseErrors.length === 0, errors: caseErrors };
+  const warnings: string[] = [];
+  if (isVideo && caseErrors.length === 0) {
+    const videoStatus = await page.evaluate(() => {
+      const videos = document.querySelectorAll("video");
+      if (videos.length === 0) return "no video elements";
+      const loaded = Array.from(videos).filter((v) => v.readyState >= 2 && v.videoWidth > 0);
+      if (loaded.length === 0) return `${videos.length} video(s) but none loaded`;
+      return null;
+    });
+    if (videoStatus) warnings.push(videoStatus);
+  }
+
+  return { ok: caseErrors.length === 0, errors: caseErrors, warnings };
 }
 
 async function main() {
@@ -439,6 +481,17 @@ async function main() {
   const url = `http://localhost:${port}`;
   console.log(`Vite running at ${url}`);
 
+  // Check video server is reachable (just check TCP connect, not a specific path)
+  try {
+    await fetch("http://localhost:3456/");
+    console.log("Video server reachable at localhost:3456");
+  } catch (e: any) {
+    console.error("\nERROR: Video server not reachable at localhost:3456");
+    console.error("Start it with: cd server && npm start\n");
+    await server.close();
+    process.exit(2);
+  }
+
   const browser = await chromium.launch({ headless: HEADLESS });
   const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const page = await context.newPage();
@@ -448,7 +501,7 @@ async function main() {
   await page.waitForFunction(() => typeof window.uzuEval === "function", null, { timeout: 10000 });
 
   // Build test cases: either replay saved failures or generate new ones
-  let cases: { code: string; description: string }[];
+  let cases: { code: string; description: string; isVideo: boolean }[];
   const existingFailures = loadFailures();
 
   if (REPLAY) {
@@ -458,7 +511,7 @@ async function main() {
       await server.close();
       process.exit(0);
     }
-    cases = existingFailures.map(f => ({ code: f.code, description: f.description }));
+    cases = existingFailures.map(f => ({ code: f.code, description: f.description, isVideo: f.code.includes("video(") }));
     console.log(`Replaying ${cases.length} saved failure(s) with ${DELAY_MS}ms delay each.\n`);
   } else {
     cases = Array.from({ length: ROUNDS }, () => generate());
@@ -470,12 +523,13 @@ async function main() {
   const newFailures: FailureCase[] = [];
 
   for (let i = 0; i < cases.length; i++) {
-    const { code, description } = cases[i];
-    const result = await runCase(page, code, description, DELAY_MS, url);
+    const { code, description, isVideo } = cases[i];
+    const result = await runCase(page, code, description, DELAY_MS, url, isVideo);
 
     if (result.ok) {
       passed++;
-      console.log(`  [${i + 1}/${cases.length}] OK | ${description}`);
+      const warn = result.warnings.length > 0 ? ` ⚠ ${result.warnings.join(", ")}` : "";
+      console.log(`  [${i + 1}/${cases.length}] OK${warn} | ${description}`);
       console.log(`     ${code}`);
     } else {
       failed++;
