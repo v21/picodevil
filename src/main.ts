@@ -18,6 +18,7 @@ import { ImagePattern } from "./image-pattern";
 import type { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
+import { drawFit } from "./draw-fit";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -181,11 +182,7 @@ function renderImageScreen(screen: ImagePattern, cyclePos: number, cycleNum: num
   const base = screen.imageUrlBase ?? IMAGE_BASE;
   const el = imagePool.get(base + src);
   if (el && el.naturalWidth > 0) {
-    const cw = canvas.width, ch = canvas.height;
-    const scale = Math.max(cw / el.naturalWidth, ch / el.naturalHeight);
-    const dw = el.naturalWidth * scale;
-    const dh = el.naturalHeight * scale;
-    ctx.drawImage(el, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+    drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, screen.fitMode);
   }
 }
 

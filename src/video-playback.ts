@@ -1,6 +1,7 @@
 import { REVERSE_SEEK_INTERVAL, VIDEO_BASE } from "./config";
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { resolveTime } from "./time-value";
+import { drawFit } from "./draw-fit";
 import type { VideoPattern, VideoValue } from "./video-pattern";
 
 type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
@@ -38,7 +39,7 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
       updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
     }
     if (el && el.videoWidth > 0) {
-      drawVideoCover(c.ctx, el, c.canvas.width, c.canvas.height);
+      drawFit(c.ctx, el, el.videoWidth, el.videoHeight, c.canvas.width, c.canvas.height, c.videoPattern.fitMode);
     }
     break;
   }
@@ -131,16 +132,3 @@ function updateVideoPlayback(
   }
 }
 
-function drawVideoCover(
-  ctx: CanvasRenderingContext2D,
-  el: HTMLVideoElement,
-  cw: number,
-  ch: number,
-): void {
-  const vw = el.videoWidth;
-  const vh = el.videoHeight;
-  const scale = Math.max(cw / vw, ch / vh);
-  const dw = vw * scale;
-  const dh = vh * scale;
-  ctx.drawImage(el, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
-}

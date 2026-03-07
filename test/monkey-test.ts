@@ -110,6 +110,8 @@ const BOOLEAN_SIGNAL_FUNCTIONS = [
   { name: "brandBy", arg: () => randFloat(0.1, 0.9).toFixed(2) },
 ];
 
+const FIT_MODES = ["cover", "contain", "fill", "none"];
+
 const EASING_CURVES = [
   "linear", "sine", "quad", "cubic", "quart", "quint",
   "expo", "circ", "elastic", "bounce", "back",
@@ -349,6 +351,11 @@ const VIDEO_METHODS: (() => MethodCall)[] = [
   () => ({ code: `.speed(0)`, desc: `speed(0)` }),
   // speed with a bare number
   () => { const n = pick(SPEED_LITERALS); return { code: `.speed(${n})`, desc: `speed(${n})` }; },
+  // alpha/opacity
+  () => { const a = alphaArg(); return { code: `.alpha(${a})`, desc: `alpha(${a})` }; },
+  () => { const a = alphaArg(); return { code: `.opacity(${a})`, desc: `opacity(${a})` }; },
+  // fit
+  () => { const m = pick(FIT_MODES); return { code: `.fit("${m}")`, desc: `fit(${m})` }; },
 ];
 
 function videoChain(): { code: string; desc: string } {
@@ -376,6 +383,7 @@ function alphaArg(): string {
 const IMAGE_METHODS: (() => MethodCall)[] = [
   () => { const a = alphaArg(); return { code: `.alpha(${a})`, desc: `alpha(${a})` }; },
   () => { const a = alphaArg(); return { code: `.opacity(${a})`, desc: `opacity(${a})` }; },
+  () => { const m = pick(FIT_MODES); return { code: `.fit("${m}")`, desc: `fit(${m})` }; },
 ];
 
 function imageChain(base: string): { code: string; desc: string } {
@@ -411,9 +419,13 @@ function generate(): { code: string; description: string; isVideo: boolean } {
   if (r < 0.15) {
     // color expression
     const pat = miniOf(COLORS, 1, 6);
+    let chain = "";
+    let chainDesc = "";
+    if (maybe(0.3)) { const a = alphaArg(); chain += `.alpha(${a})`; chainDesc += ` alpha(${a})`; }
+    if (maybe(0.2)) { const m = pick(FIT_MODES); chain += `.fit("${m}")`; chainDesc += ` fit(${m})`; }
     return {
-      code: `${cpsPrefix.code}color("${pat}").out()`,
-      description: `${cpsPrefix.desc}color: ${pat}`,
+      code: `${cpsPrefix.code}color("${pat}")${chain}.out()`,
+      description: `${cpsPrefix.desc}color: ${pat}${chainDesc}`,
       isVideo: false,
     };
   }
@@ -460,7 +472,7 @@ async function runCase(
   const onConsole = (msg: any) => {
     if (msg.type() === "error") {
       const text = msg.text();
-      if (text.includes("net::ERR") || text.includes("Failed to load")) return;
+      if (text.includes("net::ERR") || text.includes("Failed to load") || text.includes("failed to load")) return;
       caseErrors.push(text);
     }
   };

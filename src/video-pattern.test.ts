@@ -282,4 +282,53 @@ describe("VideoPattern", () => {
     const v = vp("a.mp4").start("-1s").queryArc(0, 1)[0].value;
     expect(resolve(v.start, DUR)).toBe(-1);
   });
+
+  // --- fit mode ---
+
+  it("fit() defaults to cover", () => {
+    expect(vp("a.mp4").fitMode).toBe("cover");
+  });
+
+  it("fit() sets mode", () => {
+    expect(vp("a.mp4").fit("contain").fitMode).toBe("contain");
+    expect(vp("a.mp4").fit("fill").fitMode).toBe("fill");
+    expect(vp("a.mp4").fit("none").fitMode).toBe("none");
+  });
+
+  it("fit() chaining is immutable", () => {
+    const p1 = vp("a.mp4");
+    const p2 = p1.fit("contain");
+    expect(p1.fitMode).toBe("cover");
+    expect(p2.fitMode).toBe("contain");
+  });
+
+  it("fit() preserves speed and start/end", () => {
+    const p = vp("a.mp4").speed("2").start("5s").fit("none");
+    const v = p.queryArc(0, 1)[0].value;
+    expect(v.speed).toBe(2);
+    expect(resolve(v.start, DUR)).toBe(5);
+    expect(p.fitMode).toBe("none");
+  });
+
+  // --- alpha ---
+
+  it("alpha() sets alpha pattern", () => {
+    const p = vp("a.mp4").alpha("0.5");
+    expect(p.alphaPattern).toBeDefined();
+    expect(Number(p.alphaPattern!.queryArc(0, 1)[0].value)).toBe(0.5);
+  });
+
+  it("alpha() chaining is immutable", () => {
+    const p1 = vp("a.mp4");
+    const p2 = p1.alpha("0.5");
+    expect(p1.alphaPattern).toBeUndefined();
+    expect(p2.alphaPattern).toBeDefined();
+  });
+
+  it("alpha() preserves speed and fit", () => {
+    const p = vp("a.mp4").speed("2").fit("contain").alpha("0.5");
+    expect(p.queryArc(0, 1)[0].value.speed).toBe(2);
+    expect(p.fitMode).toBe("contain");
+    expect(p.alphaPattern).toBeDefined();
+  });
 });

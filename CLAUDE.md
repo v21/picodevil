@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-03-06.
+> This file is machine-authored for use by coding agents. Last updated 2026-03-07.
 
 ## What is this?
 
@@ -18,11 +18,13 @@ uzuvid/
   src/                    — frontend source (all .ts)
     main.ts               — core runtime: pattern state, video pool, render loop, eval bridge
     editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
-    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, CYCLES_PER_SECOND
-    video-pattern.ts      — VideoPattern class: wraps Strudel pattern with video props
-    color-pattern.ts      — ColorPattern class: wraps Strudel pattern for color output
-    outputable.ts         — Outputable interface (`.out()` method)
-    video-playback.ts     — video frame rendering: playback update, seeking, cover-fit drawing
+    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND
+    screen-pattern.ts     — ScreenPattern abstract base class, ScreenProps, FitMode type
+    video-pattern.ts      — VideoPattern class: extends ScreenPattern with video props
+    color-pattern.ts      — ColorPattern class: extends ScreenPattern for color output
+    image-pattern.ts      — ImagePattern class: extends ScreenPattern for static images
+    draw-fit.ts           — shared drawFit() helper for cover/contain/fill/none rendering
+    video-playback.ts     — video frame rendering: playback update, seeking
     playback-rate.ts      — setPlaybackRate helper, native rate range constants
     time-value.ts         — TimeValue type and parsing (relative, seconds, milliseconds)
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
@@ -31,6 +33,7 @@ uzuvid/
   test/                   — integration tests
     monkey-test.ts        — grammar-based random pattern generator + browser runner
     monkey-failures.json  — saved failure cases for conformance replay
+    image-assets.txt      — list of image URLs for monkey testing
   server/                 — standalone Node.js package (separate npm install)
     server.js             — HTTP server: downloads YouTube videos via yt-dlp, serves MP4s
     server.test.js        — tests (node --test), mocks spawn to avoid real downloads
@@ -41,32 +44,46 @@ uzuvid/
 
 ## How the frontend works
 
-1. `src/main.ts` maintains a `pattern` (Strudel pattern object) and a `videoPattern` (VideoPattern | null).
+1. `src/main.ts` maintains a `screens: ScreenPattern[]` stack. Each eval (Ctrl+Enter) tears down and rebuilds the stack.
 2. The render loop runs at requestAnimationFrame rate. Timing is in **milliseconds** (converted to seconds only for cycle calculation). Each frame it:
    - Computes cycle position from elapsed time and `cyclesPerSecond`
-   - Queries `pattern` for the current color, fills the canvas
-   - If `videoPattern` is set, queries it for a video value (src + speed), draws that video frame on top
-3. `window.uzuEval(code)` is called by the editor. It runs the code as a `new Function` body with `mini`, `color`, and `video` as available functions.
-4. The default editor code is evaluated automatically at startup.
+   - Draws each screen in stack order (bottom to top), applying per-screen alpha and fit mode
+3. `window.uzuEval(code)` is called by the editor. It clears all state (videos, images, screens) then runs the code as a `new Function` body with `mini`, `color`, `video`, `image`, `setCps`, and Strudel signals available.
 
-## Output model
+## Screen architecture
 
-Patterns use an explicit `.out()` method to push themselves as the active pattern (rather than returning from eval). Both `ColorPattern` and `VideoPattern` implement the `Outputable` interface. Internally, `.out()` calls a callback passed at construction time that sets the pattern on `src/main.ts` state.
+All screen types extend `ScreenPattern` (in `src/screen-pattern.ts`), which provides:
+- `.alpha(pat)` / `.opacity(pat)` — screen opacity (pattern or signal)
+- `.fit(mode)` — object-fit mode: `"cover"` (default), `"contain"`, `"fill"`, `"none"`
+- `.out()` — push screen onto the stack
+
+Each subclass uses immutable builder pattern — every method returns a new instance. Subclasses implement `_cloneWithScreenProps()` to propagate shared screen props through their own constructors.
+
+Screen types: `ColorPattern`, `VideoPattern`, `ImagePattern`.
 
 ## User-facing API (available in the editor)
 
 - `mini(str)` — raw Strudel mininotation, returns a pattern
-- `color(str)` — returns a `ColorPattern`, also clears any active video
-- `video(str)` — returns a `VideoPattern` of video filenames (served from `http://localhost:3456/videos/`)
+- `color(str)` — returns a `ColorPattern` (supports all CSS color names and hex codes)
+- `video(str)` — returns a `VideoPattern` of video filenames (served from VIDEO_BASE)
+- `image(str)` — returns an `ImagePattern` of image filenames (served from IMAGE_BASE)
+- `setCps(n)` — set cycles per second
 
-Chainable methods on VideoPattern:
-- `.speed(str | number)` — playback speed pattern (supports negative for reverse)
-- `.out()` — set as active video pattern
+Shared chainable methods (all screen types):
+- `.alpha(pat)` / `.opacity(pat)` — screen opacity
+- `.fit("cover" | "contain" | "fill" | "none")` — object-fit mode
+- `.out()` — push to screen stack
 
-Chainable methods on ColorPattern:
-- `.out()` — set as active color pattern
+VideoPattern-specific methods:
+- `.speed(pat)` — playback speed (supports negative for reverse)
+- `.start(pat)` / `.end(pat)` / `.duration(pat)` / `.dur(pat)` — loop region
+- `.scrub(pat)` — scrub to position (sets start + duration(0))
+- `.urlBase(str)` — custom video URL prefix
 
-Example: `video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").out()`
+ImagePattern-specific methods:
+- `.urlBase(str)` — custom image URL prefix
+
+Example: `video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").fit("contain").out()`
 
 ## Video playback speed
 
@@ -113,15 +130,21 @@ npx tsx test/monkey-test.ts --replay --delay 1000 --headless
 ## Workflow when making changes
 
 When working through a list of tasks, **stop and check in with the user after completing each one** — don't proceed to the next task without confirmation. For each task:
-1. Make the change
-2. Run `npm test` (unit tests)
-3. Run monkey testing: `npx tsx test/monkey-test.ts --rounds 10 --delay 1000 --headless`
-4. Commit if green
-5. Report what was done and wait for go-ahead
+1. **Write a failing test first** (red) — unit test in `src/*.test.ts` or monkey tester coverage in `test/monkey-test.ts`, whichever is appropriate. Skip this only when the change is purely visual, config-only, or otherwise impractical to test upfront.
+2. **Implement the change** to make the test pass (green)
+3. When adding new user-facing functionality (methods, screen types, etc.), also add coverage to the monkey tester (`test/monkey-test.ts`) so it generates random expressions exercising the new feature
+4. Run `npm test` (unit tests)
+5. Run monkey testing: `npx tsx test/monkey-test.ts --rounds 10 --delay 1000 --headless`
+6. Commit if green
+7. Report what was done and wait for go-ahead
 
 ## Key patterns to know
 
 - Strudel patterns have a `.queryArc(start, end)` method returning events with `.value`
-- The `videoPool` Map caches `<video>` elements by filename to avoid re-creation
+- The `videoPool` and `imagePool` Maps cache media elements by full URL to avoid re-creation
+- Screen types use immutable builder pattern — methods return new instances, never mutate
+- `ScreenProps` bag carries shared properties (alpha, fit); subclasses propagate via `_cloneWithScreenProps()`
+- Mininotation slashes are the "slow by N" operator, so URLs can't go in mini patterns — use `.urlBase()` instead
+- Strudel Fraction types produce repeating-decimal strings like `"15.(103...)"` — always use `Number(v)` before `parseTimeValue()`
 - The server's `createServer(opts)` is exported for testability; tests pass `spawnFn` to mock yt-dlp
 - Config constants live in `src/config.ts` — timing values are in milliseconds

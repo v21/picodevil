@@ -6,5 +6,13 @@
       "Failed to set the 'currentTime' property on 'HTMLMediaElement': The provided double value is non-finite."
     ],
     "timestamp": "2026-03-07T09:43:18.262Z"
+  },
+  {
+    "code": "image(\"{[01hy8c897hcyt3rdtq1k85e5mf.png 01hy8c897hcyt3rdtq1k85e5mf.png 01hy8ht032ggqsfk2mx4ebr4ar.png]@4 [01hy8ht032ggqsfk2mx4ebr4ar.png 01hy8ht032ggqsfk2mx4ebr4ar.png] 01hy8c897hcyt3rdtq1k85e5mf.png [01hy8ht032ggqsfk2mx4ebr4ar.png]!2@1}%4/3/3\").urlBase(\"https://assets.downpour.games/nrNZcBtfxngjwFkEGTC4raG4k4p2/a-01hy8ht036zs93t8ctg02k278n/\").out()",
+    "description": "image: {[01hy8c897hcyt3rdtq1k85e5mf.png 01hy8c897hcyt3rdtq1k85e5mf.png 01hy8ht032ggqsfk2mx4ebr4ar.png]@4 [01hy8ht032ggqsfk2mx4ebr4ar.png 01hy8ht032ggqsfk2mx4ebr4ar.png] 01hy8c897hcyt3rdtq1k85e5mf.png [01hy8ht032ggqsfk2mx4ebr4ar.png]!2@1}%4/3/3 urlBase(...)",
+    "errors": [
+      "image failed to load: https://assets.downpour.games/nrNZcBtfxngjwFkEGTC4raG4k4p2/a-01hy8ht036zs93t8ctg02k278n/01hy8c897hcyt3rdtq1k85e5mf.png"
+    ],
+    "timestamp": "2026-03-07T09:50:52.144Z"
   }
 ]
