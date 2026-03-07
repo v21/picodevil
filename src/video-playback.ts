@@ -1,4 +1,4 @@
-import { REVERSE_SEEK_INTERVAL } from "./config";
+import { REVERSE_SEEK_INTERVAL, VIDEO_BASE } from "./config";
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { resolveTime } from "./time-value";
 import type { VideoPattern, VideoValue } from "./video-pattern";
@@ -32,7 +32,8 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
     if (videoKey !== lastVideoVal) {
       lastVideoVal = videoKey;
     }
-    const el = c.videoPool.get(src);
+    const base = c.videoPattern.videoUrlBase ?? VIDEO_BASE;
+    const el = c.videoPool.get(base + src);
     if (el && isFinite(el.duration) && el.duration > 0) {
       updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
     }

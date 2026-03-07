@@ -35,29 +35,31 @@ let cyclesPerSecond = CYCLES_PER_SECOND;
 // --- video ---
 const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean }>();
 
-function getVideoEl(name: string): HTMLVideoElement {
-  if (videoPool.has(name)) return videoPool.get(name)!;
+function getVideoEl(name: string, base: string = VIDEO_BASE): HTMLVideoElement {
+  const key = base + name;
+  if (videoPool.has(key)) return videoPool.get(key)!;
   const el = document.createElement("video") as HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
   el.loop = true;
   el.muted = true;
   el.playsInline = true;
-  el.src = VIDEO_BASE + name;
+  el.src = base + name;
   el.addEventListener("loadeddata", () => console.log("video loaded:", name));
   el.addEventListener("seeking", () => { el._seeking = true; });
   el.addEventListener("seeked", () => { el._seeking = false; });
   el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
-  videoPool.set(name, el);
+  videoPool.set(key, el);
   return el;
 }
 
 function video(pat: string): VideoPattern {
   const srcPattern = mini(pat);
-  const probe = srcPattern.queryArc(0, 1);
-  for (const ev of probe) getVideoEl(ev.value);
   return new VideoPattern(srcPattern, {}, mini, applyVideo);
 }
 
 function applyVideo(vp: VideoPattern) {
+  const base = vp.videoUrlBase ?? VIDEO_BASE;
+  const probe = vp.srcPattern.queryArc(0, 1);
+  for (const ev of probe) getVideoEl(ev.value, base);
   screens.push(vp);
   console.log("video screen added, screen count:", screens.length);
 }

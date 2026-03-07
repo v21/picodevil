@@ -23,16 +23,24 @@ export class VideoPattern extends ScreenPattern {
   srcPattern: Pattern;
   props: Record<string, Pattern>;
   private _endIsDuration: boolean;
+  private _urlBase?: string;
 
-  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false, screenProps?: ScreenProps) {
+  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false, screenProps?: ScreenProps, urlBase?: string) {
     super(parseMini, onOut, screenProps);
     this.srcPattern = srcPattern;
     this.props = props;
     this._endIsDuration = endIsDuration;
+    this._urlBase = urlBase;
   }
 
+  get videoUrlBase(): string | undefined { return this._urlBase; }
+
   protected _cloneWithScreenProps(props: ScreenProps): this {
-    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, props) as this;
+    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, props, this._urlBase) as this;
+  }
+
+  urlBase(base: string): VideoPattern {
+    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, this._screenProps, base);
   }
 
   private _withTime(name: string, pat: string | number | Pattern, endIsDuration?: boolean): VideoPattern {
@@ -41,14 +49,14 @@ export class VideoPattern extends ScreenPattern {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: parsed,
-    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration, this._screenProps);
+    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration, this._screenProps, this._urlBase);
   }
 
   private _with(name: string, pat: string | number | Pattern): VideoPattern {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: this._asPat(pat),
-    }, this._parseMini, this._onOut, this._endIsDuration, this._screenProps);
+    }, this._parseMini, this._onOut, this._endIsDuration, this._screenProps, this._urlBase);
   }
 
   scrub(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat).duration(0); }
