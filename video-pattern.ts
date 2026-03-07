@@ -56,6 +56,7 @@ export class VideoPattern implements Outputable {
     }, this._parseMini, this._onOut, this._endIsDuration);
   }
 
+  scrub(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat).duration(0); }
   speed(pat: string | number | Pattern): VideoPattern { return this._with("speed", pat); }
   start(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat); }
   end(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, false); }

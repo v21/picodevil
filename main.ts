@@ -198,7 +198,13 @@ function frame() {
           let target = el.currentTime;
           let needsSeek = false;
 
-          if (!inRange(target)) {
+          if (speed === 0) {
+            // scrub: pin to loopStart each frame so signals can drive position
+            if (target !== loopStart) {
+              target = loopStart;
+              needsSeek = true;
+            }
+          } else if (!inRange(target)) {
             target = speed < 0 ? loopEnd : loopStart;
             needsSeek = true;
             el._reverseAcc = 0;
