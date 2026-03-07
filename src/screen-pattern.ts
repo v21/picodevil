@@ -6,11 +6,15 @@ export type FitMode = "cover" | "contain" | "fill" | "none";
 export interface ScreenProps {
   alphaPattern?: Pattern;
   fitMode?: FitMode;
+  scaleXPattern?: Pattern;
+  scaleYPattern?: Pattern;
 }
 
 export abstract class ScreenPattern {
   alphaPattern?: Pattern;
   fitMode: FitMode;
+  scaleXPattern?: Pattern;
+  scaleYPattern?: Pattern;
   protected _parseMini: MiniParser;
   protected _onOut?: (screen: any) => void;
 
@@ -19,6 +23,8 @@ export abstract class ScreenPattern {
     this._onOut = onOut;
     this.alphaPattern = screenProps?.alphaPattern;
     this.fitMode = screenProps?.fitMode ?? "cover";
+    this.scaleXPattern = screenProps?.scaleXPattern;
+    this.scaleYPattern = screenProps?.scaleYPattern;
   }
 
   protected _asPat(pat: string | number | Pattern): Pattern {
@@ -26,7 +32,7 @@ export abstract class ScreenPattern {
   }
 
   protected get _screenProps(): ScreenProps {
-    return { alphaPattern: this.alphaPattern, fitMode: this.fitMode };
+    return { alphaPattern: this.alphaPattern, fitMode: this.fitMode, scaleXPattern: this.scaleXPattern, scaleYPattern: this.scaleYPattern };
   }
 
   protected abstract _cloneWithScreenProps(props: ScreenProps): this;
@@ -39,6 +45,19 @@ export abstract class ScreenPattern {
 
   fit(mode: FitMode): this {
     return this._cloneWithScreenProps({ ...this._screenProps, fitMode: mode });
+  }
+
+  scaleX(pat: string | number | Pattern): this {
+    return this._cloneWithScreenProps({ ...this._screenProps, scaleXPattern: this._asPat(pat) });
+  }
+
+  scaleY(pat: string | number | Pattern): this {
+    return this._cloneWithScreenProps({ ...this._screenProps, scaleYPattern: this._asPat(pat) });
+  }
+
+  scale(pat: string | number | Pattern): this {
+    const p = this._asPat(pat);
+    return this._cloneWithScreenProps({ ...this._screenProps, scaleXPattern: p, scaleYPattern: p });
   }
 
   out(): void {

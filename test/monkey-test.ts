@@ -356,6 +356,10 @@ const VIDEO_METHODS: (() => MethodCall)[] = [
   () => { const a = alphaArg(); return { code: `.opacity(${a})`, desc: `opacity(${a})` }; },
   // fit
   () => { const m = pick(FIT_MODES); return { code: `.fit("${m}")`, desc: `fit(${m})` }; },
+  // scale
+  () => { const a = scaleArg(); return { code: `.scaleX(${a})`, desc: `scaleX(${a})` }; },
+  () => { const a = scaleArg(); return { code: `.scaleY(${a})`, desc: `scaleY(${a})` }; },
+  () => { const a = scaleArg(); return { code: `.scale(${a})`, desc: `scale(${a})` }; },
 ];
 
 function videoChain(): { code: string; desc: string } {
@@ -380,10 +384,18 @@ function alphaArg(): string {
   return `"${miniOf(["0", "0.25", "0.5", "0.75", "1"], 1, 3)}"`;
 }
 
+function scaleArg(): string {
+  if (maybe(0.4)) return continuousSignalExpr();
+  return `"${miniOf(["0.5", "1", "1.5", "2", "-1", "0.25", "3"], 1, 3)}"`;
+}
+
 const IMAGE_METHODS: (() => MethodCall)[] = [
   () => { const a = alphaArg(); return { code: `.alpha(${a})`, desc: `alpha(${a})` }; },
   () => { const a = alphaArg(); return { code: `.opacity(${a})`, desc: `opacity(${a})` }; },
   () => { const m = pick(FIT_MODES); return { code: `.fit("${m}")`, desc: `fit(${m})` }; },
+  () => { const a = scaleArg(); return { code: `.scaleX(${a})`, desc: `scaleX(${a})` }; },
+  () => { const a = scaleArg(); return { code: `.scaleY(${a})`, desc: `scaleY(${a})` }; },
+  () => { const a = scaleArg(); return { code: `.scale(${a})`, desc: `scale(${a})` }; },
 ];
 
 function imageChain(base: string): { code: string; desc: string } {
@@ -423,6 +435,7 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     let chainDesc = "";
     if (maybe(0.3)) { const a = alphaArg(); chain += `.alpha(${a})`; chainDesc += ` alpha(${a})`; }
     if (maybe(0.2)) { const m = pick(FIT_MODES); chain += `.fit("${m}")`; chainDesc += ` fit(${m})`; }
+    if (maybe(0.2)) { const a = scaleArg(); chain += `.scale(${a})`; chainDesc += ` scale(${a})`; }
     return {
       code: `${cpsPrefix.code}color("${pat}")${chain}.out()`,
       description: `${cpsPrefix.desc}color: ${pat}${chainDesc}`,

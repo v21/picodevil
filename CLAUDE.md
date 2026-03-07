@@ -55,6 +55,8 @@ uzuvid/
 All screen types extend `ScreenPattern` (in `src/screen-pattern.ts`), which provides:
 - `.alpha(pat)` / `.opacity(pat)` — screen opacity (pattern or signal)
 - `.fit(mode)` — object-fit mode: `"cover"` (default), `"contain"`, `"fill"`, `"none"`
+- `.scaleX(pat)` / `.scaleY(pat)` — scale on X/Y axis (pattern or signal)
+- `.scale(pat)` — set both scaleX and scaleY (overrides earlier scaleX/scaleY)
 - `.out()` — push screen onto the stack
 
 Each subclass uses immutable builder pattern — every method returns a new instance. Subclasses implement `_cloneWithScreenProps()` to propagate shared screen props through their own constructors.
@@ -72,6 +74,8 @@ Screen types: `ColorPattern`, `VideoPattern`, `ImagePattern`.
 Shared chainable methods (all screen types):
 - `.alpha(pat)` / `.opacity(pat)` — screen opacity
 - `.fit("cover" | "contain" | "fill" | "none")` — object-fit mode
+- `.scaleX(pat)` / `.scaleY(pat)` — scale on X/Y axis
+- `.scale(pat)` — set both scaleX and scaleY
 - `.out()` — push to screen stack
 
 VideoPattern-specific methods:

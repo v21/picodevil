@@ -121,4 +121,58 @@ describe("ImagePattern", () => {
     expect(called!.imageUrlBase).toBe("https://x.com/");
     expect(called!.fitMode).toBe("contain");
   });
+
+  it("scaleX() sets scaleX pattern", () => {
+    const img = ip("a.png").scaleX("2");
+    expect(img.scaleXPattern).toBeDefined();
+    const evs = img.scaleXPattern!.queryArc(0, 1);
+    expect(Number(evs[0].value)).toBe(2);
+  });
+
+  it("scaleY() sets scaleY pattern", () => {
+    const img = ip("a.png").scaleY("0.5");
+    expect(img.scaleYPattern).toBeDefined();
+    const evs = img.scaleYPattern!.queryArc(0, 1);
+    expect(Number(evs[0].value)).toBe(0.5);
+  });
+
+  it("scale() sets both scaleX and scaleY patterns", () => {
+    const img = ip("a.png").scale("3");
+    expect(img.scaleXPattern).toBeDefined();
+    expect(img.scaleYPattern).toBeDefined();
+    const xEvs = img.scaleXPattern!.queryArc(0, 1);
+    const yEvs = img.scaleYPattern!.queryArc(0, 1);
+    expect(Number(xEvs[0].value)).toBe(3);
+    expect(Number(yEvs[0].value)).toBe(3);
+  });
+
+  it("scale() overrides earlier scaleX/scaleY", () => {
+    const img = ip("a.png").scaleX("2").scaleY("4").scale("1");
+    const xEvs = img.scaleXPattern!.queryArc(0, 1);
+    const yEvs = img.scaleYPattern!.queryArc(0, 1);
+    expect(Number(xEvs[0].value)).toBe(1);
+    expect(Number(yEvs[0].value)).toBe(1);
+  });
+
+  it("scaleX() after scale() only overrides X", () => {
+    const img = ip("a.png").scale("3").scaleX("5");
+    const xEvs = img.scaleXPattern!.queryArc(0, 1);
+    const yEvs = img.scaleYPattern!.queryArc(0, 1);
+    expect(Number(xEvs[0].value)).toBe(5);
+    expect(Number(yEvs[0].value)).toBe(3);
+  });
+
+  it("scale chaining is immutable", () => {
+    const p1 = ip("a.png");
+    const p2 = p1.scale("2");
+    expect(p1.scaleXPattern).toBeUndefined();
+    expect(p2.scaleXPattern).toBeDefined();
+  });
+
+  it("scale preserves urlBase and alpha", () => {
+    const img = ip("a.png").urlBase("https://x.com/").alpha("0.5").scale("2");
+    expect(img.imageUrlBase).toBe("https://x.com/");
+    expect(img.alphaPattern).toBeDefined();
+    expect(img.scaleXPattern).toBeDefined();
+  });
 });

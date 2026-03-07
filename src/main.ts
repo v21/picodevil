@@ -118,7 +118,7 @@ function applyColor(cp: ColorPattern) {
 }
 
 // called from editor on ctrl+enter
-window.uzuEval = (code: string) => {
+window.uzuEval = (code: string): string | null => {
   clearVideos();
   clearImages();
   screens = [];
@@ -140,8 +140,10 @@ window.uzuEval = (code: string) => {
       mini, color, video, image, setCps, ...Object.values(signals),
     );
     console.log("evaluated:", code);
+    return null;
   } catch (e) {
     console.error("eval error:", e);
+    return e instanceof Error ? e.message : String(e);
   }
 };
 
@@ -212,6 +214,24 @@ function frame() {
       ctx.globalAlpha = alphaEvs.length ? Math.max(0, Math.min(1, Number(alphaEvs[0].value))) : 1;
     }
 
+    // resolve scale for this screen
+    const hasScale = screen.scaleXPattern || screen.scaleYPattern;
+    if (hasScale) {
+      let sx = 1, sy = 1;
+      if (screen.scaleXPattern) {
+        const evs = screen.scaleXPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+        if (evs.length) sx = Number(evs[0].value);
+      }
+      if (screen.scaleYPattern) {
+        const evs = screen.scaleYPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+        if (evs.length) sy = Number(evs[0].value);
+      }
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(sx, sy);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
+
     if (screen instanceof ColorPattern) {
       renderColorScreen(screen, cyclePos, cycleNum);
     } else if (screen instanceof ImagePattern) {
@@ -227,6 +247,7 @@ function frame() {
       lastScreenVals[i] = videoResult.lastVideoVal;
     }
 
+    if (hasScale) ctx.restore();
     ctx.globalAlpha = 1;
   }
 
