@@ -3,7 +3,7 @@ import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig({
   test: {
-    exclude: ["server/**", "node_modules/**"],
+    exclude: ["server/**", "test/**", "node_modules/**"],
     browser: {
       enabled: true,
       provider: playwright(),
