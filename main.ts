@@ -5,6 +5,7 @@ import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { REVERSE_SEEK_INTERVAL, VIDEO_BASE, CYCLES_PER_SECOND } from "./config";
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
+import { resolveTime } from "./time-value";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -137,13 +138,14 @@ function frame() {
   if (videoPattern) {
     const vidEvents = videoPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
     for (const ev of vidEvents) {
-      const { src, speed, start, end: endProp } = ev.value;
+      const { src, speed, start, end: endTV, endIsDuration } = ev.value;
       const el = videoPool.get(src);
-      if (el) {
+      if (el && isFinite(el.duration) && el.duration > 0) {
         const dt = now - lastFrameTime;
-        const dur = el.duration || Infinity;
-        const loopStart = start;
-        const loopEnd = endProp === Infinity ? dur : endProp;
+        const dur = el.duration;
+        const loopStart = resolveTime(start, dur);
+        const resolvedEnd = resolveTime(endTV, dur);
+        const loopEnd = endIsDuration ? loopStart + resolvedEnd : resolvedEnd;
         const wrapped = loopStart > loopEnd; // loop wraps around clip boundary
         function inRange(t: number): boolean {
           if (wrapped) return t >= loopStart || t <= loopEnd;
