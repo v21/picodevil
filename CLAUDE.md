@@ -17,6 +17,7 @@ uzuvid/
   video-pattern.ts        — VideoPattern class: wraps Strudel pattern with video props (speed, etc.)
   color-pattern.ts        — ColorPattern class: wraps Strudel pattern for color output
   outputable.ts           — Outputable interface (`.out()` method)
+  video-playback.ts       — video frame rendering: playback update, seeking, cover-fit drawing
   playback-rate.ts        — setPlaybackRate helper, native rate range constants
   playback-rate.test.ts   — tests for playback rate error handling
   video-pattern.test.ts   — tests for VideoPattern
@@ -77,7 +78,7 @@ The server (`server/`) is independent — separate package.json, separate `npm i
 - `GET /videos/ID.mp4` — serves cached videos with range request support
 - Files are named by YouTube video ID (e.g. `aGMOFLgB1CU.mp4`)
 
-## Running
+## Running & testing
 
 ```sh
 # Frontend (from root)
@@ -87,9 +88,30 @@ npm install && npm run dev
 cd server && npm install && npm start
 # or: npm run dev  (auto-reload)
 
-# Tests (from root)
+# Unit tests (from root) — vitest in browser mode via Playwright
 npm test
+
+# Monkey testing — generates random patterns and checks for crashes/errors
+# Requires: video server running (cd server && npm start)
+npx tsx monkey-test.ts --rounds 10 --delay 1000 --headless
+
+# Replay saved failures as a conformance suite
+npx tsx monkey-test.ts --replay --delay 1000 --headless
 ```
+
+## Git commit style
+
+- Do not add Co-Authored-By lines for AI/LLM assistants
+- Do note in the commit body that LLM assistance was used, e.g. "Written with LLM assistance."
+
+## Workflow when making changes
+
+When working through a list of tasks, **stop and check in with the user after completing each one** — don't proceed to the next task without confirmation. For each task:
+1. Make the change
+2. Run `npm test` (unit tests)
+3. Run monkey testing: `npx tsx monkey-test.ts --rounds 10 --delay 1000 --headless`
+4. Commit if green
+5. Report what was done and wait for go-ahead
 
 ## Key patterns to know
 

@@ -61,3 +61,7 @@ vid("scales")
 
 ```
 return video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")
+
+
+
+do we wanna reset pos every loop? right now the pos is a drifting variable which can move... we can do this with scrub
