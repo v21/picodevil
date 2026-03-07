@@ -11,6 +11,7 @@ import {
   run, choose, chooseIn, chooseCycles,
   signal, steady,
 } from "@strudel/core";
+import "./pattern-extensions";
 import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
@@ -86,12 +87,6 @@ function applyColor(cp: ColorPattern) {
   pattern = cp.pattern;
   console.log("pattern set:", cp.pattern);
 }
-
-// unit helpers: tag pattern values so parseTimeValue interprets them as seconds/ms
-// Added as chainable methods on Pattern prototype for idiomatic Strudel usage
-const PatternProto = Object.getPrototypeOf(sine);
-PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
-PatternProto.ms = function () { return this.fmap((v: number) => v + "ms"); };
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
