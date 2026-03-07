@@ -14,6 +14,7 @@ import "./pattern-extensions";
 import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
+import type { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
 
@@ -28,8 +29,7 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- state ---
-type Screen = ColorPattern | VideoPattern;
-let screens: Screen[] = [];
+let screens: ScreenPattern[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
@@ -144,11 +144,8 @@ let lastScreenVals: (string | null)[] = [];
 
 function renderColorScreen(screen: ColorPattern, cyclePos: number, cycleNum: number) {
   const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-  let currentColor: [number, number, number] = [0, 0, 0];
-  for (const ev of events) {
-    currentColor = parseColor(ev.value);
-    break;
-  }
+  if (!events.length) return;
+  const currentColor = parseColor(events[0].value);
   ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
@@ -173,7 +170,7 @@ function frame() {
 
     if (screen instanceof ColorPattern) {
       renderColorScreen(screen, cyclePos, cycleNum);
-    } else {
+    } else if (screen instanceof VideoPattern) {
       const videoResult = renderVideoFrame({
         videoPattern: screen,
         videoPool, canvas, ctx,

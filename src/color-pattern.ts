@@ -1,31 +1,16 @@
 import type { Pattern, Hap } from "@strudel/mini";
-import type { Outputable } from "./outputable";
+import { ScreenPattern, type MiniParser, type ScreenProps } from "./screen-pattern";
 
-type MiniParser = (input: string) => Pattern;
-
-export class ColorPattern implements Outputable {
+export class ColorPattern extends ScreenPattern {
   pattern: Pattern;
-  alphaPattern?: Pattern;
-  private _parseMini: MiniParser;
-  private _onOut?: (cp: ColorPattern) => void;
 
-  constructor(pattern: Pattern, parseMini: MiniParser, onOut?: (cp: ColorPattern) => void, alphaPattern?: Pattern) {
+  constructor(pattern: Pattern, parseMini: MiniParser, onOut?: (cp: ColorPattern) => void, screenProps?: ScreenProps) {
+    super(parseMini, onOut, screenProps);
     this.pattern = pattern;
-    this._parseMini = parseMini;
-    this._onOut = onOut;
-    this.alphaPattern = alphaPattern;
   }
 
-  private _asPat(pat: string | number | Pattern): Pattern {
-    return typeof pat === 'object' && 'queryArc' in pat ? pat : this._parseMini(String(pat));
-  }
-
-  alpha(pat: string | number | Pattern): ColorPattern {
-    return new ColorPattern(this.pattern, this._parseMini, this._onOut, this._asPat(pat));
-  }
-
-  out(): void {
-    if (this._onOut) this._onOut(this);
+  protected _cloneWithScreenProps(props: ScreenProps): this {
+    return new ColorPattern(this.pattern, this._parseMini, this._onOut, props) as this;
   }
 
   queryArc(begin: number, end: number): Hap[] {

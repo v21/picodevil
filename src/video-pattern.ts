@@ -1,5 +1,5 @@
 import type { Pattern, Hap } from "@strudel/mini";
-import type { Outputable } from "./outputable";
+import { ScreenPattern, type MiniParser, type ScreenProps } from "./screen-pattern";
 import { parseTimeValue, TIME_ZERO, TIME_END, type TimeValue } from "./time-value";
 
 export interface VideoValue {
@@ -10,8 +10,6 @@ export interface VideoValue {
   endIsDuration: boolean;
 }
 
-type MiniParser = (input: string) => Pattern;
-
 /** Validate all values in a pattern by probing one full cycle. */
 function validateTimePattern(pat: Pattern, label: string): void {
   const evs = pat.queryArc(0, 1);
@@ -21,25 +19,20 @@ function validateTimePattern(pat: Pattern, label: string): void {
   }
 }
 
-export class VideoPattern implements Outputable {
+export class VideoPattern extends ScreenPattern {
   srcPattern: Pattern;
   props: Record<string, Pattern>;
-  alphaPattern?: Pattern;
   private _endIsDuration: boolean;
-  private _parseMini: MiniParser;
-  private _onOut?: (vp: VideoPattern) => void;
 
-  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false, alphaPattern?: Pattern) {
+  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false, screenProps?: ScreenProps) {
+    super(parseMini, onOut, screenProps);
     this.srcPattern = srcPattern;
     this.props = props;
-    this._parseMini = parseMini;
-    this._onOut = onOut;
     this._endIsDuration = endIsDuration;
-    this.alphaPattern = alphaPattern;
   }
 
-  private _asPat(pat: string | number | Pattern): Pattern {
-    return typeof pat === 'object' && 'queryArc' in pat ? pat : this._parseMini(String(pat));
+  protected _cloneWithScreenProps(props: ScreenProps): this {
+    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, props) as this;
   }
 
   private _withTime(name: string, pat: string | number | Pattern, endIsDuration?: boolean): VideoPattern {
@@ -48,14 +41,14 @@ export class VideoPattern implements Outputable {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: parsed,
-    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration, this.alphaPattern);
+    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration, this._screenProps);
   }
 
   private _with(name: string, pat: string | number | Pattern): VideoPattern {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: this._asPat(pat),
-    }, this._parseMini, this._onOut, this._endIsDuration, this.alphaPattern);
+    }, this._parseMini, this._onOut, this._endIsDuration, this._screenProps);
   }
 
   scrub(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat).duration(0); }
@@ -64,14 +57,6 @@ export class VideoPattern implements Outputable {
   end(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, false); }
   duration(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, true); }
   dur(pat: string | number | Pattern): VideoPattern { return this.duration(pat); }
-
-  alpha(pat: string | number | Pattern): VideoPattern {
-    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, this._asPat(pat));
-  }
-
-  out(): void {
-    if (this._onOut) this._onOut(this);
-  }
 
   queryArc(begin: number, end: number): Hap<VideoValue>[] {
     const srcEvents = this.srcPattern.queryArc(begin, end);
