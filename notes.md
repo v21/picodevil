@@ -65,3 +65,23 @@ return video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")
 
 
 do we wanna reset pos every loop? right now the pos is a drifting variable which can move... we can do this with scrub
+
+
+
+
+proposed syntax:
+```
+let s0 = video("blah.mp4")
+let s1 = video("bloop.mp4")
+
+four([s0,s1,s1,s0]).out()
+```
+
+displays a grid like:
+s0 s1
+s1 s0
+
+or `grid([s0], 5, 5)` displays a 5x5 grid, each with s0 playing
+
+i guess if there's randomness in the pattern for each, that would get evaluated separately
+

@@ -6,15 +6,15 @@ import { VideoPattern } from "./video-pattern";
 import { ImagePattern } from "./image-pattern";
 
 function color(pat: string) {
-  return new ColorPattern(mini(pat), mini);
+  return ColorPattern.fromMini(mini(pat), mini);
 }
 
 function video(pat: string) {
-  return new VideoPattern(mini(pat), {}, mini);
+  return VideoPattern.fromSrc(mini(pat), mini);
 }
 
 function image(pat: string) {
-  return new ImagePattern(mini(pat), mini);
+  return ImagePattern.fromSrc(mini(pat), mini);
 }
 
 describe("GridPattern", () => {
@@ -58,10 +58,11 @@ describe("GridPattern", () => {
   it("inherits ScreenPattern methods (alpha, fit, scale)", () => {
     const g = new GridPattern([color("red")], 2, 2, mini);
     const g2 = g.alpha("0.5").fit("contain").scale("2");
-    expect(g2.alphaPattern).toBeDefined();
+    const evs = g2.queryArc(0, 1);
+    expect(evs[0].value.alpha).toBe(0.5);
     expect(g2.fitMode).toBe("contain");
-    expect(g2.scaleXPattern).toBeDefined();
-    expect(g2.scaleYPattern).toBeDefined();
+    expect(evs[0].value.scaleX).toBe(2);
+    expect(evs[0].value.scaleY).toBe(2);
   });
 
   it("cloning preserves grid properties", () => {

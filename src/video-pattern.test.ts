@@ -4,7 +4,7 @@ import { VideoPattern } from "./video-pattern";
 import { resolveTime, type TimeValue } from "./time-value";
 
 function vp(src: string) {
-  return new VideoPattern(mini(src), {}, mini);
+  return VideoPattern.fromSrc(mini(src), mini);
 }
 
 /** Resolve a TimeValue to seconds given a video duration. */
@@ -101,7 +101,7 @@ describe("VideoPattern", () => {
   it("all srcs from queryArc match those from probe", () => {
     const srcPattern = mini("a.mp4 b.mp4");
     const pool = new Set(srcPattern.queryArc(0, 1).map(ev => ev.value));
-    const p = new VideoPattern(srcPattern, {}, mini).speed("0.5 1 -1");
+    const p = VideoPattern.fromSrc(srcPattern, mini).speed("0.5 1 -1");
     for (let i = 0; i < 20; i++) {
       const t = i / 20;
       const evs = p.queryArc(t, t + 0.001);
@@ -312,23 +312,22 @@ describe("VideoPattern", () => {
 
   // --- alpha ---
 
-  it("alpha() sets alpha pattern", () => {
-    const p = vp("a.mp4").alpha("0.5");
-    expect(p.alphaPattern).toBeDefined();
-    expect(Number(p.alphaPattern!.queryArc(0, 1)[0].value)).toBe(0.5);
+  it("alpha() merges into events", () => {
+    const evs = vp("a.mp4").alpha("0.5").queryArc(0, 1);
+    expect(evs[0].value.alpha).toBe(0.5);
   });
 
   it("alpha() chaining is immutable", () => {
     const p1 = vp("a.mp4");
     const p2 = p1.alpha("0.5");
-    expect(p1.alphaPattern).toBeUndefined();
-    expect(p2.alphaPattern).toBeDefined();
+    expect(p1.queryArc(0, 1)[0].value.alpha).toBeUndefined();
+    expect(p2.queryArc(0, 1)[0].value.alpha).toBe(0.5);
   });
 
   it("alpha() preserves speed and fit", () => {
     const p = vp("a.mp4").speed("2").fit("contain").alpha("0.5");
     expect(p.queryArc(0, 1)[0].value.speed).toBe(2);
     expect(p.fitMode).toBe("contain");
-    expect(p.alphaPattern).toBeDefined();
+    expect(p.queryArc(0, 1)[0].value.alpha).toBe(0.5);
   });
 });

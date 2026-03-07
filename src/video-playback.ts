@@ -7,14 +7,13 @@ import type { VideoPattern, VideoValue } from "./video-pattern";
 type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
 
 export interface VideoFrameContext {
+  ev: VideoValue;
   videoPattern: VideoPattern;
   videoPool: Map<string, VideoEl>;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   now: number;
   dt: number;
-  cyclePos: number;
-  cycleNum: number;
   lastVideoVal: string | null;
 }
 
@@ -23,25 +22,19 @@ export interface VideoFrameResult {
 }
 
 export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
-
   let lastVideoVal = c.lastVideoVal;
-  const vidEvents = c.videoPattern.queryArc(c.cycleNum + c.cyclePos, c.cycleNum + c.cyclePos + 0.001);
-
-  for (const ev of vidEvents) {
-    const { src, speed, start, end: endTV, endIsDuration } = ev.value as VideoValue;
-    const videoKey = JSON.stringify({ src, speed, start, end: endTV, endIsDuration });
-    if (videoKey !== lastVideoVal) {
-      lastVideoVal = videoKey;
-    }
-    const base = c.videoPattern.videoUrlBase ?? VIDEO_BASE;
-    const el = c.videoPool.get(base + src);
-    if (el && isFinite(el.duration) && el.duration > 0) {
-      updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
-    }
-    if (el && el.videoWidth > 0) {
-      drawFit(c.ctx, el, el.videoWidth, el.videoHeight, c.canvas.width, c.canvas.height, c.videoPattern.fitMode);
-    }
-    break;
+  const { src, speed, start, end: endTV, endIsDuration } = c.ev;
+  const videoKey = JSON.stringify({ src, speed, start, end: endTV, endIsDuration });
+  if (videoKey !== lastVideoVal) {
+    lastVideoVal = videoKey;
+  }
+  const base = c.videoPattern.videoUrlBase ?? VIDEO_BASE;
+  const el = c.videoPool.get(base + src);
+  if (el && isFinite(el.duration) && el.duration > 0) {
+    updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
+  }
+  if (el && el.videoWidth > 0) {
+    drawFit(c.ctx, el, el.videoWidth, el.videoHeight, c.canvas.width, c.canvas.height, c.videoPattern.fitMode);
   }
 
   return { lastVideoVal };
@@ -131,4 +124,3 @@ function updateVideoPlayback(
     }
   }
 }
-

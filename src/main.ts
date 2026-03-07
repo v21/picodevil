@@ -55,8 +55,7 @@ function getVideoEl(name: string, base: string = VIDEO_BASE): HTMLVideoElement {
 }
 
 function video(pat: string): VideoPattern {
-  const srcPattern = mini(pat);
-  return new VideoPattern(srcPattern, {}, mini, applyVideo);
+  return VideoPattern.fromSrc(mini(pat), mini, applyVideo);
 }
 
 function applyVideo(vp: VideoPattern) {
@@ -90,7 +89,7 @@ function getImageEl(name: string, base: string): HTMLImageElement {
 }
 
 function image(pat: string): ImagePattern {
-  return new ImagePattern(mini(pat), mini, applyImage);
+  return ImagePattern.fromSrc(mini(pat), mini, applyImage);
 }
 
 function applyImage(ip: ImagePattern) {
@@ -106,7 +105,7 @@ function clearImages() {
 }
 
 function color(pat: string): ColorPattern {
-  return new ColorPattern(mini(pat), mini, applyColor);
+  return ColorPattern.fromMini(mini(pat), mini, applyColor);
 }
 
 function grid(children: ScreenPattern[], cols: number, rows: number): GridPattern {
@@ -205,36 +204,22 @@ const startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
-function renderImageScreen(screen: ImagePattern, cyclePos: number, cycleNum: number) {
-  const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-  if (!events.length) return;
-  const src = events[0].value;
-  const base = screen.imageUrlBase ?? IMAGE_BASE;
-  const el = imagePool.get(base + src);
-  if (el && el.naturalWidth > 0) {
-    drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, screen.fitMode);
-  }
-}
-
 function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number) {
-  // resolve alpha
-  if (screen.alphaPattern) {
-    const alphaEvs = screen.alphaPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-    ctx.globalAlpha = alphaEvs.length ? Math.max(0, Math.min(1, Number(alphaEvs[0].value))) : 1;
+  const t = cycleNum + cyclePos;
+  const events = screen.queryArc(t, t + 0.001);
+  if (!events.length) return;
+  const ev = events[0].value;
+
+  // resolve alpha from event
+  if (ev.alpha !== undefined) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, Number(ev.alpha)));
   }
 
-  // resolve scale
-  const hasScale = screen.scaleXPattern || screen.scaleYPattern;
+  // resolve scale from event
+  const sx = ev.scaleX !== undefined ? Number(ev.scaleX) : 1;
+  const sy = ev.scaleY !== undefined ? Number(ev.scaleY) : 1;
+  const hasScale = sx !== 1 || sy !== 1;
   if (hasScale) {
-    let sx = 1, sy = 1;
-    if (screen.scaleXPattern) {
-      const evs = screen.scaleXPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-      if (evs.length) sx = Number(evs[0].value);
-    }
-    if (screen.scaleYPattern) {
-      const evs = screen.scaleYPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-      if (evs.length) sy = Number(evs[0].value);
-    }
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.scale(sx, sy);
@@ -242,15 +227,21 @@ function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number,
   }
 
   if (screen instanceof ColorPattern) {
-    renderColorScreen(screen, cyclePos, cycleNum);
+    const currentColor = parseColor(ev.color);
+    ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
   } else if (screen instanceof ImagePattern) {
-    renderImageScreen(screen, cyclePos, cycleNum);
+    const base = screen.imageUrlBase ?? IMAGE_BASE;
+    const el = imagePool.get(base + ev.src);
+    if (el && el.naturalWidth > 0) {
+      drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, screen.fitMode);
+    }
   } else if (screen instanceof VideoPattern) {
     const videoResult = renderVideoFrame({
+      ev,
       videoPattern: screen,
       videoPool, canvas, ctx,
       now, dt,
-      cyclePos, cycleNum,
       lastVideoVal: lastScreenVals[screenIndex] ?? null,
     });
     lastScreenVals[screenIndex] = videoResult.lastVideoVal;
@@ -287,14 +278,6 @@ function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: n
   }
 
   lastScreenVals = savedVals;
-}
-
-function renderColorScreen(screen: ColorPattern, cyclePos: number, cycleNum: number) {
-  const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-  if (!events.length) return;
-  const currentColor = parseColor(events[0].value);
-  ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function frame() {

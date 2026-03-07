@@ -1,19 +1,16 @@
-import type { Pattern, Hap } from "@strudel/mini";
-import { ScreenPattern, type MiniParser, type ScreenProps } from "./screen-pattern";
+import type { Pattern } from "@strudel/mini";
+import { ScreenPattern, type MiniParser, type FitMode } from "./screen-pattern";
 
 export class ColorPattern extends ScreenPattern {
-  pattern: Pattern;
-
-  constructor(pattern: Pattern, parseMini: MiniParser, onOut?: (cp: ColorPattern) => void, screenProps?: ScreenProps) {
-    super(parseMini, onOut, screenProps);
-    this.pattern = pattern;
+  constructor(pattern: Pattern, parseMini: MiniParser, onOut?: (cp: ColorPattern) => void, fitMode?: FitMode) {
+    super(pattern, parseMini, onOut, fitMode);
   }
 
-  protected _cloneWithScreenProps(props: ScreenProps): this {
-    return new ColorPattern(this.pattern, this._parseMini, this._onOut, props) as this;
+  static fromMini(pat: Pattern, parseMini: MiniParser, onOut?: (cp: ColorPattern) => void): ColorPattern {
+    return new ColorPattern(pat.withValue((v: string) => ({ color: v })), parseMini, onOut);
   }
 
-  queryArc(begin: number, end: number): Hap[] {
-    return this.pattern.queryArc(begin, end);
+  _cloneWith(pattern: Pattern, fitMode: FitMode): this {
+    return new ColorPattern(pattern, this._parseMini, this._onOut, fitMode) as this;
   }
 }

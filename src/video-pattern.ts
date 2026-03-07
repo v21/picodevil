@@ -1,5 +1,6 @@
-import type { Pattern, Hap } from "@strudel/mini";
-import { ScreenPattern, type MiniParser, type ScreenProps } from "./screen-pattern";
+import type { Pattern } from "@strudel/mini";
+import { reify } from "@strudel/core";
+import { ScreenPattern, overlay, type MiniParser, type FitMode } from "./screen-pattern";
 import { parseTimeValue, TIME_ZERO, TIME_END, type TimeValue } from "./time-value";
 
 export interface VideoValue {
@@ -19,77 +20,66 @@ function validateTimePattern(pat: Pattern, label: string): void {
   }
 }
 
+function timeValueFromRaw(v: any): TimeValue {
+  const n = Number(v);
+  return isNaN(n) ? parseTimeValue(String(v)) : { value: n, unit: "rel" } as TimeValue;
+}
+
 export class VideoPattern extends ScreenPattern {
-  srcPattern: Pattern;
-  props: Record<string, Pattern>;
-  private _endIsDuration: boolean;
+  private _srcPattern: Pattern;
   private _urlBase?: string;
 
-  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false, screenProps?: ScreenProps, urlBase?: string) {
-    super(parseMini, onOut, screenProps);
-    this.srcPattern = srcPattern;
-    this.props = props;
-    this._endIsDuration = endIsDuration;
+  constructor(pattern: Pattern, srcPattern: Pattern, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, fitMode?: FitMode, urlBase?: string) {
+    super(pattern, parseMini, onOut, fitMode);
+    this._srcPattern = srcPattern;
     this._urlBase = urlBase;
   }
 
+  /** Create a VideoPattern from a raw source pattern (mini string pattern). */
+  static fromSrc(srcPattern: Pattern, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void): VideoPattern {
+    const pattern = srcPattern.withValue((v: string) => ({
+      src: v,
+      speed: 1,
+      start: TIME_ZERO,
+      end: TIME_END,
+      endIsDuration: false,
+    }));
+    return new VideoPattern(pattern, srcPattern, parseMini, onOut);
+  }
+
+  get srcPattern(): Pattern { return this._srcPattern; }
   get videoUrlBase(): string | undefined { return this._urlBase; }
 
-  protected _cloneWithScreenProps(props: ScreenProps): this {
-    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, props, this._urlBase) as this;
+  _cloneWith(pattern: Pattern, fitMode: FitMode): this {
+    return new VideoPattern(pattern, this._srcPattern, this._parseMini, this._onOut, fitMode, this._urlBase) as this;
   }
 
   urlBase(base: string): VideoPattern {
-    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, this._screenProps, base);
+    return new VideoPattern(this.pattern, this._srcPattern, this._parseMini, this._onOut, this.fitMode, base);
   }
 
-  private _withTime(name: string, pat: string | number | Pattern, endIsDuration?: boolean): VideoPattern {
+  private _withTimeProp(name: "start" | "end", pat: string | number | Pattern, endIsDuration?: boolean): VideoPattern {
     const parsed = this._asPat(pat);
     if (typeof pat !== 'object' || !('queryArc' in pat)) validateTimePattern(parsed, name);
-    return new VideoPattern(this.srcPattern, {
-      ...this.props,
-      [name]: parsed,
-    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration, this._screenProps, this._urlBase);
-  }
-
-  private _with(name: string, pat: string | number | Pattern): VideoPattern {
-    return new VideoPattern(this.srcPattern, {
-      ...this.props,
-      [name]: this._asPat(pat),
-    }, this._parseMini, this._onOut, this._endIsDuration, this._screenProps, this._urlBase);
-  }
-
-  scrub(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat).duration(0); }
-  speed(pat: string | number | Pattern): VideoPattern { return this._with("speed", pat); }
-  start(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat); }
-  end(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, false); }
-  duration(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, true); }
-  dur(pat: string | number | Pattern): VideoPattern { return this.duration(pat); }
-
-  queryArc(begin: number, end: number): Hap<VideoValue>[] {
-    const srcEvents = this.srcPattern.queryArc(begin, end);
-    return srcEvents.map((ev) => {
-      const resolved: VideoValue = {
-        src: ev.value,
-        speed: 1,
-        start: TIME_ZERO,
-        end: TIME_END,
-        endIsDuration: this._endIsDuration,
-      };
-
-      for (const [k, p] of Object.entries(this.props)) {
-        const propEvs = p.queryArc(begin, end);
-        if (propEvs.length) {
-          const v = propEvs[0].value;
-          if (k === "start" || k === "end") {
-            const n = Number(v);
-            (resolved as any)[k] = isNaN(n) ? parseTimeValue(String(v)) : { value: n, unit: "rel" } as TimeValue;
-          } else {
-            (resolved as any)[k] = isNaN(Number(v)) ? v : Number(v);
-          }
-        }
-      }
-      return { ...ev, value: resolved };
+    const propPat = reify(parsed).withValue((v: any) => {
+      const tv = timeValueFromRaw(v);
+      return endIsDuration !== undefined
+        ? { [name]: tv, endIsDuration }
+        : { [name]: tv };
     });
+    return this._cloneWith(overlay(this.pattern, propPat), this.fitMode);
   }
+
+  private _withProp(name: string, pat: string | number | Pattern): VideoPattern {
+    const parsed = this._asPat(pat);
+    const propPat = reify(parsed).withValue((v: any) => ({ [name]: isNaN(Number(v)) ? v : Number(v) }));
+    return this._cloneWith(overlay(this.pattern, propPat), this.fitMode);
+  }
+
+  scrub(pat: string | number | Pattern): VideoPattern { return this._withTimeProp("start", pat).duration(0); }
+  speed(pat: string | number | Pattern): VideoPattern { return this._withProp("speed", pat); }
+  start(pat: string | number | Pattern): VideoPattern { return this._withTimeProp("start", pat); }
+  end(pat: string | number | Pattern): VideoPattern { return this._withTimeProp("end", pat, false); }
+  duration(pat: string | number | Pattern): VideoPattern { return this._withTimeProp("end", pat, true); }
+  dur(pat: string | number | Pattern): VideoPattern { return this.duration(pat); }
 }
