@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
+import { reify } from "@strudel/core";
 import { GridPattern } from "./grid-pattern";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
@@ -152,5 +153,53 @@ describe("GridPattern", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
     const g2 = g.setI(2, image("pic.png"));
     expect(g2.children[2]).toBeInstanceOf(ImagePattern);
+  });
+
+  // --- setI with Pattern (dynamic) ---
+
+  it("setI with Pattern stores a dynamic override", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
+    const indexPat = mini("0"); // constant pattern returning 0
+    const g2 = g.setI(indexPat, video("clip.mp4"));
+    expect(g2.overrides).toHaveLength(1);
+    expect(g2.overrides[0].screen).toBeInstanceOf(VideoPattern);
+  });
+
+  it("setI with Pattern resolves index at query time via resolveChild", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
+    // Pattern that returns 0 in first half, 2 in second half
+    const indexPat = mini("0 2");
+    const g2 = g.setI(indexPat, video("clip.mp4"));
+    // At t=0.1 (first half): index 0 should be overridden
+    expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
+    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ColorPattern);
+    // At t=0.6 (second half): index 2 should be overridden
+    expect(g2.resolveChild(2, 0.6)).toBeInstanceOf(VideoPattern);
+    expect(g2.resolveChild(0, 0.6)).toBeInstanceOf(ColorPattern);
+  });
+
+  it("setI with Pattern is immutable", () => {
+    const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
+    const g2 = g.setI(mini("0"), video("clip.mp4"));
+    expect(g.overrides).toHaveLength(0);
+    expect(g2.overrides).toHaveLength(1);
+  });
+
+  it("multiple dynamic setI overrides stack", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
+    const g2 = g.setI(mini("0"), video("a.mp4")).setI(mini("2"), image("b.png"));
+    expect(g2.overrides).toHaveLength(2);
+    expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
+    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(2, 0.1)).toBeInstanceOf(ImagePattern);
+  });
+
+  it("setI with Pattern '0,3' (stack) overrides both simultaneously", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
+    const g2 = g.setI(mini("0,3"), video("clip.mp4"));
+    // Both 0 and 3 should be overridden at any time
+    expect(g2.resolveChild(0, 0.5)).toBeInstanceOf(VideoPattern);
+    expect(g2.resolveChild(3, 0.5)).toBeInstanceOf(VideoPattern);
+    expect(g2.resolveChild(1, 0.5)).toBeInstanceOf(ColorPattern);
   });
 });

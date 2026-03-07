@@ -473,14 +473,24 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     // setI: override specific cell(s) with a different screen
     if (maybe(0.3)) {
       const totalCells = cols * rows;
-      const idx = randInt(0, totalCells - 1);
-      const idxArg = maybe(0.4) && totalCells > 1
-        ? `"${idx},${randInt(0, totalCells - 1)}"` // mininotation stack
-        : String(idx);
       const replacement = generateScreenExpr();
       if (replacement.isVideo) hasVideo = true;
+      const r2 = Math.random();
+      let idxArg: string;
+      if (r2 < 0.3) {
+        // Dynamic pattern index (signal)
+        idxArg = `${continuousSignalExpr()}.range(0,${totalCells}).floor()`;
+        gridChainDesc += ` setI(signal)`;
+      } else if (r2 < 0.6 && totalCells > 1) {
+        // Mininotation stack "0,3"
+        idxArg = `"${randInt(0, totalCells - 1)},${randInt(0, totalCells - 1)}"`;
+        gridChainDesc += ` setI(${idxArg})`;
+      } else {
+        // Numeric literal
+        idxArg = String(randInt(0, totalCells - 1));
+        gridChainDesc += ` setI(${idxArg})`;
+      }
       gridChain += `.setI(${idxArg}, ${replacement.code})`;
-      gridChainDesc += ` setI(${idxArg})`;
     }
 
     if (useGrid) {

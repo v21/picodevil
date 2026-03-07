@@ -1,11 +1,18 @@
 import { reify } from "@strudel/core";
+import type { Pattern } from "@strudel/mini";
 import { ScreenPattern, type MiniParser, type FitMode } from "./screen-pattern";
+
+export interface GridOverride {
+  indexPat: Pattern;
+  screen: ScreenPattern;
+}
 
 export class GridPattern extends ScreenPattern {
   children: ScreenPattern[];
   cols: number;
   rows: number;
   cellState: (string | null)[];
+  overrides: GridOverride[];
 
   constructor(
     children: ScreenPattern[],
@@ -29,10 +36,22 @@ export class GridPattern extends ScreenPattern {
     }
 
     this.cellState = new Array(totalCells).fill(null);
+    this.overrides = [];
   }
 
-  setI(index: number | string, screen: ScreenPattern): this {
-    // Parse index: number or mininotation string (e.g. "0,3" for a stack)
+  private _isPattern(v: any): v is Pattern {
+    return typeof v === 'object' && v !== null && 'queryArc' in v;
+  }
+
+  setI(index: number | string | Pattern, screen: ScreenPattern): this {
+    if (this._isPattern(index)) {
+      // Dynamic override — resolved at render time
+      const g = this._cloneWith(this.pattern, this.fitMode);
+      g.overrides = [...this.overrides, { indexPat: index, screen }];
+      return g;
+    }
+
+    // Static override — replace in children array at build time
     const indices: Set<number> = new Set();
     if (typeof index === 'number') {
       indices.add(index);
@@ -57,7 +76,26 @@ export class GridPattern extends ScreenPattern {
     ) as this;
     g.children = newChildren; // bypass constructor re-cloning
     g.cellState = [...this.cellState];
+    g.overrides = [...this.overrides];
     return g;
+  }
+
+  /** Resolve which screen to render for cell `i` at time `t`. */
+  resolveChild(i: number, t: number): ScreenPattern {
+    return this.resolveChildWithOverride(i, t).child;
+  }
+
+  /** Resolve child and return which override index matched (-1 if none). */
+  resolveChildWithOverride(i: number, t: number): { child: ScreenPattern; overrideIndex: number } {
+    for (let o = this.overrides.length - 1; o >= 0; o--) {
+      const haps = this.overrides[o].indexPat.queryArc(t, t + 0.001);
+      for (const h of haps) {
+        if (Math.floor(Number(h.value)) === i) {
+          return { child: this.overrides[o].screen, overrideIndex: o };
+        }
+      }
+    }
+    return { child: this.children[i], overrideIndex: -1 };
   }
 
   _cloneWith(pattern: any, fitMode: FitMode): this {
@@ -73,6 +111,7 @@ export class GridPattern extends ScreenPattern {
     // Avoid re-cloning children — use them directly since they're already clones
     g.children = this.children;
     g.cellState = this.cellState;
+    g.overrides = this.overrides;
     return g;
   }
 }

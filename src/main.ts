@@ -36,19 +36,67 @@ let screens: ScreenPattern[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
-const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean }>();
+type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean; _srcUrl?: string };
+const videoPool = new Map<string, VideoEl>();       // active elements by pool key
+const freeVideoPool = new Map<string, VideoEl[]>(); // idle elements by original src URL, ready for reuse
+const videoBlobUrls = new Map<string, string>();    // network URL -> blob URL (one fetch per file)
+const videoBlobPending = new Map<string, Promise<void>>(); // in-flight fetches
+
+/** Fetch a video URL as a blob and cache the object URL. One network load per unique URL. */
+function fetchVideoBlob(srcUrl: string): void {
+  if (videoBlobUrls.has(srcUrl) || videoBlobPending.has(srcUrl)) return;
+  const p = fetch(srcUrl)
+    .then(r => r.blob())
+    .then(blob => {
+      const blobUrl = URL.createObjectURL(blob);
+      videoBlobUrls.set(srcUrl, blobUrl);
+      videoBlobPending.delete(srcUrl);
+      console.log("video cached as blob:", srcUrl);
+    })
+    .catch(e => {
+      videoBlobPending.delete(srcUrl);
+      console.error("video blob fetch failed:", srcUrl, e);
+    });
+  videoBlobPending.set(srcUrl, p);
+}
+
+function makeVideoEl(name: string): VideoEl {
+  const el = document.createElement("video") as VideoEl;
+  el.loop = true;
+  el.muted = true;
+  el.playsInline = true;
+  el.addEventListener("loadeddata", () => console.log("video loaded:", name));
+  el.addEventListener("seeking", () => { el._seeking = true; });
+  el.addEventListener("seeked", () => { el._seeking = false; });
+  return el;
+}
 
 function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string = ""): HTMLVideoElement {
   const key = keyPrefix + base + name;
   if (videoPool.has(key)) return videoPool.get(key)!;
-  const el = document.createElement("video") as HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
-  el.loop = true;
-  el.muted = true;
-  el.playsInline = true;
-  el.src = base + name;
-  el.addEventListener("loadeddata", () => console.log("video loaded:", name));
-  el.addEventListener("seeking", () => { el._seeking = true; });
-  el.addEventListener("seeked", () => { el._seeking = false; });
+
+  const srcUrl = base + name;
+
+  // Reuse an idle element with the same src (already loaded/buffered)
+  const freeList = freeVideoPool.get(srcUrl);
+  if (freeList && freeList.length > 0) {
+    const el = freeList.pop()!;
+    if (freeList.length === 0) freeVideoPool.delete(srcUrl);
+    el._reverseAcc = 0;
+    el._seeking = false;
+    el._srcUrl = srcUrl;
+    el.playbackRate = 1;
+    el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
+    videoPool.set(key, el);
+    return el;
+  }
+
+  // Create new element; use blob URL if cached, otherwise stream directly + background blob fetch
+  const el = makeVideoEl(name);
+  el._srcUrl = srcUrl;
+  const blobUrl = videoBlobUrls.get(srcUrl);
+  el.src = blobUrl ?? srcUrl;
+  if (!blobUrl) fetchVideoBlob(srcUrl); // cache for future elements
   el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
   videoPool.set(key, el);
   return el;
@@ -67,9 +115,13 @@ function applyVideo(vp: VideoPattern) {
 }
 
 function clearVideos() {
+  // Move active elements to free pool for reuse instead of destroying
   for (const el of videoPool.values()) {
     el.pause();
-    el.removeAttribute("src");
+    const srcUrl = el._srcUrl ?? el.src;
+    const freeList = freeVideoPool.get(srcUrl) ?? [];
+    freeList.push(el);
+    freeVideoPool.set(srcUrl, freeList);
   }
   videoPool.clear();
 }
@@ -116,23 +168,32 @@ function four(children: ScreenPattern[]): GridPattern {
   return grid(children, 2, 2);
 }
 
-function applyGrid(gp: GridPattern, keyPrefix: string = "") {
-  // Recursively pre-warm all media in children, with per-cell video elements
-  for (let i = 0; i < gp.children.length; i++) {
-    const child = gp.children[i];
-    const cellPrefix = `${keyPrefix}cell${i}:`;
-    if (child instanceof VideoPattern) {
-      const base = child.videoUrlBase ?? VIDEO_BASE;
-      const probe = child.srcPattern.queryArc(0, 1);
-      for (const ev of probe) getVideoEl(ev.value, base, cellPrefix);
-    } else if (child instanceof ImagePattern) {
-      const base = child.imageUrlBase ?? IMAGE_BASE;
-      const probe = child.srcPattern.queryArc(0, 1);
-      for (const ev of probe) getImageEl(ev.value, base);
-    } else if (child instanceof GridPattern) {
-      applyGrid(child, cellPrefix);
-    }
+function prewarmScreen(screen: ScreenPattern, keyPrefix: string) {
+  if (screen instanceof VideoPattern) {
+    const base = screen.videoUrlBase ?? VIDEO_BASE;
+    const probe = screen.srcPattern.queryArc(0, 1);
+    for (const ev of probe) getVideoEl(ev.value, base, keyPrefix);
+  } else if (screen instanceof ImagePattern) {
+    const base = screen.imageUrlBase ?? IMAGE_BASE;
+    const probe = screen.srcPattern.queryArc(0, 1);
+    for (const ev of probe) getImageEl(ev.value, base);
+  } else if (screen instanceof GridPattern) {
+    prewarmGrid(screen, keyPrefix);
   }
+}
+
+function prewarmGrid(gp: GridPattern, keyPrefix: string = "") {
+  for (let i = 0; i < gp.children.length; i++) {
+    prewarmScreen(gp.children[i], `${keyPrefix}cell${i}:`);
+  }
+  // Pre-warm ONE element per dynamic override (shared across all cells)
+  for (let o = 0; o < gp.overrides.length; o++) {
+    prewarmScreen(gp.overrides[o].screen, `${keyPrefix}override${o}:`);
+  }
+}
+
+function applyGrid(gp: GridPattern) {
+  prewarmGrid(gp);
   screens.push(gp);
   console.log("grid screen added, screen count:", screens.length);
 }
@@ -258,6 +319,7 @@ function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number,
 function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: number, now: number, dt: number, parentKeyPrefix: string = "") {
   const cellW = canvas.width / gridScreen.cols;
   const cellH = canvas.height / gridScreen.rows;
+  const t = cycleNum + cyclePos;
 
   // Temporarily redirect video state tracking to grid's cellState
   const savedVals = lastScreenVals;
@@ -274,7 +336,12 @@ function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: n
     ctx.translate(col * cellW, row * cellH);
     ctx.scale(cellW / canvas.width, cellH / canvas.height);
 
-    renderScreen(gridScreen.children[i], cyclePos, cycleNum, now, dt, i, `${parentKeyPrefix}cell${i}:`);
+    // Resolve child and determine key prefix — overrides share a single element
+    const { child, overrideIndex } = gridScreen.resolveChildWithOverride(i, t);
+    const keyPrefix = overrideIndex >= 0
+      ? `${parentKeyPrefix}override${overrideIndex}:`
+      : `${parentKeyPrefix}cell${i}:`;
+    renderScreen(child, cyclePos, cycleNum, now, dt, i, keyPrefix);
 
     ctx.restore();
   }
