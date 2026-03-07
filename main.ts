@@ -1,6 +1,16 @@
 import { mini } from "@strudel/mini";
 import type { Pattern } from "@strudel/mini";
-import { sine, cosine, saw, isaw, tri, square, rand, irand, perlin } from "@strudel/core";
+import {
+  sine, sine2, cosine, cosine2,
+  saw, saw2, isaw, isaw2,
+  tri, tri2, itri, itri2,
+  square, square2,
+  rand, rand2, irand, brand, brandBy,
+  perlin,
+  time, mouseX, mouseY,
+  run, choose, chooseIn, chooseCycles,
+  signal, steady,
+} from "@strudel/core";
 import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
@@ -24,16 +34,18 @@ let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
 let videoPattern: VideoPattern | null = null;
-const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number }>();
+const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean }>();
 
 function getVideoEl(name: string): HTMLVideoElement {
   if (videoPool.has(name)) return videoPool.get(name)!;
-  const el = document.createElement("video") as HTMLVideoElement & { _reverseAcc?: number };
+  const el = document.createElement("video") as HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
   el.loop = true;
   el.muted = true;
   el.playsInline = true;
   el.src = VIDEO_BASE + name;
   el.addEventListener("loadeddata", () => console.log("video loaded:", name));
+  el.addEventListener("seeking", () => { el._seeking = true; });
+  el.addEventListener("seeked", () => { el._seeking = false; });
   el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
   videoPool.set(name, el);
   return el;
@@ -75,15 +87,29 @@ function applyColor(cp: ColorPattern) {
   console.log("pattern set:", cp.pattern);
 }
 
+// unit helpers: tag pattern values so parseTimeValue interprets them as seconds/ms
+// Added as chainable methods on Pattern prototype for idiomatic Strudel usage
+const PatternProto = Object.getPrototypeOf(sine);
+PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
+PatternProto.ms = function () { return this.fmap((v: number) => v + "ms"); };
+
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
   try {
-    new Function("mini", "color", "video", "setCps", "sine", "cosine", "saw", "isaw", "tri", "square", "rand", "irand", "perlin", code)(
-      mini,
-      color,
-      video,
-      setCps,
-      sine, cosine, saw, isaw, tri, square, rand, irand, perlin,
+    const signals = {
+      sine, sine2, cosine, cosine2,
+      saw, saw2, isaw, isaw2,
+      tri, tri2, itri, itri2,
+      square, square2,
+      rand, rand2, irand, brand, brandBy,
+      perlin,
+      time, mouseX, mouseY,
+      run, choose, chooseIn, chooseCycles,
+      signal, steady,
+    };
+    const sigNames = Object.keys(signals);
+    new Function("mini", "color", "video", "setCps", ...sigNames, code)(
+      mini, color, video, setCps, ...Object.values(signals),
     );
     console.log("evaluated:", code);
   } catch (e) {
@@ -138,7 +164,7 @@ function frame() {
   for (const ev of events) {
     currentColor = parseColor(ev.value);
     if (ev.value !== lastColorVal) {
-      console.log("color:", ev.value);
+      // console.log("color:", ev.value);
       lastColorVal = ev.value;
     }
     break;
@@ -154,7 +180,7 @@ function frame() {
       const { src, speed, start, end: endTV, endIsDuration } = ev.value;
       const videoKey = JSON.stringify({ src, speed, start, end: endTV, endIsDuration });
       if (videoKey !== lastVideoVal) {
-        console.log("video:", { src, speed, start, end: endTV, endIsDuration });
+        // console.log("video:", { src, speed, start, end: endTV, endIsDuration });
         lastVideoVal = videoKey;
       }
       const el = videoPool.get(src);
@@ -219,7 +245,7 @@ function frame() {
             el._reverseAcc = 0;
           }
 
-          if (needsSeek) el.currentTime = target;
+          if (needsSeek && !el._seeking) el.currentTime = target;
         } else {
           el._reverseAcc = 0;
           if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
