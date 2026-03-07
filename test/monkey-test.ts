@@ -460,7 +460,15 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     const useGrid = maybe(0.5);
     const cols = useGrid ? randInt(2, 5) : 2;
     const rows = useGrid ? randInt(2, 5) : 2;
-    const nChildren = randInt(1, Math.min(cols * rows, 4));
+    // Sometimes use mininotation for cols/rows (~20% of grid expressions)
+    const dynamicDims = useGrid && maybe(0.2);
+    const cols2 = dynamicDims ? randInt(2, 5) : cols;
+    const rows2 = dynamicDims ? randInt(2, 5) : rows;
+    const colsArg = dynamicDims ? `"${cols} ${cols2}"` : String(cols);
+    const rowsArg = dynamicDims ? `"${rows} ${rows2}"` : String(rows);
+    const maxCols = Math.max(cols, cols2);
+    const maxRows = Math.max(rows, rows2);
+    const nChildren = randInt(1, Math.min(maxCols * maxRows, 4));
     const children: { code: string; desc: string; isVideo: boolean }[] = [];
     for (let i = 0; i < nChildren; i++) children.push(generateScreenExpr());
     let hasVideo = children.some(c => c.isVideo);
@@ -472,7 +480,7 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     if (maybe(0.2)) { const a = scaleArg(); gridChain += `.scale(${a})`; gridChainDesc += ` scale(${a})`; }
     // setI: override specific cell(s) with a different screen
     if (maybe(0.3)) {
-      const totalCells = cols * rows;
+      const totalCells = maxCols * maxRows;
       const replacement = generateScreenExpr();
       if (replacement.isVideo) hasVideo = true;
       const r2 = Math.random();
@@ -493,10 +501,39 @@ function generate(): { code: string; description: string; isVideo: boolean } {
       gridChain += `.setI(${idxArg}, ${replacement.code})`;
     }
 
+    // modI: apply a modifier function to cells
+    if (maybe(0.2)) {
+      const totalCells = maxCols * maxRows;
+      const r2 = Math.random();
+      let idxArg: string;
+      if (r2 < 0.3) {
+        idxArg = `${continuousSignalExpr()}.range(0,${totalCells}).floor()`;
+        gridChainDesc += ` modI(signal)`;
+      } else if (r2 < 0.6 && totalCells > 1) {
+        idxArg = `"${randInt(0, totalCells - 1)},${randInt(0, totalCells - 1)}"`;
+        gridChainDesc += ` modI(${idxArg})`;
+      } else {
+        idxArg = String(randInt(0, totalCells - 1));
+        gridChainDesc += ` modI(${idxArg})`;
+      }
+      // Pick a random modifier: alpha, scale, or fit
+      const modR = Math.random();
+      let modFn: string;
+      if (modR < 0.4) {
+        modFn = `s => s.alpha(${alphaArg()})`;
+      } else if (modR < 0.7) {
+        modFn = `s => s.scale(${scaleArg()})`;
+      } else {
+        const fit = pick(["cover", "contain", "fill", "none"]);
+        modFn = `s => s.fit("${fit}")`;
+      }
+      gridChain += `.modI(${idxArg}, ${modFn})`;
+    }
+
     if (useGrid) {
       return {
-        code: `${cpsPrefix.code}grid([${childrenCode}], ${cols}, ${rows})${gridChain}.out()`,
-        description: `${cpsPrefix.desc}grid(${cols}x${rows}, ${nChildren} children)${gridChainDesc}`,
+        code: `${cpsPrefix.code}grid([${childrenCode}], ${colsArg}, ${rowsArg})${gridChain}.out()`,
+        description: `${cpsPrefix.desc}grid(${colsArg}x${rowsArg}, ${nChildren} children)${gridChainDesc}`,
         isVideo: hasVideo,
       };
     } else {

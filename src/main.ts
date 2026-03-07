@@ -107,9 +107,7 @@ function video(pat: string): VideoPattern {
 }
 
 function applyVideo(vp: VideoPattern) {
-  const base = vp.videoUrlBase ?? VIDEO_BASE;
-  const probe = vp.srcPattern.queryArc(0, 1);
-  for (const ev of probe) getVideoEl(ev.value, base);
+  prewarmBlobs(vp);
   screens.push(vp);
   console.log("video screen added, screen count:", screens.length);
 }
@@ -145,9 +143,7 @@ function image(pat: string): ImagePattern {
 }
 
 function applyImage(ip: ImagePattern) {
-  const base = ip.imageUrlBase ?? IMAGE_BASE;
-  const probe = ip.srcPattern.queryArc(0, 1);
-  for (const ev of probe) getImageEl(ev.value, base);
+  prewarmBlobs(ip);
   screens.push(ip);
   console.log("image screen added, screen count:", screens.length);
 }
@@ -160,7 +156,7 @@ function color(pat: string): ColorPattern {
   return ColorPattern.fromMini(mini(pat), mini, applyColor);
 }
 
-function grid(children: ScreenPattern[], cols: number, rows: number): GridPattern {
+function grid(children: ScreenPattern[], cols: number | string, rows: number | string): GridPattern {
   return new GridPattern(children, cols, rows, mini, applyGrid);
 }
 
@@ -168,27 +164,25 @@ function four(children: ScreenPattern[]): GridPattern {
   return grid(children, 2, 2);
 }
 
-function prewarmScreen(screen: ScreenPattern, keyPrefix: string) {
+/** Warm the blob cache for any video URLs in a screen (no video elements created). */
+function prewarmBlobs(screen: ScreenPattern) {
   if (screen instanceof VideoPattern) {
     const base = screen.videoUrlBase ?? VIDEO_BASE;
     const probe = screen.srcPattern.queryArc(0, 1);
-    for (const ev of probe) getVideoEl(ev.value, base, keyPrefix);
+    for (const ev of probe) fetchVideoBlob(base + ev.value);
   } else if (screen instanceof ImagePattern) {
     const base = screen.imageUrlBase ?? IMAGE_BASE;
     const probe = screen.srcPattern.queryArc(0, 1);
     for (const ev of probe) getImageEl(ev.value, base);
   } else if (screen instanceof GridPattern) {
-    prewarmGrid(screen, keyPrefix);
+    prewarmGrid(screen);
   }
 }
 
-function prewarmGrid(gp: GridPattern, keyPrefix: string = "") {
-  for (let i = 0; i < gp.children.length; i++) {
-    prewarmScreen(gp.children[i], `${keyPrefix}cell${i}:`);
-  }
-  // Pre-warm ONE element per dynamic override (shared across all cells)
-  for (let o = 0; o < gp.overrides.length; o++) {
-    prewarmScreen(gp.overrides[o].screen, `${keyPrefix}override${o}:`);
+function prewarmGrid(gp: GridPattern) {
+  for (const child of gp.children) prewarmBlobs(child);
+  for (const override of gp.overrides) {
+    if (override.type === 'set') prewarmBlobs(override.screen);
   }
 }
 
@@ -306,6 +300,7 @@ function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number,
       videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
       now, dt,
       lastVideoVal: lastScreenVals[screenIndex] ?? null,
+      getOrCreateVideoEl: getVideoEl,
     });
     lastScreenVals[screenIndex] = videoResult.lastVideoVal;
   } else if (screen instanceof GridPattern) {
@@ -317,17 +312,24 @@ function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number,
 }
 
 function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: number, now: number, dt: number, parentKeyPrefix: string = "") {
-  const cellW = canvas.width / gridScreen.cols;
-  const cellH = canvas.height / gridScreen.rows;
   const t = cycleNum + cyclePos;
+  const { cols, rows } = gridScreen.resolveGrid(t);
+  const totalCells = cols * rows;
+  const cellW = canvas.width / cols;
+  const cellH = canvas.height / rows;
+
+  // Grow cellState on demand for current grid size
+  while (gridScreen.cellState.length < totalCells) {
+    gridScreen.cellState.push(null);
+  }
 
   // Temporarily redirect video state tracking to grid's cellState
   const savedVals = lastScreenVals;
   lastScreenVals = gridScreen.cellState;
 
-  for (let i = 0; i < gridScreen.children.length; i++) {
-    const col = i % gridScreen.cols;
-    const row = Math.floor(i / gridScreen.cols);
+  for (let i = 0; i < totalCells; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
 
     ctx.save();
     ctx.beginPath();

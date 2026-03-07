@@ -16,6 +16,7 @@ export interface VideoFrameContext {
   now: number;
   dt: number;
   lastVideoVal: string | null;
+  getOrCreateVideoEl: (name: string, base: string, keyPrefix: string) => VideoEl;
 }
 
 export interface VideoFrameResult {
@@ -30,7 +31,7 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
     lastVideoVal = videoKey;
   }
   const base = c.videoPattern.videoUrlBase ?? VIDEO_BASE;
-  const el = c.videoPool.get(c.poolKeyPrefix + base + src);
+  const el = c.getOrCreateVideoEl(src, base, c.poolKeyPrefix);
   if (el && isFinite(el.duration) && el.duration > 0) {
     updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
   }
