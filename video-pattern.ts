@@ -56,6 +56,7 @@ export class VideoPattern implements Outputable {
   start(pat: string | number): VideoPattern { return this._withTime("start", pat); }
   end(pat: string | number): VideoPattern { return this._withTime("end", pat, false); }
   duration(pat: string | number): VideoPattern { return this._withTime("end", pat, true); }
+  dur(pat: string | number): VideoPattern { return this.duration(pat); }
 
   out(): void {
     if (this._onOut) this._onOut(this);
