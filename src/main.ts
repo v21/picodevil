@@ -71,7 +71,7 @@ function clearVideos() {
 }
 
 function color(pat: string): ColorPattern {
-  return new ColorPattern(mini(pat), applyColor);
+  return new ColorPattern(mini(pat), mini, applyColor);
 }
 
 function setCps(cps: number) {
@@ -164,6 +164,13 @@ function frame() {
   // draw screens in order
   for (let i = 0; i < screens.length; i++) {
     const screen = screens[i];
+
+    // resolve alpha for this screen
+    if (screen.alphaPattern) {
+      const alphaEvs = screen.alphaPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+      ctx.globalAlpha = alphaEvs.length ? Math.max(0, Math.min(1, Number(alphaEvs[0].value))) : 1;
+    }
+
     if (screen instanceof ColorPattern) {
       renderColorScreen(screen, cyclePos, cycleNum);
     } else {
@@ -176,6 +183,8 @@ function frame() {
       });
       lastScreenVals[i] = videoResult.lastVideoVal;
     }
+
+    ctx.globalAlpha = 1;
   }
 
   lastFrameTime = now;

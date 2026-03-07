@@ -24,16 +24,18 @@ function validateTimePattern(pat: Pattern, label: string): void {
 export class VideoPattern implements Outputable {
   srcPattern: Pattern;
   props: Record<string, Pattern>;
+  alphaPattern?: Pattern;
   private _endIsDuration: boolean;
   private _parseMini: MiniParser;
   private _onOut?: (vp: VideoPattern) => void;
 
-  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false) {
+  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false, alphaPattern?: Pattern) {
     this.srcPattern = srcPattern;
     this.props = props;
     this._parseMini = parseMini;
     this._onOut = onOut;
     this._endIsDuration = endIsDuration;
+    this.alphaPattern = alphaPattern;
   }
 
   private _asPat(pat: string | number | Pattern): Pattern {
@@ -46,14 +48,14 @@ export class VideoPattern implements Outputable {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: parsed,
-    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration);
+    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration, this.alphaPattern);
   }
 
   private _with(name: string, pat: string | number | Pattern): VideoPattern {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: this._asPat(pat),
-    }, this._parseMini, this._onOut, this._endIsDuration);
+    }, this._parseMini, this._onOut, this._endIsDuration, this.alphaPattern);
   }
 
   scrub(pat: string | number | Pattern): VideoPattern { return this._withTime("start", pat).duration(0); }
@@ -62,6 +64,10 @@ export class VideoPattern implements Outputable {
   end(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, false); }
   duration(pat: string | number | Pattern): VideoPattern { return this._withTime("end", pat, true); }
   dur(pat: string | number | Pattern): VideoPattern { return this.duration(pat); }
+
+  alpha(pat: string | number | Pattern): VideoPattern {
+    return new VideoPattern(this.srcPattern, this.props, this._parseMini, this._onOut, this._endIsDuration, this._asPat(pat));
+  }
 
   out(): void {
     if (this._onOut) this._onOut(this);
