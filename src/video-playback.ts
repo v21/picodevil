@@ -10,6 +10,7 @@ export interface VideoFrameContext {
   ev: VideoValue;
   videoPattern: VideoPattern;
   videoPool: Map<string, VideoEl>;
+  poolKeyPrefix: string;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
   now: number;
@@ -29,7 +30,7 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
     lastVideoVal = videoKey;
   }
   const base = c.videoPattern.videoUrlBase ?? VIDEO_BASE;
-  const el = c.videoPool.get(base + src);
+  const el = c.videoPool.get(c.poolKeyPrefix + base + src);
   if (el && isFinite(el.duration) && el.duration > 0) {
     updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
   }

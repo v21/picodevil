@@ -92,4 +92,65 @@ describe("GridPattern", () => {
     expect(g.cellState).toHaveLength(9);
     expect(g.cellState.every(v => v === null)).toBe(true);
   });
+
+  // --- setI ---
+
+  it("setI replaces child at a single index", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
+    const replacement = video("clip.mp4");
+    const g2 = g.setI(0, replacement);
+    expect(g2.children[0]).toBeInstanceOf(VideoPattern);
+    expect(g2.children[1]).toBeInstanceOf(ColorPattern);
+    expect(g2.children[2]).toBeInstanceOf(ColorPattern);
+    expect(g2.children[3]).toBeInstanceOf(ColorPattern);
+  });
+
+  it("setI with mininotation '0,3' replaces indices 0 and 3", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
+    const replacement = video("clip.mp4");
+    const g2 = g.setI("0,3", replacement);
+    expect(g2.children[0]).toBeInstanceOf(VideoPattern);
+    expect(g2.children[1]).toBeInstanceOf(ColorPattern);
+    expect(g2.children[2]).toBeInstanceOf(ColorPattern);
+    expect(g2.children[3]).toBeInstanceOf(VideoPattern);
+  });
+
+  it("setI is immutable", () => {
+    const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
+    const g2 = g.setI(0, video("clip.mp4"));
+    expect(g.children[0]).toBeInstanceOf(ColorPattern);
+    expect(g2.children[0]).toBeInstanceOf(VideoPattern);
+  });
+
+  it("setI with mininotation '1' replaces only index 1", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
+    const g2 = g.setI("1", image("pic.png"));
+    expect(g2.children[0]).toBeInstanceOf(ColorPattern);
+    expect(g2.children[1]).toBeInstanceOf(ImagePattern);
+    expect(g2.children[2]).toBeInstanceOf(ColorPattern);
+  });
+
+  it("setI preserves grid-level alpha and fit", () => {
+    const g = new GridPattern([color("red"), color("blue")], 2, 1, mini)
+      .alpha("0.5").fit("contain");
+    const g2 = g.setI(0, video("clip.mp4"));
+    expect(g2.queryArc(0, 1)[0].value.alpha).toBe(0.5);
+    expect(g2.fitMode).toBe("contain");
+    expect(g2.children[0]).toBeInstanceOf(VideoPattern);
+  });
+
+  it("setI clones the replacement screen", () => {
+    const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
+    const replacement = video("clip.mp4");
+    const g2 = g.setI("0,1", replacement);
+    // Each cell should be a distinct clone
+    expect(g2.children[0]).not.toBe(g2.children[1]);
+    expect(g2.children[0]).not.toBe(replacement);
+  });
+
+  it("setI with numeric index works", () => {
+    const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
+    const g2 = g.setI(2, image("pic.png"));
+    expect(g2.children[2]).toBeInstanceOf(ImagePattern);
+  });
 });

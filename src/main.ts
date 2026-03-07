@@ -38,8 +38,8 @@ let cyclesPerSecond = CYCLES_PER_SECOND;
 // --- video ---
 const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean }>();
 
-function getVideoEl(name: string, base: string = VIDEO_BASE): HTMLVideoElement {
-  const key = base + name;
+function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string = ""): HTMLVideoElement {
+  const key = keyPrefix + base + name;
   if (videoPool.has(key)) return videoPool.get(key)!;
   const el = document.createElement("video") as HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
   el.loop = true;
@@ -116,19 +116,21 @@ function four(children: ScreenPattern[]): GridPattern {
   return grid(children, 2, 2);
 }
 
-function applyGrid(gp: GridPattern) {
-  // Recursively pre-warm all media in children
-  for (const child of gp.children) {
+function applyGrid(gp: GridPattern, keyPrefix: string = "") {
+  // Recursively pre-warm all media in children, with per-cell video elements
+  for (let i = 0; i < gp.children.length; i++) {
+    const child = gp.children[i];
+    const cellPrefix = `${keyPrefix}cell${i}:`;
     if (child instanceof VideoPattern) {
       const base = child.videoUrlBase ?? VIDEO_BASE;
       const probe = child.srcPattern.queryArc(0, 1);
-      for (const ev of probe) getVideoEl(ev.value, base);
+      for (const ev of probe) getVideoEl(ev.value, base, cellPrefix);
     } else if (child instanceof ImagePattern) {
       const base = child.imageUrlBase ?? IMAGE_BASE;
       const probe = child.srcPattern.queryArc(0, 1);
       for (const ev of probe) getImageEl(ev.value, base);
     } else if (child instanceof GridPattern) {
-      applyGrid(child);
+      applyGrid(child, cellPrefix);
     }
   }
   screens.push(gp);
@@ -204,7 +206,7 @@ const startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
-function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number) {
+function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, videoKeyPrefix: string = "") {
   const t = cycleNum + cyclePos;
   const events = screen.queryArc(t, t + 0.001);
   if (!events.length) return;
@@ -240,20 +242,20 @@ function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number,
     const videoResult = renderVideoFrame({
       ev,
       videoPattern: screen,
-      videoPool, canvas, ctx,
+      videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
       now, dt,
       lastVideoVal: lastScreenVals[screenIndex] ?? null,
     });
     lastScreenVals[screenIndex] = videoResult.lastVideoVal;
   } else if (screen instanceof GridPattern) {
-    renderGridScreen(screen, cyclePos, cycleNum, now, dt);
+    renderGridScreen(screen, cyclePos, cycleNum, now, dt, videoKeyPrefix);
   }
 
   if (hasScale) ctx.restore();
   ctx.globalAlpha = 1;
 }
 
-function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: number, now: number, dt: number) {
+function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: number, now: number, dt: number, parentKeyPrefix: string = "") {
   const cellW = canvas.width / gridScreen.cols;
   const cellH = canvas.height / gridScreen.rows;
 
@@ -272,7 +274,7 @@ function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: n
     ctx.translate(col * cellW, row * cellH);
     ctx.scale(cellW / canvas.width, cellH / canvas.height);
 
-    renderScreen(gridScreen.children[i], cyclePos, cycleNum, now, dt, i);
+    renderScreen(gridScreen.children[i], cyclePos, cycleNum, now, dt, i, `${parentKeyPrefix}cell${i}:`);
 
     ctx.restore();
   }

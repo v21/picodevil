@@ -463,13 +463,25 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     const nChildren = randInt(1, Math.min(cols * rows, 4));
     const children: { code: string; desc: string; isVideo: boolean }[] = [];
     for (let i = 0; i < nChildren; i++) children.push(generateScreenExpr());
-    const hasVideo = children.some(c => c.isVideo);
+    let hasVideo = children.some(c => c.isVideo);
 
     const childrenCode = children.map(c => c.code).join(", ");
     let gridChain = "";
     let gridChainDesc = "";
     if (maybe(0.3)) { const a = alphaArg(); gridChain += `.alpha(${a})`; gridChainDesc += ` alpha(${a})`; }
     if (maybe(0.2)) { const a = scaleArg(); gridChain += `.scale(${a})`; gridChainDesc += ` scale(${a})`; }
+    // setI: override specific cell(s) with a different screen
+    if (maybe(0.3)) {
+      const totalCells = cols * rows;
+      const idx = randInt(0, totalCells - 1);
+      const idxArg = maybe(0.4) && totalCells > 1
+        ? `"${idx},${randInt(0, totalCells - 1)}"` // mininotation stack
+        : String(idx);
+      const replacement = generateScreenExpr();
+      if (replacement.isVideo) hasVideo = true;
+      gridChain += `.setI(${idxArg}, ${replacement.code})`;
+      gridChainDesc += ` setI(${idxArg})`;
+    }
 
     if (useGrid) {
       return {
