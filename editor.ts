@@ -9,7 +9,9 @@ declare global {
   }
 }
 
+const STORAGE_KEY = "uzuvid:code";
 const defaultCode = `video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1").out()`;
+const savedCode = localStorage.getItem(STORAGE_KEY);
 
 export function setupEditor(parent: HTMLElement): EditorView {
   const evalKeymap = Prec.highest(keymap.of([
@@ -17,6 +19,7 @@ export function setupEditor(parent: HTMLElement): EditorView {
       key: "Ctrl-Enter",
       run(view: EditorView) {
         const code = view.state.doc.toString();
+        localStorage.setItem(STORAGE_KEY, code);
         window.uzuEval(code);
         // flash effect
         const lines = view.dom.querySelectorAll(".cm-line");
@@ -35,13 +38,13 @@ export function setupEditor(parent: HTMLElement): EditorView {
   const view = new EditorView({
     parent,
     state: EditorState.create({
-      doc: defaultCode,
+      doc: savedCode ?? defaultCode,
       extensions: [basicSetup, javascript(), evalKeymap],
     }),
   });
 
-  // evaluate default code at startup
-  window.uzuEval(defaultCode);
+  // evaluate initial code at startup
+  window.uzuEval(savedCode ?? defaultCode);
 
   return view;
 }
