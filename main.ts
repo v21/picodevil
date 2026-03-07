@@ -1,5 +1,6 @@
 import { mini } from "@strudel/mini";
 import type { Pattern } from "@strudel/mini";
+import { sine, cosine, saw, isaw, tri, square, rand, irand, perlin } from "@strudel/core";
 import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
@@ -19,7 +20,7 @@ resize();
 
 // --- state ---
 let pattern: Pattern = mini("red blue [green yellow] purple");
-const cyclesPerSecond = CYCLES_PER_SECOND;
+let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
 let videoPattern: VideoPattern | null = null;
@@ -64,6 +65,10 @@ function color(pat: string): ColorPattern {
   return new ColorPattern(mini(pat), applyColor);
 }
 
+function setCps(cps: number) {
+  cyclesPerSecond = cps;
+}
+
 function applyColor(cp: ColorPattern) {
   clearVideos();
   pattern = cp.pattern;
@@ -73,10 +78,12 @@ function applyColor(cp: ColorPattern) {
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
   try {
-    new Function("mini", "color", "video", code)(
+    new Function("mini", "color", "video", "setCps", "sine", "cosine", "saw", "isaw", "tri", "square", "rand", "irand", "perlin", code)(
       mini,
       color,
       video,
+      setCps,
+      sine, cosine, saw, isaw, tri, square, rand, irand, perlin,
     );
     console.log("evaluated:", code);
   } catch (e) {
@@ -114,6 +121,8 @@ function parseColor(val: string): [number, number, number] {
 // --- render loop ---
 const startTime = performance.now();
 let lastFrameTime = startTime;
+let lastColorVal: string | null = null;
+let lastVideoVal: string | null = null;
 
 function frame() {
   const now = performance.now() - startTime;
@@ -128,6 +137,10 @@ function frame() {
   let currentColor: [number, number, number] = [0, 0, 0];
   for (const ev of events) {
     currentColor = parseColor(ev.value);
+    if (ev.value !== lastColorVal) {
+      console.log("color:", ev.value);
+      lastColorVal = ev.value;
+    }
     break;
   }
 
@@ -139,6 +152,11 @@ function frame() {
     const vidEvents = videoPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
     for (const ev of vidEvents) {
       const { src, speed, start, end: endTV, endIsDuration } = ev.value;
+      const videoKey = JSON.stringify({ src, speed, start, end: endTV, endIsDuration });
+      if (videoKey !== lastVideoVal) {
+        console.log("video:", { src, speed, start, end: endTV, endIsDuration });
+        lastVideoVal = videoKey;
+      }
       const el = videoPool.get(src);
       if (el && isFinite(el.duration) && el.duration > 0) {
         const dt = now - lastFrameTime;
