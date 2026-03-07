@@ -74,7 +74,8 @@ export class VideoPattern extends ScreenPattern {
         if (propEvs.length) {
           const v = propEvs[0].value;
           if (k === "start" || k === "end") {
-            (resolved as any)[k] = parseTimeValue(String(v));
+            const n = Number(v);
+            (resolved as any)[k] = isNaN(n) ? parseTimeValue(String(v)) : { value: n, unit: "rel" } as TimeValue;
           } else {
             (resolved as any)[k] = isNaN(Number(v)) ? v : Number(v);
           }

@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:monkey": "tsx test/monkey-test.ts --rounds 20 --delay 1000 --headless",
+    "test:monkey:replay": "tsx test/monkey-test.ts --replay --delay 1000 --headless"
   },
   "keywords": [],
   "author": "",

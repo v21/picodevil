@@ -111,29 +111,27 @@ window.uzuEval = (code: string) => {
 };
 
 // --- color lookup ---
-const COLORS: Record<string, [number, number, number]> = {
-  red: [1, 0, 0],
-  green: [0, 1, 0],
-  blue: [0, 0, 1],
-  yellow: [1, 1, 0],
-  cyan: [0, 1, 1],
-  magenta: [1, 0, 1],
-  purple: [0.6, 0.2, 0.8],
-  orange: [1, 0.5, 0],
-  white: [1, 1, 1],
-  black: [0, 0, 0],
-  pink: [1, 0.4, 0.7],
-};
+const colorCache = new Map<string, [number, number, number]>();
+const scratchCtx = document.createElement("canvas").getContext("2d")!;
 
 function parseColor(val: string): [number, number, number] {
-  if (typeof val === "string" && COLORS[val]) return COLORS[val];
-  if (typeof val === "string" && val.startsWith("#") && val.length === 7) {
-    return [
-      parseInt(val.slice(1, 3), 16) / 255,
-      parseInt(val.slice(3, 5), 16) / 255,
-      parseInt(val.slice(5, 7), 16) / 255,
-    ];
+  const cached = colorCache.get(val);
+  if (cached) return cached;
+  scratchCtx.fillStyle = "#000";
+  scratchCtx.fillStyle = val;
+  const hex = scratchCtx.fillStyle;
+  // fillStyle normalizes to #rrggbb or rgb(...) — if it stayed #000000 and input wasn't black, it's invalid
+  if (hex === "#000000" && val !== "black" && val !== "#000000" && val !== "#000") {
+    colorCache.set(val, [1, 1, 1]);
+    return [1, 1, 1];
   }
+  const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if (m) {
+    const result: [number, number, number] = [parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255];
+    colorCache.set(val, result);
+    return result;
+  }
+  colorCache.set(val, [1, 1, 1]);
   return [1, 1, 1];
 }
 
