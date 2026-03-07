@@ -5,7 +5,7 @@ import { basicSetup } from "codemirror";
 
 declare global {
   interface Window {
-    uzuEval: (code: string) => void;
+    uzuEval: (code: string) => string | null;
     uzuSetCode: (code: string) => void;
   }
 }
@@ -15,13 +15,28 @@ const defaultCode = `video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1").
 const savedCode = localStorage.getItem(STORAGE_KEY);
 
 export function setupEditor(parent: HTMLElement): EditorView {
+  const errorEl = document.createElement("div");
+  errorEl.className = "uzu-error";
+  parent.appendChild(errorEl);
+
+  function showError(msg: string | null) {
+    if (msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = "block";
+    } else {
+      errorEl.textContent = "";
+      errorEl.style.display = "none";
+    }
+  }
+
   const evalKeymap = Prec.highest(keymap.of([
     {
       key: "Ctrl-Enter",
       run(view: EditorView) {
         const code = view.state.doc.toString();
         localStorage.setItem(STORAGE_KEY, code);
-        window.uzuEval(code);
+        const err = window.uzuEval(code);
+        showError(err);
         // flash effect
         const lines = view.dom.querySelectorAll(".cm-line");
         lines.forEach((el) => {
@@ -51,7 +66,7 @@ export function setupEditor(parent: HTMLElement): EditorView {
   };
 
   // evaluate initial code at startup
-  window.uzuEval(savedCode ?? defaultCode);
+  showError(window.uzuEval(savedCode ?? defaultCode));
 
   return view;
 }
