@@ -29,11 +29,11 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- state ---
-let pattern: Pattern = mini("red blue [green yellow] purple");
+let pattern: Pattern | null = null;
 let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- video ---
-let videoPattern: VideoPattern | null = null;
+let videoLayers: VideoPattern[] = [];
 const videoPool = new Map<string, HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean }>();
 
 function getVideoEl(name: string): HTMLVideoElement {
@@ -59,8 +59,9 @@ function video(pat: string): VideoPattern {
 }
 
 function applyVideo(vp: VideoPattern) {
-  videoPattern = vp;
-  console.log("videoPattern set:", vp);
+  videoLayers.push(vp);
+  pattern = null;
+  console.log("videoPattern added, layer count:", videoLayers.length);
 }
 
 function clearVideos() {
@@ -69,7 +70,7 @@ function clearVideos() {
     el.removeAttribute("src");
   }
   videoPool.clear();
-  videoPattern = null;
+  videoLayers = [];
 }
 
 function color(pat: string): ColorPattern {
@@ -89,6 +90,9 @@ function applyColor(cp: ColorPattern) {
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
+  clearVideos();
+  pattern = null;
+  lastVideoVals = [];
   try {
     const signals = {
       sine, sine2, cosine, cosine2,
@@ -142,7 +146,7 @@ function parseColor(val: string): [number, number, number] {
 const startTime = performance.now();
 let lastFrameTime = startTime;
 let lastColorVal: string | null = null;
-let lastVideoVal: string | null = null;
+let lastVideoVals: (string | null)[] = [];
 
 function frame() {
   const now = performance.now() - startTime;
@@ -150,31 +154,34 @@ function frame() {
   const cyclePos = (nowSec * cyclesPerSecond) % 1;
   const cycleNum = Math.floor(nowSec * cyclesPerSecond);
 
-  // query the pattern for the current cycle
-  const events = pattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-
-  // find the "current" event (the one whose whole span contains now)
-  let currentColor: [number, number, number] = [0, 0, 0];
-  for (const ev of events) {
-    currentColor = parseColor(ev.value);
-    if (ev.value !== lastColorVal) {
-      // console.log("color:", ev.value);
-      lastColorVal = ev.value;
+  // draw color background (only if a color pattern is active)
+  if (pattern) {
+    const events = pattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+    let currentColor: [number, number, number] = [0, 0, 0];
+    for (const ev of events) {
+      currentColor = parseColor(ev.value);
+      if (ev.value !== lastColorVal) {
+        lastColorVal = ev.value;
+      }
+      break;
     }
-    break;
+    ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // draw video frame from pattern
-  const videoResult = renderVideoFrame({
-    videoPattern, videoPool, canvas, ctx,
-    now, dt: now - lastFrameTime,
-    cyclePos, cycleNum,
-    lastVideoVal,
-  });
-  lastVideoVal = videoResult.lastVideoVal;
+  // draw video layers in order
+  for (let i = 0; i < videoLayers.length; i++) {
+    const videoResult = renderVideoFrame({
+      videoPattern: videoLayers[i],
+      videoPool, canvas, ctx,
+      now, dt: now - lastFrameTime,
+      cyclePos, cycleNum,
+      lastVideoVal: lastVideoVals[i] ?? null,
+    });
+    lastVideoVals[i] = videoResult.lastVideoVal;
+  }
 
   lastFrameTime = now;
   requestAnimationFrame(frame);

@@ -6,7 +6,7 @@ import type { VideoPattern, VideoValue } from "./video-pattern";
 type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
 
 export interface VideoFrameContext {
-  videoPattern: VideoPattern | null;
+  videoPattern: VideoPattern;
   videoPool: Map<string, VideoEl>;
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
@@ -22,7 +22,6 @@ export interface VideoFrameResult {
 }
 
 export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
-  if (!c.videoPattern) return { lastVideoVal: c.lastVideoVal };
 
   let lastVideoVal = c.lastVideoVal;
   const vidEvents = c.videoPattern.queryArc(c.cycleNum + c.cyclePos, c.cycleNum + c.cyclePos + 0.001);
