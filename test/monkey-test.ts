@@ -71,6 +71,13 @@ const VIDEOS = [
   "iDcekQeBGOY.mp4",
 ];
 
+const IMAGE_URLS = readFileSync(resolve(import.meta.dirname ?? ".", "image-assets.txt"), "utf-8")
+  .split("\n").map((l: string) => l.trim()).filter(Boolean);
+const IMAGES: { base: string; name: string }[] = IMAGE_URLS.map((url: string) => {
+  const i = url.lastIndexOf("/");
+  return { base: url.slice(0, i + 1), name: url.slice(i + 1) };
+});
+
 const COLORS = [
   "red", "green", "blue", "yellow", "cyan", "magenta",
   "purple", "orange", "white", "black", "pink",
@@ -358,6 +365,33 @@ function videoChain(): { code: string; desc: string } {
 }
 
 // ============================================================
+// Grammar: image method chains
+// ============================================================
+
+function alphaArg(): string {
+  if (maybe(0.4)) return continuousSignalExpr();
+  return `"${miniOf(["0", "0.25", "0.5", "0.75", "1"], 1, 3)}"`;
+}
+
+const IMAGE_METHODS: (() => MethodCall)[] = [
+  () => { const a = alphaArg(); return { code: `.alpha(${a})`, desc: `alpha(${a})` }; },
+  () => { const a = alphaArg(); return { code: `.opacity(${a})`, desc: `opacity(${a})` }; },
+];
+
+function imageChain(base: string): { code: string; desc: string } {
+  const methods: MethodCall[] = [];
+  // always add urlBase since images need it to resolve
+  methods.push({ code: `.urlBase("${base}")`, desc: `urlBase(...)` });
+  while (maybe(0.4)) {
+    methods.push(pick(IMAGE_METHODS)());
+  }
+  return {
+    code: methods.map(m => m.code).join(""),
+    desc: methods.map(m => m.desc).join(" "),
+  };
+}
+
+// ============================================================
 // Grammar: top-level expressions
 //
 //   expr       → color_expr | video_expr | cps_prefix expr
@@ -372,12 +406,28 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     ? { code: `setCps(${cpsVal}); `, desc: `cps=${cpsVal} ` }
     : { code: "", desc: "" };
 
-  if (maybe(0.2)) {
+  const r = Math.random();
+
+  if (r < 0.15) {
     // color expression
     const pat = miniOf(COLORS, 1, 6);
     return {
       code: `${cpsPrefix.code}color("${pat}").out()`,
       description: `${cpsPrefix.desc}color: ${pat}`,
+      isVideo: false,
+    };
+  }
+
+  if (r < 0.35 && IMAGES.length > 0) {
+    // image expression — pick 1-3 images, use one base for urlBase
+    const chosen = pickN(IMAGES, 1, 3);
+    const names = chosen.map(img => img.name);
+    const pat = miniOf(names, 1, 3);
+    const base = chosen[0].base;
+    const chain = imageChain(base);
+    return {
+      code: `${cpsPrefix.code}image("${pat}")${chain.code}.out()`,
+      description: `${cpsPrefix.desc}image: ${pat} ${chain.desc}`.trim(),
       isVideo: false,
     };
   }

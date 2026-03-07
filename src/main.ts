@@ -14,8 +14,9 @@ import "./pattern-extensions";
 import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
+import { ImagePattern } from "./image-pattern";
 import type { ScreenPattern } from "./screen-pattern";
-import { VIDEO_BASE, CYCLES_PER_SECOND } from "./config";
+import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
@@ -72,6 +73,36 @@ function clearVideos() {
   videoPool.clear();
 }
 
+// --- images ---
+const imagePool = new Map<string, HTMLImageElement>();
+
+function getImageEl(name: string, base: string): HTMLImageElement {
+  const key = base + name;
+  if (imagePool.has(key)) return imagePool.get(key)!;
+  const el = new Image();
+  el.src = base + name;
+  el.addEventListener("load", () => console.log("image loaded:", name));
+  el.addEventListener("error", () => console.error("image failed to load:", key));
+  imagePool.set(key, el);
+  return el;
+}
+
+function image(pat: string): ImagePattern {
+  return new ImagePattern(mini(pat), mini, applyImage);
+}
+
+function applyImage(ip: ImagePattern) {
+  const base = ip.imageUrlBase ?? IMAGE_BASE;
+  const probe = ip.srcPattern.queryArc(0, 1);
+  for (const ev of probe) getImageEl(ev.value, base);
+  screens.push(ip);
+  console.log("image screen added, screen count:", screens.length);
+}
+
+function clearImages() {
+  imagePool.clear();
+}
+
 function color(pat: string): ColorPattern {
   return new ColorPattern(mini(pat), mini, applyColor);
 }
@@ -88,6 +119,7 @@ function applyColor(cp: ColorPattern) {
 // called from editor on ctrl+enter
 window.uzuEval = (code: string) => {
   clearVideos();
+  clearImages();
   screens = [];
   lastScreenVals = [];
   try {
@@ -103,8 +135,8 @@ window.uzuEval = (code: string) => {
       signal, steady,
     };
     const sigNames = Object.keys(signals);
-    new Function("mini", "color", "video", "setCps", ...sigNames, code)(
-      mini, color, video, setCps, ...Object.values(signals),
+    new Function("mini", "color", "video", "image", "setCps", ...sigNames, code)(
+      mini, color, video, image, setCps, ...Object.values(signals),
     );
     console.log("evaluated:", code);
   } catch (e) {
@@ -142,6 +174,21 @@ const startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
+function renderImageScreen(screen: ImagePattern, cyclePos: number, cycleNum: number) {
+  const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+  if (!events.length) return;
+  const src = events[0].value;
+  const base = screen.imageUrlBase ?? IMAGE_BASE;
+  const el = imagePool.get(base + src);
+  if (el && el.naturalWidth > 0) {
+    const cw = canvas.width, ch = canvas.height;
+    const scale = Math.max(cw / el.naturalWidth, ch / el.naturalHeight);
+    const dw = el.naturalWidth * scale;
+    const dh = el.naturalHeight * scale;
+    ctx.drawImage(el, (cw - dw) / 2, (ch - dh) / 2, dw, dh);
+  }
+}
+
 function renderColorScreen(screen: ColorPattern, cyclePos: number, cycleNum: number) {
   const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
   if (!events.length) return;
@@ -170,6 +217,8 @@ function frame() {
 
     if (screen instanceof ColorPattern) {
       renderColorScreen(screen, cyclePos, cycleNum);
+    } else if (screen instanceof ImagePattern) {
+      renderImageScreen(screen, cyclePos, cycleNum);
     } else if (screen instanceof VideoPattern) {
       const videoResult = renderVideoFrame({
         videoPattern: screen,
