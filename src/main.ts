@@ -15,6 +15,7 @@ import { setupEditor } from "./editor";
 import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { ImagePattern } from "./image-pattern";
+import { GridPattern } from "./grid-pattern";
 import type { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
@@ -108,6 +109,33 @@ function color(pat: string): ColorPattern {
   return new ColorPattern(mini(pat), mini, applyColor);
 }
 
+function grid(children: ScreenPattern[], cols: number, rows: number): GridPattern {
+  return new GridPattern(children, cols, rows, mini, applyGrid);
+}
+
+function four(children: ScreenPattern[]): GridPattern {
+  return grid(children, 2, 2);
+}
+
+function applyGrid(gp: GridPattern) {
+  // Recursively pre-warm all media in children
+  for (const child of gp.children) {
+    if (child instanceof VideoPattern) {
+      const base = child.videoUrlBase ?? VIDEO_BASE;
+      const probe = child.srcPattern.queryArc(0, 1);
+      for (const ev of probe) getVideoEl(ev.value, base);
+    } else if (child instanceof ImagePattern) {
+      const base = child.imageUrlBase ?? IMAGE_BASE;
+      const probe = child.srcPattern.queryArc(0, 1);
+      for (const ev of probe) getImageEl(ev.value, base);
+    } else if (child instanceof GridPattern) {
+      applyGrid(child);
+    }
+  }
+  screens.push(gp);
+  console.log("grid screen added, screen count:", screens.length);
+}
+
 function setCps(cps: number) {
   cyclesPerSecond = cps;
 }
@@ -136,8 +164,8 @@ window.uzuEval = (code: string): string | null => {
       signal, steady,
     };
     const sigNames = Object.keys(signals);
-    new Function("mini", "color", "video", "image", "setCps", ...sigNames, code)(
-      mini, color, video, image, setCps, ...Object.values(signals),
+    new Function("mini", "color", "video", "image", "grid", "four", "setCps", ...sigNames, code)(
+      mini, color, video, image, grid, four, setCps, ...Object.values(signals),
     );
     console.log("evaluated:", code);
     return null;
@@ -188,6 +216,79 @@ function renderImageScreen(screen: ImagePattern, cyclePos: number, cycleNum: num
   }
 }
 
+function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number) {
+  // resolve alpha
+  if (screen.alphaPattern) {
+    const alphaEvs = screen.alphaPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+    ctx.globalAlpha = alphaEvs.length ? Math.max(0, Math.min(1, Number(alphaEvs[0].value))) : 1;
+  }
+
+  // resolve scale
+  const hasScale = screen.scaleXPattern || screen.scaleYPattern;
+  if (hasScale) {
+    let sx = 1, sy = 1;
+    if (screen.scaleXPattern) {
+      const evs = screen.scaleXPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+      if (evs.length) sx = Number(evs[0].value);
+    }
+    if (screen.scaleYPattern) {
+      const evs = screen.scaleYPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
+      if (evs.length) sy = Number(evs[0].value);
+    }
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.scale(sx, sy);
+    ctx.translate(-canvas.width / 2, -canvas.height / 2);
+  }
+
+  if (screen instanceof ColorPattern) {
+    renderColorScreen(screen, cyclePos, cycleNum);
+  } else if (screen instanceof ImagePattern) {
+    renderImageScreen(screen, cyclePos, cycleNum);
+  } else if (screen instanceof VideoPattern) {
+    const videoResult = renderVideoFrame({
+      videoPattern: screen,
+      videoPool, canvas, ctx,
+      now, dt,
+      cyclePos, cycleNum,
+      lastVideoVal: lastScreenVals[screenIndex] ?? null,
+    });
+    lastScreenVals[screenIndex] = videoResult.lastVideoVal;
+  } else if (screen instanceof GridPattern) {
+    renderGridScreen(screen, cyclePos, cycleNum, now, dt);
+  }
+
+  if (hasScale) ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: number, now: number, dt: number) {
+  const cellW = canvas.width / gridScreen.cols;
+  const cellH = canvas.height / gridScreen.rows;
+
+  // Temporarily redirect video state tracking to grid's cellState
+  const savedVals = lastScreenVals;
+  lastScreenVals = gridScreen.cellState;
+
+  for (let i = 0; i < gridScreen.children.length; i++) {
+    const col = i % gridScreen.cols;
+    const row = Math.floor(i / gridScreen.cols);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(col * cellW, row * cellH, cellW, cellH);
+    ctx.clip();
+    ctx.translate(col * cellW, row * cellH);
+    ctx.scale(cellW / canvas.width, cellH / canvas.height);
+
+    renderScreen(gridScreen.children[i], cyclePos, cycleNum, now, dt, i);
+
+    ctx.restore();
+  }
+
+  lastScreenVals = savedVals;
+}
+
 function renderColorScreen(screen: ColorPattern, cyclePos: number, cycleNum: number) {
   const events = screen.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
   if (!events.length) return;
@@ -206,49 +307,7 @@ function frame() {
 
   // draw screens in order
   for (let i = 0; i < screens.length; i++) {
-    const screen = screens[i];
-
-    // resolve alpha for this screen
-    if (screen.alphaPattern) {
-      const alphaEvs = screen.alphaPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-      ctx.globalAlpha = alphaEvs.length ? Math.max(0, Math.min(1, Number(alphaEvs[0].value))) : 1;
-    }
-
-    // resolve scale for this screen
-    const hasScale = screen.scaleXPattern || screen.scaleYPattern;
-    if (hasScale) {
-      let sx = 1, sy = 1;
-      if (screen.scaleXPattern) {
-        const evs = screen.scaleXPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-        if (evs.length) sx = Number(evs[0].value);
-      }
-      if (screen.scaleYPattern) {
-        const evs = screen.scaleYPattern.queryArc(cycleNum + cyclePos, cycleNum + cyclePos + 0.001);
-        if (evs.length) sy = Number(evs[0].value);
-      }
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.scale(sx, sy);
-      ctx.translate(-canvas.width / 2, -canvas.height / 2);
-    }
-
-    if (screen instanceof ColorPattern) {
-      renderColorScreen(screen, cyclePos, cycleNum);
-    } else if (screen instanceof ImagePattern) {
-      renderImageScreen(screen, cyclePos, cycleNum);
-    } else if (screen instanceof VideoPattern) {
-      const videoResult = renderVideoFrame({
-        videoPattern: screen,
-        videoPool, canvas, ctx,
-        now, dt: now - lastFrameTime,
-        cyclePos, cycleNum,
-        lastVideoVal: lastScreenVals[i] ?? null,
-      });
-      lastScreenVals[i] = videoResult.lastVideoVal;
-    }
-
-    if (hasScale) ctx.restore();
-    ctx.globalAlpha = 1;
+    renderScreen(screens[i], cyclePos, cycleNum, now, now - lastFrameTime, i);
   }
 
   lastFrameTime = now;

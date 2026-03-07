@@ -23,6 +23,7 @@ uzuvid/
     video-pattern.ts      — VideoPattern class: extends ScreenPattern with video props
     color-pattern.ts      — ColorPattern class: extends ScreenPattern for color output
     image-pattern.ts      — ImagePattern class: extends ScreenPattern for static images
+    grid-pattern.ts       — GridPattern class: extends ScreenPattern for grid layouts
     draw-fit.ts           — shared drawFit() helper for cover/contain/fill/none rendering
     video-playback.ts     — video frame rendering: playback update, seeking
     playback-rate.ts      — setPlaybackRate helper, native rate range constants
@@ -48,7 +49,7 @@ uzuvid/
 2. The render loop runs at requestAnimationFrame rate. Timing is in **milliseconds** (converted to seconds only for cycle calculation). Each frame it:
    - Computes cycle position from elapsed time and `cyclesPerSecond`
    - Draws each screen in stack order (bottom to top), applying per-screen alpha and fit mode
-3. `window.uzuEval(code)` is called by the editor. It clears all state (videos, images, screens) then runs the code as a `new Function` body with `mini`, `color`, `video`, `image`, `setCps`, and Strudel signals available.
+3. `window.uzuEval(code)` is called by the editor. It clears all state (videos, images, screens) then runs the code as a `new Function` body with `mini`, `color`, `video`, `image`, `grid`, `four`, `setCps`, and Strudel signals available.
 
 ## Screen architecture
 
@@ -61,7 +62,7 @@ All screen types extend `ScreenPattern` (in `src/screen-pattern.ts`), which prov
 
 Each subclass uses immutable builder pattern — every method returns a new instance. Subclasses implement `_cloneWithScreenProps()` to propagate shared screen props through their own constructors.
 
-Screen types: `ColorPattern`, `VideoPattern`, `ImagePattern`.
+Screen types: `ColorPattern`, `VideoPattern`, `ImagePattern`, `GridPattern`.
 
 ## User-facing API (available in the editor)
 
@@ -69,6 +70,8 @@ Screen types: `ColorPattern`, `VideoPattern`, `ImagePattern`.
 - `color(str)` — returns a `ColorPattern` (supports all CSS color names and hex codes)
 - `video(str)` — returns a `VideoPattern` of video filenames (served from VIDEO_BASE)
 - `image(str)` — returns an `ImagePattern` of image filenames (served from IMAGE_BASE)
+- `grid(children[], cols, rows)` — returns a `GridPattern` arranging children in a grid
+- `four(children[])` — shorthand for `grid(children, 2, 2)`
 - `setCps(n)` — set cycles per second
 
 Shared chainable methods (all screen types):
@@ -87,7 +90,16 @@ VideoPattern-specific methods:
 ImagePattern-specific methods:
 - `.urlBase(str)` — custom image URL prefix
 
+GridPattern (grid/four):
+- Children array cycles when fewer elements than grid cells
+- Children are cloned per cell (random patterns evaluate independently)
+- Grids are nestable (a grid can contain other grids)
+- Rendering uses coordinate-space transforms (children render as if full-canvas)
+- Each grid tracks per-cell video state via `cellState` array
+
 Example: `video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").fit("contain").out()`
+Example: `four([color("red"), video("clip.mp4"), image("pic.png"), color("blue")]).out()`
+Example: `grid([video("a.mp4"), video("b.mp4")], 3, 3).alpha("0.8").out()`
 
 ## Video playback speed
 
@@ -139,8 +151,8 @@ When working through a list of tasks, **stop and check in with the user after co
 3. When adding new user-facing functionality (methods, screen types, etc.), also add coverage to the monkey tester (`test/monkey-test.ts`) so it generates random expressions exercising the new feature
 4. Run `npm test` (unit tests)
 5. Run monkey testing: `npx tsx test/monkey-test.ts --rounds 10 --delay 1000 --headless`
-6. Commit if green
-7. Report what was done and wait for go-ahead
+6. Report what was done and wait for go-ahead
+7. Ask to commit, if the change is large
 
 ## Key patterns to know
 

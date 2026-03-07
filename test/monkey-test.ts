@@ -419,6 +419,33 @@ function imageChain(base: string): { code: string; desc: string } {
 //   video_expr → video(mini(VIDEOS)) video_chain .out()
 // ============================================================
 
+/** Generate a single screen expression (not .out()-ed) for use in grids or standalone. */
+function generateScreenExpr(): { code: string; desc: string; isVideo: boolean } {
+  const r = Math.random();
+
+  if (r < 0.25) {
+    const pat = miniOf(COLORS, 1, 6);
+    let chain = "";
+    let chainDesc = "";
+    if (maybe(0.3)) { const a = alphaArg(); chain += `.alpha(${a})`; chainDesc += ` alpha(${a})`; }
+    if (maybe(0.2)) { const m = pick(FIT_MODES); chain += `.fit("${m}")`; chainDesc += ` fit(${m})`; }
+    return { code: `color("${pat}")${chain}`, desc: `color(${pat})${chainDesc}`, isVideo: false };
+  }
+
+  if (r < 0.45 && IMAGES.length > 0) {
+    const chosen = pickN(IMAGES, 1, 3);
+    const names = chosen.map(img => img.name);
+    const pat = miniOf(names, 1, 3);
+    const base = chosen[0].base;
+    const chain = imageChain(base);
+    return { code: `image("${pat}")${chain.code}`, desc: `image(${pat}) ${chain.desc}`, isVideo: false };
+  }
+
+  const pat = miniOf(VIDEOS, 1, 4);
+  const chain = videoChain();
+  return { code: `video("${pat}")${chain.code}`, desc: `video(${pat}) ${chain.desc}`, isVideo: true };
+}
+
 function generate(): { code: string; description: string; isVideo: boolean } {
   // optionally prefix with setCps
   const cpsVal = randomCps();
@@ -428,7 +455,38 @@ function generate(): { code: string; description: string; isVideo: boolean } {
 
   const r = Math.random();
 
-  if (r < 0.15) {
+  // grid/four expression (~20% of the time)
+  if (r < 0.2) {
+    const useGrid = maybe(0.5);
+    const cols = useGrid ? randInt(2, 5) : 2;
+    const rows = useGrid ? randInt(2, 5) : 2;
+    const nChildren = randInt(1, Math.min(cols * rows, 4));
+    const children: { code: string; desc: string; isVideo: boolean }[] = [];
+    for (let i = 0; i < nChildren; i++) children.push(generateScreenExpr());
+    const hasVideo = children.some(c => c.isVideo);
+
+    const childrenCode = children.map(c => c.code).join(", ");
+    let gridChain = "";
+    let gridChainDesc = "";
+    if (maybe(0.3)) { const a = alphaArg(); gridChain += `.alpha(${a})`; gridChainDesc += ` alpha(${a})`; }
+    if (maybe(0.2)) { const a = scaleArg(); gridChain += `.scale(${a})`; gridChainDesc += ` scale(${a})`; }
+
+    if (useGrid) {
+      return {
+        code: `${cpsPrefix.code}grid([${childrenCode}], ${cols}, ${rows})${gridChain}.out()`,
+        description: `${cpsPrefix.desc}grid(${cols}x${rows}, ${nChildren} children)${gridChainDesc}`,
+        isVideo: hasVideo,
+      };
+    } else {
+      return {
+        code: `${cpsPrefix.code}four([${childrenCode}])${gridChain}.out()`,
+        description: `${cpsPrefix.desc}four(${nChildren} children)${gridChainDesc}`,
+        isVideo: hasVideo,
+      };
+    }
+  }
+
+  if (r < 0.35) {
     // color expression
     const pat = miniOf(COLORS, 1, 6);
     let chain = "";
@@ -443,7 +501,7 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     };
   }
 
-  if (r < 0.35 && IMAGES.length > 0) {
+  if (r < 0.55 && IMAGES.length > 0) {
     // image expression — pick 1-3 images, use one base for urlBase
     const chosen = pickN(IMAGES, 1, 3);
     const names = chosen.map(img => img.name);
