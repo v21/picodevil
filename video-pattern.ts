@@ -14,26 +14,29 @@ type MiniParser = (input: string) => Pattern;
 export class VideoPattern implements Outputable {
   srcPattern: Pattern;
   props: Record<string, Pattern>;
+  private _endIsDuration: boolean;
   private _parseMini: MiniParser;
   private _onOut?: (vp: VideoPattern) => void;
 
-  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void) {
+  constructor(srcPattern: Pattern, props: Record<string, Pattern> = {}, parseMini: MiniParser, onOut?: (vp: VideoPattern) => void, endIsDuration = false) {
     this.srcPattern = srcPattern;
     this.props = props;
     this._parseMini = parseMini;
     this._onOut = onOut;
+    this._endIsDuration = endIsDuration;
   }
 
-  private _with(name: string, pat: string | number): VideoPattern {
+  private _with(name: string, pat: string | number, endIsDuration?: boolean): VideoPattern {
     return new VideoPattern(this.srcPattern, {
       ...this.props,
       [name]: this._parseMini(String(pat)),
-    }, this._parseMini, this._onOut);
+    }, this._parseMini, this._onOut, endIsDuration ?? this._endIsDuration);
   }
 
   speed(pat: string | number): VideoPattern { return this._with("speed", pat); }
   start(pat: string | number): VideoPattern { return this._with("start", pat); }
-  end(pat: string | number): VideoPattern { return this._with("end", pat); }
+  end(pat: string | number): VideoPattern { return this._with("end", pat, false); }
+  duration(pat: string | number): VideoPattern { return this._with("end", pat, true); }
 
   out(): void {
     if (this._onOut) this._onOut(this);
@@ -49,6 +52,9 @@ export class VideoPattern implements Outputable {
           const v = propEvs[0].value;
           resolved[k] = isNaN(Number(v)) ? v : Number(v);
         }
+      }
+      if (this._endIsDuration && typeof resolved.end === "number" && resolved.end !== Infinity) {
+        resolved.end = resolved.start + resolved.end;
       }
       return { ...ev, value: resolved };
     });

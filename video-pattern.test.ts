@@ -187,4 +187,57 @@ describe("VideoPattern", () => {
     expect(evs[0].value.start).toBe(1);
     expect(evs[0].value.end).toBe(10);
   });
+
+  // --- duration ---
+
+  it("duration() sets end = start + duration", () => {
+    const evs = vp("a.mp4").start("5").duration("10").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(5);
+    expect(evs[0].value.end).toBe(15);
+  });
+
+  it("duration() with default start", () => {
+    const evs = vp("a.mp4").duration("10").queryArc(0, 1);
+    expect(evs[0].value.start).toBe(0);
+    expect(evs[0].value.end).toBe(10);
+  });
+
+  it("duration() pattern varies with start pattern", () => {
+    const p = vp("a.mp4").start("0 5").duration("10");
+    const first = p.queryArc(0, 0.001);
+    const second = p.queryArc(0.5, 0.501);
+    expect(first[0].value.end).toBe(10);  // 0 + 10
+    expect(second[0].value.end).toBe(15); // 5 + 10
+  });
+
+  it("duration() pattern varies independently", () => {
+    const p = vp("a.mp4").start("0 1").duration("10 20 30");
+    // cycle: start=[0, 1], dur=[10, 20, 30]
+    // at t=0: start=0, dur=10 → end=10
+    const at0 = p.queryArc(0, 0.001);
+    expect(at0[0].value.start).toBe(0);
+    expect(at0[0].value.end).toBe(10);
+    // at t=0.5: start=1, dur=20 → end=21
+    const at05 = p.queryArc(0.5, 0.501);
+    expect(at05[0].value.start).toBe(1);
+    expect(at05[0].value.end).toBe(21);
+  });
+
+  it("end() after duration() uses absolute end", () => {
+    const evs = vp("a.mp4").start("5").duration("10").end("20").queryArc(0, 1);
+    expect(evs[0].value.end).toBe(20); // absolute, not 5+20
+  });
+
+  it("duration() after end() uses relative duration", () => {
+    const evs = vp("a.mp4").start("5").end("20").duration("3").queryArc(0, 1);
+    expect(evs[0].value.end).toBe(8); // 5+3
+  });
+
+  it("duration() chaining is immutable", () => {
+    const p1 = vp("a.mp4").start("5");
+    const p2 = p1.duration("10");
+    const p3 = p1.end("30");
+    expect(p2.queryArc(0, 1)[0].value.end).toBe(15); // 5+10
+    expect(p3.queryArc(0, 1)[0].value.end).toBe(30); // absolute
+  });
 });
