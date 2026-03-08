@@ -3,7 +3,7 @@ import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { parseTimeValue, resolveTime, type TimeValue } from "./time-value";
 import { drawFit } from "./draw-fit";
 
-type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
+export type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean; _srcUrl?: string };
 
 export interface VideoFrameContext {
   ev: any;

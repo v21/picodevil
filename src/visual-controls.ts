@@ -6,8 +6,7 @@
  * get sampled at the exact frame time rather than the event's onset.
  */
 import { reify, Pattern } from "@strudel/core";
-
-const PatternProto = Object.getPrototypeOf(reify(0));
+import { PatternProto } from "./pattern-proto";
 
 function createMixParam(name: string) {
   const withVal = (v: any) => ({ [name]: v });
@@ -114,7 +113,7 @@ PatternProto.grid = function (i: any, cols: any, rows: any) {
       const idx = Math.round(Number(iEv.value));
       const pos = cellPos(idx, c, r);
       const composed = self.withValue((v: any) =>
-        composePos(typeof v === 'object' && v !== null ? v : { value: v }, pos)
+        composePos(Object(v) === v ? v : {}, pos)
       );
       results.push(...composed.queryArc(begin, end));
     }

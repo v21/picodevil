@@ -1,9 +1,7 @@
 import {
-  sine,
   Hap, Pattern as CorePattern,
 } from "@strudel/core";
-
-const PatternProto = Object.getPrototypeOf(sine);
+import { PatternProto } from "./pattern-proto";
 
 // unit helpers: tag pattern values so parseTimeValue interprets them as seconds/ms
 PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };

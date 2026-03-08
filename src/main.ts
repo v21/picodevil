@@ -13,12 +13,12 @@ import {
 import "./pattern-extensions";
 import "./visual-controls";
 import { setupEditor } from "./editor";
-import { color as makeColor } from "./color-pattern";
-import { video as makeVideo } from "./video-pattern";
-import { image as makeImage } from "./image-pattern";
-import { gridStack, four as fourFn } from "./grid-stack";
+import { color } from "./color-pattern";
+import { video } from "./video-pattern";
+import { image } from "./image-pattern";
+import { gridStack, four } from "./grid-stack";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
-import { renderVideoFrame } from "./video-playback";
+import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
 import { transpile } from "./transpiler";
 
@@ -43,8 +43,7 @@ let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 
 /** Inject .p() onto Pattern.prototype. */
-import { reify } from "@strudel/core";
-const PatternProto = Object.getPrototypeOf(reify(0));
+import { PatternProto } from "./pattern-proto";
 PatternProto.p = function (id: string) {
   if (id.startsWith('_') || id.endsWith('_')) return this;
   if (id.includes('$')) {
@@ -74,7 +73,6 @@ function collectScreens(): Screen[] {
 }
 
 // --- video ---
-type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean; _srcUrl?: string };
 const videoPool = new Map<string, VideoEl>();       // active elements by pool key
 const freeVideoPool = new Map<string, VideoEl[]>(); // idle elements by original src URL, ready for reuse
 const videoBlobUrls = new Map<string, string>();    // network URL -> blob URL (one fetch per file)
@@ -140,10 +138,6 @@ function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string =
   return el;
 }
 
-function video(pat: string) {
-  return makeVideo(pat);
-}
-
 function clearVideos() {
   // Move active elements to free pool for reuse instead of destroying
   for (const el of videoPool.values()) {
@@ -170,24 +164,8 @@ function getImageEl(name: string, base: string): HTMLImageElement {
   return el;
 }
 
-function image(pat: string) {
-  return makeImage(pat);
-}
-
 function clearImages() {
   imagePool.clear();
-}
-
-function color(pat: string) {
-  return makeColor(pat);
-}
-
-function grid(children: Screen[], cols: number, rows: number) {
-  return gridStack(children as any, cols, rows);
-}
-
-function four(children: Screen[]) {
-  return fourFn(children as any);
 }
 
 /** Warm the blob cache for any video URLs in a screen (no video elements created). */
@@ -232,8 +210,8 @@ window.uzuEval = (code: string): string | null => {
       signal, steady,
     };
     const sigNames = Object.keys(signals);
-    new Function("mini", "color", "video", "image", "grid", "gridStack", "four", "setCps", ...sigNames, transpiled)(
-      mini, color, video, image, grid, gridStack as any, four, setCps, ...Object.values(signals),
+    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", ...sigNames, transpiled)(
+      mini, color, video, image, gridStack, four, setCps, ...Object.values(signals),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
