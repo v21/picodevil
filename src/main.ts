@@ -11,6 +11,7 @@ import {
   signal, steady,
 } from "@strudel/core";
 import "./pattern-extensions";
+import "./visual-controls";
 import { setupEditor } from "./editor";
 import { color as makeColor } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
