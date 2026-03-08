@@ -1,5 +1,5 @@
 import {
-  Hap, Pattern as CorePattern,
+  Hap, Pattern as CorePattern, reify,
 } from "@strudel/core";
 
 const PatternProto = CorePattern.prototype as any;
@@ -142,9 +142,9 @@ function findCurrentIndex(evs: NumEvent[], t: number): number {
 /**
  * Smoothly interpolates between discrete pattern values using an easing function, instead of stepping.
  *
- * @param {string} curve easing curve name: "linear", "sine", "quad", "cubic", "quart", "quint",
+ * @param {string | Pattern} curve easing curve name (or pattern of names): "linear", "sine", "quad", "cubic", "quart", "quint",
  *   "expo", "circ", "elastic", "bounce", "back"
- * @param {string} direction easing direction: "in", "out", "inout"
+ * @param {string | Pattern} direction easing direction (or pattern of directions): "in", "out", "inout"
  * @returns {Pattern} continuous pattern that transitions smoothly between values
  * @example
  * $: color("red").x("0 0.5".lerp())                       // smooth linear slide
@@ -152,13 +152,18 @@ function findCurrentIndex(evs: NumEvent[], t: number): number {
  * $: color("red").scale("0.5 1 0.5".lerp("bounce", "out")) // bouncy scale
  *
  */
-PatternProto.lerp = function (curve = "linear", direction = "inout") {
+PatternProto.lerp = function (curve: any = "linear", direction: any = "inout") {
   const src = this;
-  const ease = getEase(curve, direction);
+  const curvePat = reify(curve);
+  const dirPat = reify(direction);
   return new CorePattern((state: any) => {
     const t = Number(state.span.begin);
     const evs = collectEvents(src, t);
     if (!evs.length) return [];
+
+    const curveVal = curvePat.queryArc(t, t + 0.001)[0]?.value ?? "linear";
+    const dirVal = dirPat.queryArc(t, t + 0.001)[0]?.value ?? "inout";
+    const ease = getEase(String(curveVal), String(dirVal));
 
     const i = findCurrentIndex(evs, t);
     const cur = evs[i];
@@ -175,7 +180,7 @@ PatternProto.lerp = function (curve = "linear", direction = "inout") {
  * Catmull-Rom spline interpolation between discrete pattern values. Produces very smooth curves
  * that pass through each value.
  *
- * @param {number} tension smoothness of the curve (0 = sharp corners, 0.5 = default, 1 = very smooth)
+ * @param {number | Pattern} tension smoothness of the curve (0 = sharp corners, 0.5 = default, 1 = very smooth)
  * @returns {Pattern} continuous pattern with smooth spline interpolation
  * @example
  * $: video("clip.mp4").x("0 0.3 0.7 1".spline())        // smooth path
@@ -194,12 +199,15 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number, t
        + (t3 - t2) * m2;
 }
 
-PatternProto.spline = function (tension = 0.5) {
+PatternProto.spline = function (tension: any = 0.5) {
   const src = this;
+  const tensionPat = reify(tension);
   return new CorePattern((state: any) => {
     const t = Number(state.span.begin);
     const evs = collectEvents(src, t);
     if (!evs.length) return [];
+
+    const tensionVal = Number(tensionPat.queryArc(t, t + 0.001)[0]?.value ?? 0.5);
 
     const i = findCurrentIndex(evs, t);
     const cur = evs[i];
@@ -211,7 +219,7 @@ PatternProto.spline = function (tension = 0.5) {
 
     const span = cur.end - cur.begin;
     const frac = span > 0 ? (t - cur.begin) / span : 0;
-    const val = catmullRom(prev.value, cur.value, next.value, next2.value, frac, tension);
+    const val = catmullRom(prev.value, cur.value, next.value, next2.value, frac, tensionVal);
     return [new Hap(undefined, state.span, val)];
   });
 };
