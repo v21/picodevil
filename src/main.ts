@@ -14,7 +14,7 @@ import "./pattern-extensions";
 import "./visual-controls";
 import { setupEditor } from "./editor";
 import { color as makeColor } from "./color-pattern";
-import { VideoPattern } from "./video-pattern";
+import { video as makeVideo } from "./video-pattern";
 import { image as makeImage } from "./image-pattern";
 import { GridPattern } from "./grid-pattern";
 import { ScreenPattern } from "./screen-pattern";
@@ -144,14 +144,8 @@ function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string =
   return el;
 }
 
-function video(pat: string): VideoPattern {
-  return VideoPattern.fromSrc(mini(pat), mini, applyVideo);
-}
-
-function applyVideo(vp: VideoPattern) {
-  prewarmBlobs(vp);
-  screens.push(vp);
-  console.log("video screen added, screen count:", screens.length);
+function video(pat: string) {
+  return makeVideo(pat);
 }
 
 function clearVideos() {
@@ -202,18 +196,17 @@ function four(children: Screen[]): GridPattern {
 
 /** Warm the blob cache for any video URLs in a screen (no video elements created). */
 function prewarmBlobs(screen: Screen) {
-  if (screen instanceof VideoPattern) {
-    const base = screen.videoUrlBase ?? VIDEO_BASE;
-    const probe = screen.srcPattern.queryArc(0, 1);
-    for (const ev of probe) fetchVideoBlob(base + ev.value);
-  } else if (screen instanceof GridPattern) {
+  if (screen instanceof GridPattern) {
     prewarmGrid(screen);
   } else if ('queryArc' in screen && !(screen instanceof ScreenPattern)) {
-    // Plain pattern — probe for image events to prewarm
+    // Plain pattern — probe for video/image events to prewarm
     const probe = screen.queryArc(0, 1);
     for (const h of probe) {
       const v = h.value;
-      if (v?._type === "image") {
+      if (v?._type === "video") {
+        const base = v.urlBase ?? VIDEO_BASE;
+        fetchVideoBlob(base + v.src);
+      } else if (v?._type === "image") {
         const base = v.urlBase ?? IMAGE_BASE;
         getImageEl(v.src, base);
       }
@@ -342,10 +335,9 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
       const fitMode = ev.fit ?? "cover";
       drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
     }
-  } else if (screen instanceof VideoPattern) {
+  } else if (ev._type === "video") {
     const videoResult = renderVideoFrame({
       ev,
-      videoPattern: screen,
       videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
       now, dt,
       lastVideoVal: lastScreenVals[screenIndex] ?? null,

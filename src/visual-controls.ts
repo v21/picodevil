@@ -41,8 +41,24 @@ PatternProto.scale = function (value: any) {
 // Video-specific controls
 export const speed = createMixParam("speed");
 export const start = createMixParam("start");
-export const end = createMixParam("end");
-export const duration = createMixParam("duration");
+
+// end() sets end value + endIsDuration: false
+PatternProto.end = function (value: any) {
+  const p = reify(value).withValue((v: any) => ({ end: v, endIsDuration: false }));
+  return this.set.mix(p);
+};
+
+// duration() sets end value + endIsDuration: true
+PatternProto.duration = function (value: any) {
+  const p = reify(value).withValue((v: any) => ({ end: v, endIsDuration: true }));
+  return this.set.mix(p);
+};
+PatternProto.dur = PatternProto.duration;
+
+// scrub() sets start + duration(0)
+PatternProto.scrub = function (value: any) {
+  return this.start(value).duration(0);
+};
 
 // URL base control (image/video)
 export const urlBase = createMixParam("urlBase");

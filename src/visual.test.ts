@@ -10,7 +10,7 @@ import { mini } from "@strudel/mini";
 import { color as makeColor } from "./color-pattern";
 import "./visual-controls";
 import { image as makeImage } from "./image-pattern";
-import { VideoPattern } from "./video-pattern";
+import { video as makeVideo } from "./video-pattern";
 import { GridPattern } from "./grid-pattern";
 import { drawFit } from "./draw-fit";
 import { renderVideoFrame } from "./video-playback";
@@ -107,16 +107,15 @@ function renderScreen(
       const fitMode = ev.fit ?? "cover";
       drawFit(ctx, imgEl, imgEl.naturalWidth, imgEl.naturalHeight, canvas.width, canvas.height, fitMode);
     }
-  } else if (screen instanceof VideoPattern) {
+  } else if (ev._type === "video") {
     const pool = (opts.videoPool ?? new Map()) as Map<string, any>;
-    const base = screen.videoUrlBase ?? TEST_BASE;
+    const base = ev.urlBase ?? TEST_BASE;
     const getOrCreate = (name: string, _base: string, _prefix: string) => {
       const key = _prefix + _base + name;
       return pool.get(key) ?? pool.get(base + name);
     };
     renderVideoFrame({
       ev,
-      videoPattern: screen,
       videoPool: pool,
       poolKeyPrefix: "",
       canvas,
@@ -192,8 +191,8 @@ function image(pat: string) {
   return makeImage(pat).urlBase(TEST_BASE);
 }
 
-function video(pat: string): VideoPattern {
-  return VideoPattern.fromSrc(mini(pat), mini).urlBase(TEST_BASE);
+function video(pat: string) {
+  return makeVideo(pat).urlBase(TEST_BASE);
 }
 
 // --- tests ---

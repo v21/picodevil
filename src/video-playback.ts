@@ -1,14 +1,12 @@
 import { REVERSE_SEEK_INTERVAL, VIDEO_BASE } from "./config";
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
-import { resolveTime } from "./time-value";
+import { parseTimeValue, resolveTime, type TimeValue } from "./time-value";
 import { drawFit } from "./draw-fit";
-import type { VideoPattern, VideoValue } from "./video-pattern";
 
 type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean };
 
 export interface VideoFrameContext {
-  ev: VideoValue;
-  videoPattern: VideoPattern;
+  ev: any;
   videoPool: Map<string, VideoEl>;
   poolKeyPrefix: string;
   canvas: HTMLCanvasElement;
@@ -23,20 +21,40 @@ export interface VideoFrameResult {
   lastVideoVal: string | null;
 }
 
+/** Parse a raw start/end value (string, number, or TimeValue) into a TimeValue. */
+function toTimeValue(raw: any): TimeValue {
+  if (raw == null) return { value: 0, unit: "rel" };
+  if (typeof raw === "object" && "unit" in raw) return raw;
+  const n = Number(raw);
+  if (!isNaN(n)) return { value: n, unit: "rel" };
+  return parseTimeValue(String(raw));
+}
+
 export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
   let lastVideoVal = c.lastVideoVal;
-  const { src, speed, start, end: endTV, endIsDuration } = c.ev;
-  const videoKey = JSON.stringify({ src, speed, start, end: endTV, endIsDuration });
+  const src = c.ev.src;
+  const speed = c.ev.speed != null ? Number(c.ev.speed) : 1;
+  const startRaw = c.ev.start;
+  const endRaw = c.ev.end;
+  const endIsDuration = c.ev.endIsDuration ?? false;
+
+  const videoKey = JSON.stringify({ src, speed, start: startRaw, end: endRaw, endIsDuration });
   if (videoKey !== lastVideoVal) {
     lastVideoVal = videoKey;
   }
-  const base = c.videoPattern.videoUrlBase ?? VIDEO_BASE;
+
+  const base = c.ev.urlBase ?? VIDEO_BASE;
   const el = c.getOrCreateVideoEl(src, base, c.poolKeyPrefix);
+
   if (el && isFinite(el.duration) && el.duration > 0) {
-    updateVideoPlayback(el, speed, start, endTV, endIsDuration, c.now, c.dt);
+    const startTV = startRaw != null ? toTimeValue(startRaw) : { value: 0, unit: "rel" as const };
+    const endTV = endRaw != null ? toTimeValue(endRaw) : { value: 1, unit: "rel" as const };
+    updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.now, c.dt);
   }
+
   if (el && el.videoWidth > 0) {
-    drawFit(c.ctx, el, el.videoWidth, el.videoHeight, c.canvas.width, c.canvas.height, c.videoPattern.fitMode);
+    const fitMode = c.ev.fit ?? "cover";
+    drawFit(c.ctx, el, el.videoWidth, el.videoHeight, c.canvas.width, c.canvas.height, fitMode);
   }
 
   return { lastVideoVal };
@@ -45,15 +63,15 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
 function updateVideoPlayback(
   el: VideoEl,
   speed: number,
-  start: { value: number; unit: string },
-  endTV: { value: number; unit: string },
+  start: TimeValue,
+  endTV: TimeValue,
   endIsDuration: boolean,
   now: number,
   dt: number,
 ): void {
   const dur = el.duration;
-  const loopStart = resolveTime(start as any, dur);
-  const resolvedEnd = resolveTime(endTV as any, dur);
+  const loopStart = resolveTime(start, dur);
+  const resolvedEnd = resolveTime(endTV, dur);
   const loopEnd = endIsDuration ? loopStart + resolvedEnd : resolvedEnd;
   const wrapped = loopStart > loopEnd;
 
