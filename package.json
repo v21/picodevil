@@ -19,7 +19,9 @@
     "@codemirror/view": "^6.39.16",
     "@strudel/core": "^1.2.6",
     "@strudel/mini": "^1.2.6",
+    "acorn": "^8.16.0",
     "codemirror": "^6.0.2",
+    "escodegen": "^2.1.0",
     "vite": "^6.4.1"
   },
   "devDependencies": {

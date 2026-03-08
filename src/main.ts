@@ -16,10 +16,11 @@ import { ColorPattern } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { ImagePattern } from "./image-pattern";
 import { GridPattern } from "./grid-pattern";
-import type { ScreenPattern } from "./screen-pattern";
+import { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
 import { drawFit } from "./draw-fit";
+import { transpile } from "./transpiler";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -34,6 +35,41 @@ resize();
 // --- state ---
 let screens: ScreenPattern[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
+
+// --- $: label system ---
+let pPatterns: Record<string, ScreenPattern> = {};
+let anonymousIndex = 0;
+
+// Inject .p() onto ScreenPattern.prototype
+(ScreenPattern.prototype as any).p = function (id: string) {
+  // muting: _label or label_
+  if (id.startsWith('_') || id.endsWith('_')) return this;
+  // anonymous: $ becomes $0, $1, ...
+  if (id.includes('$')) {
+    id = `${id}${anonymousIndex}`;
+    anonymousIndex++;
+  }
+  pPatterns[id] = this;
+  return this;
+};
+
+function collectScreens(): ScreenPattern[] {
+  const patterns: ScreenPattern[] = [];
+  let soloActive = false;
+
+  for (const [key, pat] of Object.entries(pPatterns)) {
+    const isSoloed = key.length > 1 && key.startsWith('S');
+    if (isSoloed && !soloActive) {
+      patterns.length = 0; // clear non-solo patterns
+      soloActive = true;
+    }
+    if (!soloActive || isSoloed) {
+      patterns.push(pat);
+    }
+  }
+
+  return patterns;
+}
 
 // --- video ---
 type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean; _srcUrl?: string };
@@ -207,7 +243,10 @@ window.uzuEval = (code: string): string | null => {
   clearImages();
   screens = [];
   lastScreenVals = [];
+  pPatterns = {};
+  anonymousIndex = 0;
   try {
+    const transpiled = transpile(code);
     const signals = {
       sine, sine2, cosine, cosine2,
       saw, saw2, isaw, isaw2,
@@ -220,10 +259,17 @@ window.uzuEval = (code: string): string | null => {
       signal, steady,
     };
     const sigNames = Object.keys(signals);
-    new Function("mini", "color", "video", "image", "grid", "four", "setCps", ...sigNames, code)(
+    new Function("mini", "color", "video", "image", "grid", "four", "setCps", ...sigNames, transpiled)(
       mini, color, video, image, grid, four, setCps, ...Object.values(signals),
     );
-    console.log("evaluated:", code);
+    // Collect $: registered patterns; merge with .out() pushed screens
+    const pScreens = collectScreens();
+    if (pScreens.length > 0) {
+      screens = [...screens, ...pScreens];
+    }
+    // Prewarm all screens
+    for (const s of screens) prewarmBlobs(s);
+    console.log("evaluated:", code, "screens:", screens.length);
     return null;
   } catch (e) {
     console.error("eval error:", e);
