@@ -9,6 +9,9 @@ import {
   time, mouseX, mouseY,
   run, choose, chooseIn, chooseCycles,
   signal, steady,
+  stack, cat, slowcat, fastcat,
+  silence, gap, nothing,
+  pure, reify,
 } from "@strudel/core";
 import "./pattern-extensions";
 import "./visual-controls";
@@ -222,8 +225,10 @@ window.uzuEval = (code: string): string | null => {
       signal, steady,
     };
     const sigNames = Object.keys(signals);
-    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", ...sigNames, transpiled)(
-      mini, color, video, image, gridStack, four, setCps, ...Object.values(signals),
+    const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
+    const combNames = Object.keys(combinators);
+    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, gridStack, four, setCps, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
