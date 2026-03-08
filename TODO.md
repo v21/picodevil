@@ -12,6 +12,10 @@ next steps:
 - function reference
 
 
+- modI - func applied to original pattern
+
+seti and modI should wrap if index is over grid size
+
 bugs:
 - animated GIFs don't play (only first frame shown)
   - canvas `drawImage()` from an `<img>` element only captures the first frame of animated GIFs in Chrome
@@ -21,3 +25,36 @@ code quality:
 / extract video playback logic from main.ts render loop 
 / show eval errors in the editor, not just console
 - fix timing: changing CPS mid-performance causes discontinuous jump (need phase adjustment)
+
+
+
+
+
+
+matching strudel:
+- our methods should be proper functions - they should be able to be applied via something like `off`. function composition over OOP builder pattern
+- i guess the check is if `bind` works
+- write up the idea that we need to sample per-frame rather than determine durations of events and keep things entirely within that
+- but do understand the overlay() combinator more - i'm sus!
+- move so that each property is atomic, and it's at frame evaluation time that we collect the parameters from each property. 
+- but! we can use the onset idea from strudel for doing things like creating video elements etc. this allows us to reset the playhead on each event
+
+- can we drop out? and implictly imply it for any values that are output? or, alternatively, borrow strudel's $: prefix - use this as a z-index order implicitly
+
+also later:
+- switch to fraction based time, where we can - obv this doesn't work for indexing into videos, but elsewhere we should
+
+draw a tree of current render state, and update that as we iterate through time. good way to see how values change over time
+
+
+
+
+
+
+# after
+
+- we can add a pre-warm system - it looks ahead in the pattern and tells us which videos need to be created, ahead of time, so we have them ready and warmed when we need them
+- this can also thread into pooling - it can also, if it's sophisticated, tell us what video resources will be freed by then. if we've got a video moving across a grid, that can be done with one or two elements
+
+
+- we should also scrap the idea that each video has it's own playhead position - set this entirely from the patterns
