@@ -12,7 +12,7 @@ import {
 } from "@strudel/core";
 import "./pattern-extensions";
 import { setupEditor } from "./editor";
-import { ColorPattern } from "./color-pattern";
+import { color as makeColor } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { ImagePattern } from "./image-pattern";
 import { GridPattern } from "./grid-pattern";
@@ -33,34 +33,39 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- state ---
-let screens: ScreenPattern[] = [];
+/** A screen is anything with queryArc — ScreenPattern subclasses or plain Patterns. */
+type Screen = { queryArc(begin: number, end: number): any[] };
+let screens: Screen[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
 
 // --- $: label system ---
-let pPatterns: Record<string, ScreenPattern> = {};
+let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 
-// Inject .p() onto ScreenPattern.prototype
-(ScreenPattern.prototype as any).p = function (id: string) {
-  // muting: _label or label_
-  if (id.startsWith('_') || id.endsWith('_')) return this;
-  // anonymous: $ becomes $0, $1, ...
-  if (id.includes('$')) {
-    id = `${id}${anonymousIndex}`;
-    anonymousIndex++;
-  }
-  pPatterns[id] = this;
-  return this;
-};
+/** Inject .p() onto both ScreenPattern.prototype and Pattern.prototype. */
+function injectP(proto: any) {
+  proto.p = function (id: string) {
+    if (id.startsWith('_') || id.endsWith('_')) return this;
+    if (id.includes('$')) {
+      id = `${id}${anonymousIndex}`;
+      anonymousIndex++;
+    }
+    pPatterns[id] = this;
+    return this;
+  };
+}
+injectP(ScreenPattern.prototype);
+import { reify } from "@strudel/core";
+injectP(Object.getPrototypeOf(reify(0)));  // Pattern.prototype
 
-function collectScreens(): ScreenPattern[] {
-  const patterns: ScreenPattern[] = [];
+function collectScreens(): Screen[] {
+  const patterns: Screen[] = [];
   let soloActive = false;
 
   for (const [key, pat] of Object.entries(pPatterns)) {
     const isSoloed = key.length > 1 && key.startsWith('S');
     if (isSoloed && !soloActive) {
-      patterns.length = 0; // clear non-solo patterns
+      patterns.length = 0;
       soloActive = true;
     }
     if (!soloActive || isSoloed) {
@@ -188,20 +193,20 @@ function clearImages() {
   imagePool.clear();
 }
 
-function color(pat: string): ColorPattern {
-  return ColorPattern.fromMini(mini(pat), mini, applyColor);
+function color(pat: string) {
+  return makeColor(pat);
 }
 
-function grid(children: ScreenPattern[], cols: number | string, rows: number | string): GridPattern {
-  return new GridPattern(children, cols, rows, mini, applyGrid);
+function grid(children: Screen[], cols: number | string, rows: number | string): GridPattern {
+  return new GridPattern(children as any, cols, rows, mini, applyGrid);
 }
 
-function four(children: ScreenPattern[]): GridPattern {
+function four(children: Screen[]): GridPattern {
   return grid(children, 2, 2);
 }
 
 /** Warm the blob cache for any video URLs in a screen (no video elements created). */
-function prewarmBlobs(screen: ScreenPattern) {
+function prewarmBlobs(screen: Screen) {
   if (screen instanceof VideoPattern) {
     const base = screen.videoUrlBase ?? VIDEO_BASE;
     const probe = screen.srcPattern.queryArc(0, 1);
@@ -232,10 +237,6 @@ function setCps(cps: number) {
   cyclesPerSecond = cps;
 }
 
-function applyColor(cp: ColorPattern) {
-  screens.push(cp);
-  console.log("color screen added, screen count:", screens.length);
-}
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string): string | null => {
@@ -307,7 +308,7 @@ const startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
-function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, videoKeyPrefix: string = "") {
+function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, videoKeyPrefix: string = "") {
   const t = cycleNum + cyclePos;
   const events = screen.queryArc(t, t + 0.001);
   if (!events.length) return;
@@ -329,7 +330,7 @@ function renderScreen(screen: ScreenPattern, cyclePos: number, cycleNum: number,
     ctx.translate(-canvas.width / 2, -canvas.height / 2);
   }
 
-  if (screen instanceof ColorPattern) {
+  if (ev._type === "color") {
     const currentColor = parseColor(ev.color);
     ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);

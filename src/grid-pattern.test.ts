@@ -2,13 +2,10 @@ import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
 import { reify } from "@strudel/core";
 import { GridPattern } from "./grid-pattern";
-import { ColorPattern } from "./color-pattern";
+import { color } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
 import { ImagePattern } from "./image-pattern";
-
-function color(pat: string) {
-  return ColorPattern.fromMini(mini(pat), mini);
-}
+import "./visual-controls";
 
 function video(pat: string) {
   return VideoPattern.fromSrc(mini(pat), mini);
@@ -16,6 +13,12 @@ function video(pat: string) {
 
 function image(pat: string) {
   return ImagePattern.fromSrc(mini(pat), mini);
+}
+
+/** Check if a screen produces color events (plain Pattern with _type: "color"). */
+function isColorScreen(screen: any): boolean {
+  const evs = screen.queryArc(0, 1);
+  return evs.length > 0 && evs[0].value._type === "color";
 }
 
 describe("GridPattern", () => {
@@ -40,11 +43,12 @@ describe("GridPattern", () => {
     expect(g.childAt(8)).toBe(g.children[0]); // 8 % 2 = 0
   });
 
-  it("children are clones, not shared references", () => {
+  it("children are stored per-grid", () => {
     const c1 = color("red");
     const g = new GridPattern([c1], 2, 2, mini);
     expect(g.children).toHaveLength(1);
-    expect(g.children[0]).not.toBe(c1);
+    // Plain Patterns are immutable — same reference is fine
+    // ScreenPattern children are cloned
   });
 
   it("supports mixed screen types as children", () => {
@@ -52,7 +56,7 @@ describe("GridPattern", () => {
     const v = video("clip.mp4");
     const img = image("pic.png");
     const g = new GridPattern([c, v, img], 3, 1, mini);
-    expect(g.children[0]).toBeInstanceOf(ColorPattern);
+    expect(g.children[0]).toSatisfy(isColorScreen);
     expect(g.children[1]).toBeInstanceOf(VideoPattern);
     expect(g.children[2]).toBeInstanceOf(ImagePattern);
   });
@@ -78,7 +82,7 @@ describe("GridPattern", () => {
     const inner = new GridPattern([color("red")], 2, 2, mini);
     const outer = new GridPattern([inner, color("blue")], 2, 1, mini);
     expect(outer.children[0]).toBeInstanceOf(GridPattern);
-    expect(outer.children[1]).toBeInstanceOf(ColorPattern);
+    expect(outer.children[1]).toSatisfy(isColorScreen);
   });
 
   it("calls onOut when out() is called", () => {
@@ -99,17 +103,17 @@ describe("GridPattern", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
     const g2 = g.setI(0, video("clip.mp4"));
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ColorPattern);
-    expect(g2.resolveChild(2, 0.1)).toBeInstanceOf(ColorPattern);
-    expect(g2.resolveChild(3, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.1)).toSatisfy(isColorScreen);
+    expect(g2.resolveChild(2, 0.1)).toSatisfy(isColorScreen);
+    expect(g2.resolveChild(3, 0.1)).toSatisfy(isColorScreen);
   });
 
   it("setI with mininotation '0,3' overrides indices 0 and 3", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
     const g2 = g.setI("0,3", video("clip.mp4"));
     expect(g2.resolveChild(0, 0.5)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.5)).toBeInstanceOf(ColorPattern);
-    expect(g2.resolveChild(2, 0.5)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.5)).toSatisfy(isColorScreen);
+    expect(g2.resolveChild(2, 0.5)).toSatisfy(isColorScreen);
     expect(g2.resolveChild(3, 0.5)).toBeInstanceOf(VideoPattern);
   });
 
@@ -117,16 +121,16 @@ describe("GridPattern", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
     const g2 = g.setI(0, video("clip.mp4"));
     // Original unchanged
-    expect(g.resolveChild(0, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g.resolveChild(0, 0.1)).toSatisfy(isColorScreen);
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
   });
 
   it("setI with mininotation '1' overrides only index 1", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
     const g2 = g.setI("1", image("pic.png"));
-    expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(0, 0.1)).toSatisfy(isColorScreen);
     expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ImagePattern);
-    expect(g2.resolveChild(2, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(2, 0.1)).toSatisfy(isColorScreen);
   });
 
   it("setI preserves grid-level alpha and fit", () => {
@@ -155,9 +159,9 @@ describe("GridPattern", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
     const g2 = g.setI(mini("0 2"), video("clip.mp4"));
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.1)).toSatisfy(isColorScreen);
     expect(g2.resolveChild(2, 0.6)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(0, 0.6)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(0, 0.6)).toSatisfy(isColorScreen);
   });
 
   it("setI with Pattern is immutable", () => {
@@ -172,7 +176,7 @@ describe("GridPattern", () => {
     const g2 = g.setI(mini("0"), video("a.mp4")).setI(mini("2"), image("b.png"));
     expect(g2.overrides).toHaveLength(2);
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.1)).toSatisfy(isColorScreen);
     expect(g2.resolveChild(2, 0.1)).toBeInstanceOf(ImagePattern);
   });
 
@@ -181,7 +185,7 @@ describe("GridPattern", () => {
     const g2 = g.setI(mini("0,3"), video("clip.mp4"));
     expect(g2.resolveChild(0, 0.5)).toBeInstanceOf(VideoPattern);
     expect(g2.resolveChild(3, 0.5)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.5)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.5)).toSatisfy(isColorScreen);
   });
 
   // --- modI (all overrides, resolved at query time) ---
@@ -321,7 +325,7 @@ describe("GridPattern", () => {
     const g2 = g.setI(mini("4"), video("clip.mp4"));
     // 4 wraps to 0 in a 4-cell grid
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.1)).toSatisfy(isColorScreen);
   });
 
   it("modI index wraps to current cell count", () => {
@@ -341,8 +345,8 @@ describe("GridPattern", () => {
     // Override index 3: in 2x2 (t=0.6), hits cell 3. In 2x1 (t=0.1), wraps 3 -> 1.
     const g2 = g.setI(mini("3"), video("clip.mp4"));
     expect(g2.resolveChild(3, 0.6)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(1, 0.6)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(1, 0.6)).toSatisfy(isColorScreen);
     expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(VideoPattern);
-    expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(ColorPattern);
+    expect(g2.resolveChild(0, 0.1)).toSatisfy(isColorScreen);
   });
 });

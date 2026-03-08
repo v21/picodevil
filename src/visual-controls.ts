@@ -39,6 +39,12 @@ export const scaleX = createMixParam("scaleX");
 export const scaleY = createMixParam("scaleY");
 export const fit = createMixParam("fit");
 
+// scale sets both scaleX and scaleY
+PatternProto.scale = function (value: any) {
+  const p = asPattern(value).withValue((v: any) => ({ scaleX: v, scaleY: v }));
+  return this.set.mix(p);
+};
+
 // Video-specific controls
 export const speed = createMixParam("speed");
 export const start = createMixParam("start");

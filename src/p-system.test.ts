@@ -4,11 +4,13 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { mini } from "@strudel/mini";
-import { ColorPattern } from "./color-pattern";
+import { reify } from "@strudel/core";
+import { color } from "./color-pattern";
 import { ScreenPattern } from "./screen-pattern";
 
 // Mirror the .p() / collectScreens() logic from main.ts for isolated testing
-let pPatterns: Record<string, ScreenPattern> = {};
+type Screen = { queryArc(begin: number, end: number): any[] };
+let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 
 function resetP() {
@@ -16,19 +18,23 @@ function resetP() {
   anonymousIndex = 0;
 }
 
-// Install .p() on ScreenPattern.prototype (same as main.ts does)
-(ScreenPattern.prototype as any).p = function (id: string) {
-  if (id.startsWith('_') || id.endsWith('_')) return this;
-  if (id.includes('$')) {
-    id = `${id}${anonymousIndex}`;
-    anonymousIndex++;
-  }
-  pPatterns[id] = this;
-  return this;
-};
+// Install .p() on both ScreenPattern.prototype and Pattern.prototype
+function injectP(proto: any) {
+  proto.p = function (id: string) {
+    if (id.startsWith('_') || id.endsWith('_')) return this;
+    if (id.includes('$')) {
+      id = `${id}${anonymousIndex}`;
+      anonymousIndex++;
+    }
+    pPatterns[id] = this;
+    return this;
+  };
+}
+injectP(ScreenPattern.prototype);
+injectP(Object.getPrototypeOf(reify(0)));
 
-function collectScreens(): ScreenPattern[] {
-  const patterns: ScreenPattern[] = [];
+function collectScreens(): Screen[] {
+  const patterns: Screen[] = [];
   let soloActive = false;
 
   for (const [key, pat] of Object.entries(pPatterns)) {
@@ -43,10 +49,6 @@ function collectScreens(): ScreenPattern[] {
   }
 
   return patterns;
-}
-
-function color(pat: string): ColorPattern {
-  return ColorPattern.fromMini(mini(pat), mini);
 }
 
 describe(".p() label system", () => {

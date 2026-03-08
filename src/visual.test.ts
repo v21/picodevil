@@ -7,12 +7,13 @@
  */
 import { describe, it, expect, beforeAll } from "vitest";
 import { mini } from "@strudel/mini";
-import { ColorPattern } from "./color-pattern";
+import { color as makeColor } from "./color-pattern";
+import "./visual-controls";
 import { ImagePattern } from "./image-pattern";
 import { VideoPattern } from "./video-pattern";
 import { GridPattern } from "./grid-pattern";
 import { drawFit } from "./draw-fit";
-import { renderVideoFrame, type VideoFrameContext } from "./video-playback";
+import { renderVideoFrame } from "./video-playback";
 import type { ScreenPattern } from "./screen-pattern";
 
 // --- minimal render harness ---
@@ -73,7 +74,7 @@ const imagePool = new Map<string, HTMLImageElement>();
 function renderScreen(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  screen: ScreenPattern,
+  screen: any,
   t: number,
   opts: { imagePool?: Map<string, HTMLImageElement>; videoPool?: Map<string, HTMLVideoElement> } = {},
 ): void {
@@ -95,7 +96,7 @@ function renderScreen(
     ctx.translate(-canvas.width / 2, -canvas.height / 2);
   }
 
-  if (screen instanceof ColorPattern) {
+  if (ev._type === "color") {
     const [r, g, b] = parseColor(ev.color);
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -164,7 +165,7 @@ function renderGrid(
 
 /** Render a stack of screens and return the canvas. */
 function render(
-  screens: ScreenPattern[],
+  screens: any[],
   t = 0,
   opts: { imagePool?: Map<string, HTMLImageElement>; videoPool?: Map<string, HTMLVideoElement> } = {},
 ): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
@@ -182,8 +183,8 @@ function pixel(ctx: CanvasRenderingContext2D, x: number, y: number): [number, nu
   return [d[0], d[1], d[2], d[3]];
 }
 
-function color(pat: string): ColorPattern {
-  return ColorPattern.fromMini(mini(pat), mini);
+function color(pat: string) {
+  return makeColor(pat);
 }
 
 function image(pat: string): ImagePattern {
