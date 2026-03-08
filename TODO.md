@@ -42,7 +42,7 @@ matching strudel:
 - can we drop out? and implictly imply it for any values that are output? or, alternatively, borrow strudel's $: prefix - use this as a z-index order implicitly
 
 also later:
-- switch to fraction based time, where we can - obv this doesn't work for indexing into videos, but elsewhere we should
+/ switch to fraction based time, where we can - Strudel uses Fractions internally, we pass them through correctly
 
 draw a tree of current render state, and update that as we iterate through time. good way to see how values change over time
 
@@ -63,7 +63,7 @@ draw a tree of current render state, and update that as we iterate through time.
 
 # small things
 - where are we injecting p() ? is ti the right place
-- scale can just call scaleX and scaleY
+/ scale can just call scaleX and scaleY
 - once we've moved stuff across - do a pass on what's cruft left from the migration
 - run full test suite each time before offering to commit
 - when we hit `Uncaught TypeError: screen.queryArc is not a function` that shouldn't block rendering in future evals
@@ -74,3 +74,4 @@ draw a tree of current render state, and update that as we iterate through time.
 - add synonyms for x/y width/height (top, left, w, h)
 - make everything give an error if the inputs are something that aren't understood - as far as possible within patterns
 - add in `stack` - and a load of other pattern funcs, so they're available in the editor. also add to monkey tests
+- update Claude with my revealed preferences

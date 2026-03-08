@@ -235,7 +235,7 @@ window.uzuEval = (code: string): string | null => {
     new Function("mini", "color", "video", "image", "grid", "gridStack", "four", "setCps", ...sigNames, transpiled)(
       mini, color, video, image, grid, gridStack as any, four, setCps, ...Object.values(signals),
     );
-    // Collect $: registered patterns; merge with .out() pushed screens
+    // Collect $: registered patterns
     const pScreens = collectScreens();
     if (pScreens.length > 0) {
       screens = [...screens, ...pScreens];

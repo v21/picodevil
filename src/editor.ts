@@ -11,7 +11,7 @@ declare global {
 }
 
 const STORAGE_KEY = "uzuvid:code";
-const defaultCode = `video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1").out()`;
+const defaultCode = `$: video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
 const savedCode = localStorage.getItem(STORAGE_KEY);
 
 export function setupEditor(parent: HTMLElement): EditorView {

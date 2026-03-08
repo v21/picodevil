@@ -84,11 +84,4 @@ let y = 2`;
     });
   });
 
-  describe("backwards compat", () => {
-    it("passes through .out() calls unchanged", () => {
-      const result = transpile('color("red").out()');
-      expect(result).toContain('.out()');
-      expect(result).not.toContain('.p(');
-    });
-  });
 });
