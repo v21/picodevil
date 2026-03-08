@@ -201,6 +201,14 @@ function prewarmBlobs(screen: Screen) {
  */
 function setCps(cps: number | Pattern) {
   if (typeof cps === "number") {
+    if (cps === 0) {
+      // Freeze at current cycle position
+      const nowSec = (performance.now() - startTime) / 1000;
+      accumulatedCycle = nowSec * cyclesPerSecond;
+      cyclesPerSecond = 0;
+      cpsPattern = null;
+      return;
+    }
     const nowSec = (performance.now() - startTime) / 1000;
     const currentCycle = nowSec * cyclesPerSecond;
     startTime = performance.now() - (currentCycle / cps) * 1000;
@@ -407,11 +415,11 @@ function frame() {
   let cps = cyclesPerSecond;
   if (cpsPattern) {
     const haps = cpsPattern.queryArc(accumulatedCycle, accumulatedCycle + 0.001);
-    if (haps.length > 0) cps = Number(haps[0].value);
+    if (haps.length > 0) cps = Math.max(0, Number(haps[0].value)) || 0;
   }
   accumulatedCycle += deltaSec * cps;
 
-  const cycle = cpsPattern ? accumulatedCycle : nowSec * cyclesPerSecond;
+  const cycle = (cpsPattern || cyclesPerSecond === 0) ? accumulatedCycle : nowSec * cyclesPerSecond;
   const cyclePos = cycle % 1;
   const cycleNum = Math.floor(cycle);
 

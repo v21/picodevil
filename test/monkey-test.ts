@@ -205,6 +205,22 @@ async function main() {
     let roundsRemaining = ROUNDS;
     const newFailures: FailureCase[] = [];
 
+    // Save failures on Ctrl-C so early termination doesn't lose data
+    let pendingFailure: FailureCase | null = null;
+
+    const onSigint = () => {
+      console.log("\n\nInterrupted! Saving any collected failures...");
+      const all = [...newFailures];
+      if (pendingFailure) all.push(pendingFailure);
+      if (all.length > 0) {
+        saveFailures([...existingFailures, ...all]);
+      } else {
+        console.log("No failures to save.");
+      }
+      process.exit(130);
+    };
+    process.on("SIGINT", onSigint);
+
     while (roundsRemaining > 0) {
       let firstFailureSeen = false;
 
@@ -227,6 +243,12 @@ async function main() {
               }
               console.log(`  Shrinking...`);
               firstFailureSeen = true;
+              pendingFailure = {
+                code: expr.code,
+                description: "unshrunk (interrupted before shrinking completed)",
+                errors: testResult.errors,
+                timestamp: new Date().toISOString(),
+              };
             }
           } else if (!testResult.ok) {
             console.log(`  [shrink] still fails (${expr.code.length} chars)`);
@@ -259,6 +281,7 @@ async function main() {
               errors: finalResult.errors,
               timestamp: new Date().toISOString(),
             });
+            pendingFailure = null;
           }
         }
 
@@ -274,6 +297,8 @@ async function main() {
         roundsRemaining = 0;
       }
     }
+
+    process.off("SIGINT", onSigint);
 
     // Summary
     console.log("\n" + "=".repeat(60));
