@@ -194,6 +194,7 @@ export const urlBase = createMixParam("urlBase");
  *
  */
 export const x = createMixParam("x");
+PatternProto.left = PatternProto.x;
 
 /**
  * Sets the vertical position of the pattern (0–1, where 0 = top edge).
@@ -205,6 +206,7 @@ export const x = createMixParam("x");
  *
  */
 export const y = createMixParam("y");
+PatternProto.top = PatternProto.y;
 
 /**
  * Sets the width of the pattern (0–1, where 1 = full canvas width).
@@ -217,6 +219,7 @@ export const y = createMixParam("y");
  *
  */
 export const width = createMixParam("width");
+PatternProto.w = PatternProto.width;
 
 /**
  * Sets the height of the pattern (0–1, where 1 = full canvas height).
@@ -228,6 +231,7 @@ export const width = createMixParam("width");
  *
  */
 export const height = createMixParam("height");
+PatternProto.h = PatternProto.height;
 
 // Helper: compute {x, y, width, height} for cell index i in a cols×rows grid
 function cellPos(i: number, cols: number, rows: number) {

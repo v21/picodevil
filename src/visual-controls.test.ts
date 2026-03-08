@@ -266,6 +266,22 @@ describe("visual controls via createMixParam", () => {
       expect(v.height).toBeCloseTo(0.25);
     });
 
+    it(".left() is alias for .x()", () => {
+      expect(query(src("x").left(0.5), 0).x).toBe(0.5);
+    });
+
+    it(".top() is alias for .y()", () => {
+      expect(query(src("x").top(0.25), 0).y).toBe(0.25);
+    });
+
+    it(".w() is alias for .width()", () => {
+      expect(query(src("x").w(0.5), 0).width).toBe(0.5);
+    });
+
+    it(".h() is alias for .height()", () => {
+      expect(query(src("x").h(0.5), 0).height).toBe(0.5);
+    });
+
     it("position params are patternable", () => {
       const pat = src("x").x(sine);
       const v0 = query(pat, 0.0);
