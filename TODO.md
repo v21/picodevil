@@ -58,3 +58,19 @@ draw a tree of current render state, and update that as we iterate through time.
 
 
 - we should also scrap the idea that each video has it's own playhead position - set this entirely from the patterns
+
+
+
+# small things
+- where are we injecting p() ? is ti the right place
+- scale can just call scaleX and scaleY
+- once we've moved stuff across - do a pass on what's cruft left from the migration
+- run full test suite each time before offering to commit
+- when we hit `Uncaught TypeError: screen.queryArc is not a function` that shouldn't block rendering in future evals
+- stop making useless screenshots
+- when running monkey tests - also replay old ones
+- change lerp and spline to take patterns
+- shift to hypothesis style testing - like monkey testing but with shrinking & Claude expects to treat the failures seriously and use thm as a test suite
+- add synonyms for x/y width/height (top, left, w, h)
+- make everything give an error if the inputs are something that aren't understood - as far as possible within patterns
+- add in `stack` - and a load of other pattern funcs, so they're available in the editor. also add to monkey tests

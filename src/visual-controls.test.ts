@@ -98,6 +98,128 @@ describe("visual controls via createMixParam", () => {
     });
   });
 
+  describe("position controls", () => {
+    it(".x() merges x position", () => {
+      expect(query(src("x").x(0.5), 0).x).toBe(0.5);
+    });
+
+    it(".y() merges y position", () => {
+      expect(query(src("x").y(0.25), 0).y).toBe(0.25);
+    });
+
+    it(".width() merges width", () => {
+      expect(query(src("x").width(0.5), 0).width).toBe(0.5);
+    });
+
+    it(".height() merges height", () => {
+      expect(query(src("x").height(0.5), 0).height).toBe(0.5);
+    });
+
+    it(".grid(i, cols, rows) sets position for cell", () => {
+      // cell 0 in 2x2: top-left quarter
+      const v0 = query(src("x").grid(0, 2, 2), 0);
+      expect(v0.x).toBe(0);
+      expect(v0.y).toBe(0);
+      expect(v0.width).toBe(0.5);
+      expect(v0.height).toBe(0.5);
+
+      // cell 1 in 2x2: top-right quarter
+      const v1 = query(src("x").grid(1, 2, 2), 0);
+      expect(v1.x).toBe(0.5);
+      expect(v1.y).toBe(0);
+
+      // cell 2 in 2x2: bottom-left quarter
+      const v2 = query(src("x").grid(2, 2, 2), 0);
+      expect(v2.x).toBe(0);
+      expect(v2.y).toBe(0.5);
+
+      // cell 3 in 2x2: bottom-right quarter
+      const v3 = query(src("x").grid(3, 2, 2), 0);
+      expect(v3.x).toBe(0.5);
+      expect(v3.y).toBe(0.5);
+    });
+
+    it(".grid() composes with other controls", () => {
+      const v = query(src("x").grid(0, 2, 2).alpha(0.5), 0);
+      expect(v.x).toBe(0);
+      expect(v.width).toBe(0.5);
+      expect(v.alpha).toBe(0.5);
+    });
+
+    it(".grid() with multiple indices draws in multiple cells", () => {
+      const pat = src("x").grid([0, 1], 2, 2);
+      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
+      expect(evs).toHaveLength(2);
+      evs.sort((a: any, b: any) => a.x - b.x);
+      expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+      expect(evs[1]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
+    });
+
+    it(".grid() with multiple indices preserves source value", () => {
+      const pat = src("clip.mp4").grid([0, 3], 2, 2);
+      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
+      expect(evs).toHaveLength(2);
+      evs.forEach((v: any) => expect(v.src).toBe("clip.mp4"));
+    });
+
+    it(".grid() with pattern index alternates position", () => {
+      // "0 3" = cell 0 first half, cell 3 second half
+      const pat = src("x").grid(mini("0 3"), 2, 2);
+      const v0 = query(pat, 0.1);
+      expect(v0).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+      const v1 = query(pat, 0.6);
+      expect(v1).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+    });
+
+    it(".grid() with stacked pattern index gives simultaneous positions", () => {
+      // "0,3" in mini = stack(0, 3) = both at once
+      const pat = src("x").grid(mini("0,3"), 2, 2);
+      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
+      expect(evs).toHaveLength(2);
+      evs.sort((a: any, b: any) => a.x - b.x);
+      expect(evs[0]).toMatchObject({ x: 0, y: 0 });
+      expect(evs[1]).toMatchObject({ x: 0.5, y: 0.5 });
+    });
+
+    it(".gridModulo(childIndex, numChildren, cols, rows) places child in correct cells", () => {
+      // child 0 of 2 in 2x2 grid → cells 0, 2 (top-left, bottom-left)
+      const pat = src("x").gridModulo(0, 2, 2, 2);
+      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
+      expect(evs).toHaveLength(2);
+      evs.sort((a: any, b: any) => a.y - b.y);
+      expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+      expect(evs[1]).toMatchObject({ x: 0, y: 0.5, width: 0.5, height: 0.5 });
+    });
+
+    it(".gridModulo() child 1 of 2 in 2x2", () => {
+      // child 1 of 2 → cells 1, 3 (top-right, bottom-right)
+      const pat = src("x").gridModulo(1, 2, 2, 2);
+      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
+      expect(evs).toHaveLength(2);
+      evs.sort((a: any, b: any) => a.y - b.y);
+      expect(evs[0]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
+      expect(evs[1]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+    });
+
+    it(".gridModulo() with pattern cols changes cell count dynamically", () => {
+      // child 0 of 1, cols alternates "2 3", rows=1
+      const pat = src("x").gridModulo(0, 1, mini("2 3"), 1);
+      // first half: 2 cols → 2 cells
+      const evs0 = pat.queryArc(0.1, 0.101).map((e: any) => e.value);
+      expect(evs0).toHaveLength(2);
+      // second half: 3 cols → 3 cells
+      const evs1 = pat.queryArc(0.6, 0.601).map((e: any) => e.value);
+      expect(evs1).toHaveLength(3);
+    });
+
+    it("position params are patternable", () => {
+      const pat = src("x").x(sine);
+      const v0 = query(pat, 0.0);
+      const v25 = query(pat, 0.25);
+      expect(v0.x).not.toBeCloseTo(v25.x, 1);
+    });
+  });
+
   describe("standalone functions", () => {
     it("speed as standalone wraps value", async () => {
       const { speed } = await import("./visual-controls");

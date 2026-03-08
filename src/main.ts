@@ -16,7 +16,7 @@ import { setupEditor } from "./editor";
 import { color as makeColor } from "./color-pattern";
 import { video as makeVideo } from "./video-pattern";
 import { image as makeImage } from "./image-pattern";
-import { GridPattern } from "./grid-pattern";
+import { gridStack, four as fourFn } from "./grid-stack";
 import { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
@@ -186,45 +186,27 @@ function color(pat: string) {
   return makeColor(pat);
 }
 
-function grid(children: Screen[], cols: number | string, rows: number | string): GridPattern {
-  return new GridPattern(children as any, cols, rows, mini, applyGrid);
+function grid(children: Screen[], cols: number, rows: number) {
+  return gridStack(children as any, cols, rows);
 }
 
-function four(children: Screen[]): GridPattern {
-  return grid(children, 2, 2);
+function four(children: Screen[]) {
+  return fourFn(children as any);
 }
 
 /** Warm the blob cache for any video URLs in a screen (no video elements created). */
 function prewarmBlobs(screen: Screen) {
-  if (screen instanceof GridPattern) {
-    prewarmGrid(screen);
-  } else if ('queryArc' in screen && !(screen instanceof ScreenPattern)) {
-    // Plain pattern — probe for video/image events to prewarm
-    const probe = screen.queryArc(0, 1);
-    for (const h of probe) {
-      const v = h.value;
-      if (v?._type === "video") {
-        const base = v.urlBase ?? VIDEO_BASE;
-        fetchVideoBlob(base + v.src);
-      } else if (v?._type === "image") {
-        const base = v.urlBase ?? IMAGE_BASE;
-        getImageEl(v.src, base);
-      }
+  const probe = screen.queryArc(0, 1);
+  for (const h of probe) {
+    const v = h.value;
+    if (v?._type === "video") {
+      const base = v.urlBase ?? VIDEO_BASE;
+      fetchVideoBlob(base + v.src);
+    } else if (v?._type === "image") {
+      const base = v.urlBase ?? IMAGE_BASE;
+      getImageEl(v.src, base);
     }
   }
-}
-
-function prewarmGrid(gp: GridPattern) {
-  for (const child of gp.children) prewarmBlobs(child);
-  for (const override of gp.overrides) {
-    if (override.type === 'set') prewarmBlobs(override.screen);
-  }
-}
-
-function applyGrid(gp: GridPattern) {
-  prewarmGrid(gp);
-  screens.push(gp);
-  console.log("grid screen added, screen count:", screens.length);
 }
 
 function setCps(cps: number) {
@@ -254,8 +236,8 @@ window.uzuEval = (code: string): string | null => {
       signal, steady,
     };
     const sigNames = Object.keys(signals);
-    new Function("mini", "color", "video", "image", "grid", "four", "setCps", ...sigNames, transpiled)(
-      mini, color, video, image, grid, four, setCps, ...Object.values(signals),
+    new Function("mini", "color", "video", "image", "grid", "gridStack", "four", "setCps", ...sigNames, transpiled)(
+      mini, color, video, image, grid, gridStack as any, four, setCps, ...Object.values(signals),
     );
     // Collect $: registered patterns; merge with .out() pushed screens
     const pScreens = collectScreens();
@@ -306,90 +288,69 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
   const t = cycleNum + cyclePos;
   const events = screen.queryArc(t, t + 0.001);
   if (!events.length) return;
-  const ev = events[0].value;
 
-  // resolve alpha from event
-  if (ev.alpha !== undefined) {
-    ctx.globalAlpha = Math.max(0, Math.min(1, Number(ev.alpha)));
-  }
+  for (let ei = 0; ei < events.length; ei++) {
+    const ev = events[ei].value;
+    const evIndex = screenIndex * 1000 + ei; // unique index per event for video state tracking
 
-  // resolve scale from event
-  const sx = ev.scaleX !== undefined ? Number(ev.scaleX) : 1;
-  const sy = ev.scaleY !== undefined ? Number(ev.scaleY) : 1;
-  const hasScale = sx !== 1 || sy !== 1;
-  if (hasScale) {
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.scale(sx, sy);
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-  }
+    // resolve position params
+    const px = ev.x !== undefined ? Number(ev.x) : 0;
+    const py = ev.y !== undefined ? Number(ev.y) : 0;
+    const pw = ev.width !== undefined ? Number(ev.width) : 1;
+    const ph = ev.height !== undefined ? Number(ev.height) : 1;
+    const hasPosition = px !== 0 || py !== 0 || pw !== 1 || ph !== 1;
 
-  if (ev._type === "color") {
-    const currentColor = parseColor(ev.color);
-    ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  } else if (ev._type === "image") {
-    const base = ev.urlBase ?? IMAGE_BASE;
-    const el = imagePool.get(base + ev.src);
-    if (el && el.naturalWidth > 0) {
-      const fitMode = ev.fit ?? "cover";
-      drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
+    if (hasPosition) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(px * canvas.width, py * canvas.height, pw * canvas.width, ph * canvas.height);
+      ctx.clip();
+      ctx.translate(px * canvas.width, py * canvas.height);
+      ctx.scale(pw, ph);
     }
-  } else if (ev._type === "video") {
-    const videoResult = renderVideoFrame({
-      ev,
-      videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
-      now, dt,
-      lastVideoVal: lastScreenVals[screenIndex] ?? null,
-      getOrCreateVideoEl: getVideoEl,
-    });
-    lastScreenVals[screenIndex] = videoResult.lastVideoVal;
-  } else if (screen instanceof GridPattern) {
-    renderGridScreen(screen, cyclePos, cycleNum, now, dt, videoKeyPrefix);
+
+    // resolve alpha from event
+    if (ev.alpha !== undefined) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, Number(ev.alpha)));
+    }
+
+    // resolve scale from event
+    const sx = ev.scaleX !== undefined ? Number(ev.scaleX) : 1;
+    const sy = ev.scaleY !== undefined ? Number(ev.scaleY) : 1;
+    const hasScale = sx !== 1 || sy !== 1;
+    if (hasScale) {
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(sx, sy);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
+
+    if (ev._type === "color") {
+      const currentColor = parseColor(ev.color);
+      ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    } else if (ev._type === "image") {
+      const base = ev.urlBase ?? IMAGE_BASE;
+      const el = imagePool.get(base + ev.src);
+      if (el && el.naturalWidth > 0) {
+        const fitMode = ev.fit ?? "cover";
+        drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
+      }
+    } else if (ev._type === "video") {
+      const videoResult = renderVideoFrame({
+        ev,
+        videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
+        now, dt,
+        lastVideoVal: lastScreenVals[evIndex] ?? null,
+        getOrCreateVideoEl: getVideoEl,
+      });
+      lastScreenVals[evIndex] = videoResult.lastVideoVal;
+    }
+
+    if (hasScale) ctx.restore();
+    ctx.globalAlpha = 1;
+    if (hasPosition) ctx.restore();
   }
-
-  if (hasScale) ctx.restore();
-  ctx.globalAlpha = 1;
-}
-
-function renderGridScreen(gridScreen: GridPattern, cyclePos: number, cycleNum: number, now: number, dt: number, parentKeyPrefix: string = "") {
-  const t = cycleNum + cyclePos;
-  const { cols, rows } = gridScreen.resolveGrid(t);
-  const totalCells = cols * rows;
-  const cellW = canvas.width / cols;
-  const cellH = canvas.height / rows;
-
-  // Grow cellState on demand for current grid size
-  while (gridScreen.cellState.length < totalCells) {
-    gridScreen.cellState.push(null);
-  }
-
-  // Temporarily redirect video state tracking to grid's cellState
-  const savedVals = lastScreenVals;
-  lastScreenVals = gridScreen.cellState;
-
-  for (let i = 0; i < totalCells; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(col * cellW, row * cellH, cellW, cellH);
-    ctx.clip();
-    ctx.translate(col * cellW, row * cellH);
-    ctx.scale(cellW / canvas.width, cellH / canvas.height);
-
-    // Resolve child and determine key prefix — overrides share a single element
-    const { child, overrideIndex } = gridScreen.resolveChildWithOverride(i, t);
-    const keyPrefix = overrideIndex >= 0
-      ? `${parentKeyPrefix}override${overrideIndex}:`
-      : `${parentKeyPrefix}cell${i}:`;
-    renderScreen(child, cyclePos, cycleNum, now, dt, i, keyPrefix);
-
-    ctx.restore();
-  }
-
-  lastScreenVals = savedVals;
 }
 
 function frame() {

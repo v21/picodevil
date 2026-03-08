@@ -389,6 +389,16 @@ function scaleArg(): string {
   return `"${miniOf(["0.5", "1", "1.5", "2", "-1", "0.25", "3"], 1, 3)}"`;
 }
 
+function posArg(): string {
+  if (maybe(0.3)) return continuousSignalExpr();
+  return `"${miniOf(["0", "0.25", "0.5", "0.75", "1"], 1, 2)}"`;
+}
+
+function dimArg(): string {
+  if (maybe(0.3)) return continuousSignalExpr();
+  return `"${miniOf(["0.25", "0.5", "0.75", "1"], 1, 2)}"`;
+}
+
 const IMAGE_METHODS: (() => MethodCall)[] = [
   () => { const a = alphaArg(); return { code: `.alpha(${a})`, desc: `alpha(${a})` }; },
   () => { const a = alphaArg(); return { code: `.opacity(${a})`, desc: `opacity(${a})` }; },
@@ -396,6 +406,11 @@ const IMAGE_METHODS: (() => MethodCall)[] = [
   () => { const a = scaleArg(); return { code: `.scaleX(${a})`, desc: `scaleX(${a})` }; },
   () => { const a = scaleArg(); return { code: `.scaleY(${a})`, desc: `scaleY(${a})` }; },
   () => { const a = scaleArg(); return { code: `.scale(${a})`, desc: `scale(${a})` }; },
+  () => { const a = posArg(); return { code: `.x(${a})`, desc: `x(${a})` }; },
+  () => { const a = posArg(); return { code: `.y(${a})`, desc: `y(${a})` }; },
+  () => { const a = dimArg(); return { code: `.width(${a})`, desc: `width(${a})` }; },
+  () => { const a = dimArg(); return { code: `.height(${a})`, desc: `height(${a})` }; },
+  () => { const i = randInt(0, 8); const c = randInt(1, 4); const r = randInt(1, 4); return { code: `.grid(${i}, ${c}, ${r})`, desc: `grid(${i},${c},${r})` }; },
 ];
 
 function imageChain(base: string): { code: string; desc: string } {
@@ -455,85 +470,34 @@ function generate(): { code: string; description: string; isVideo: boolean } {
 
   const r = Math.random();
 
-  // grid/four expression (~20% of the time)
-  if (r < 0.2) {
+  // grid/four/gridStack expression (~70% of the time)
+  if (r < 0.7) {
     const useGrid = maybe(0.5);
     const cols = useGrid ? randInt(2, 5) : 2;
     const rows = useGrid ? randInt(2, 5) : 2;
-    // Sometimes use mininotation for cols/rows (~20% of grid expressions)
-    const dynamicDims = useGrid && maybe(0.2);
-    const cols2 = dynamicDims ? randInt(2, 5) : cols;
-    const rows2 = dynamicDims ? randInt(2, 5) : rows;
-    const colsArg = dynamicDims ? `"${cols} ${cols2}"` : String(cols);
-    const rowsArg = dynamicDims ? `"${rows} ${rows2}"` : String(rows);
-    const maxCols = Math.max(cols, cols2);
-    const maxRows = Math.max(rows, rows2);
-    const nChildren = randInt(1, Math.min(maxCols * maxRows, 4));
+    const nChildren = randInt(1, Math.min(cols * rows, 4));
     const children: { code: string; desc: string; isVideo: boolean }[] = [];
     for (let i = 0; i < nChildren; i++) children.push(generateScreenExpr());
-    let hasVideo = children.some(c => c.isVideo);
+    const hasVideo = children.some(c => c.isVideo);
 
     const childrenCode = children.map(c => c.code).join(", ");
     let gridChain = "";
     let gridChainDesc = "";
     if (maybe(0.3)) { const a = alphaArg(); gridChain += `.alpha(${a})`; gridChainDesc += ` alpha(${a})`; }
     if (maybe(0.2)) { const a = scaleArg(); gridChain += `.scale(${a})`; gridChainDesc += ` scale(${a})`; }
-    // setI: override specific cell(s) with a different screen
-    if (maybe(0.3)) {
-      const totalCells = maxCols * maxRows;
-      const replacement = generateScreenExpr();
-      if (replacement.isVideo) hasVideo = true;
-      const r2 = Math.random();
-      let idxArg: string;
-      if (r2 < 0.3) {
-        // Dynamic pattern index (signal)
-        idxArg = `${continuousSignalExpr()}.range(0,${totalCells}).floor()`;
-        gridChainDesc += ` setI(signal)`;
-      } else if (r2 < 0.6 && totalCells > 1) {
-        // Mininotation stack "0,3"
-        idxArg = `"${randInt(0, totalCells - 1)},${randInt(0, totalCells - 1)}"`;
-        gridChainDesc += ` setI(${idxArg})`;
-      } else {
-        // Numeric literal
-        idxArg = String(randInt(0, totalCells - 1));
-        gridChainDesc += ` setI(${idxArg})`;
-      }
-      gridChain += `.setI(${idxArg}, ${replacement.code})`;
-    }
 
-    // modI: apply a modifier function to cells
-    if (maybe(0.2)) {
-      const totalCells = maxCols * maxRows;
-      const r2 = Math.random();
-      let idxArg: string;
-      if (r2 < 0.3) {
-        idxArg = `${continuousSignalExpr()}.range(0,${totalCells}).floor()`;
-        gridChainDesc += ` modI(signal)`;
-      } else if (r2 < 0.6 && totalCells > 1) {
-        idxArg = `"${randInt(0, totalCells - 1)},${randInt(0, totalCells - 1)}"`;
-        gridChainDesc += ` modI(${idxArg})`;
-      } else {
-        idxArg = String(randInt(0, totalCells - 1));
-        gridChainDesc += ` modI(${idxArg})`;
-      }
-      // Pick a random modifier: alpha, scale, or fit
-      const modR = Math.random();
-      let modFn: string;
-      if (modR < 0.4) {
-        modFn = `s => s.alpha(${alphaArg()})`;
-      } else if (modR < 0.7) {
-        modFn = `s => s.scale(${scaleArg()})`;
-      } else {
-        const fit = pick(["cover", "contain", "fill", "none"]);
-        modFn = `s => s.fit("${fit}")`;
-      }
-      gridChain += `.modI(${idxArg}, ${modFn})`;
-    }
-
-    if (useGrid) {
+    // Pick between grid(), gridStack(), and four()
+    const gridR = Math.random();
+    if (gridR < 0.33 && useGrid) {
       return {
-        code: `${cpsPrefix.code}grid([${childrenCode}], ${colsArg}, ${rowsArg})${gridChain}.out()`,
-        description: `${cpsPrefix.desc}grid(${colsArg}x${rowsArg}, ${nChildren} children)${gridChainDesc}`,
+        code: `${cpsPrefix.code}gridStack([${childrenCode}], ${cols}, ${rows})${gridChain}.out()`,
+        description: `${cpsPrefix.desc}gridStack(${cols}x${rows}, ${nChildren} children)${gridChainDesc}`,
+        isVideo: hasVideo,
+      };
+    } else if (useGrid) {
+      return {
+        code: `${cpsPrefix.code}grid([${childrenCode}], ${cols}, ${rows})${gridChain}.out()`,
+        description: `${cpsPrefix.desc}grid(${cols}x${rows}, ${nChildren} children)${gridChainDesc}`,
         isVideo: hasVideo,
       };
     } else {
@@ -545,7 +509,7 @@ function generate(): { code: string; description: string; isVideo: boolean } {
     }
   }
 
-  if (r < 0.35) {
+  if (r < 0.8) {
     // color expression
     const pat = miniOf(COLORS, 1, 6);
     let chain = "";

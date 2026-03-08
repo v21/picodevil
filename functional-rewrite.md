@@ -41,7 +41,7 @@ All other statements: pass through unchanged.
 
 Also rewrite double-quoted strings to `mini()` calls (matching Strudel's convention) — this is optional but nice for consistency.
 
-Dependencies: `acorn` (parser, ~30kb), `escodegen`
+Dependencies: `acorn` (parser, ~30kb), `astring`
 
 **Step 2: Runtime `.p()` method**
 
@@ -326,121 +326,98 @@ The video element's internal playhead is just a cache of "where we are" — the 
 
 ---
 
-## Part 4: Grid in the New Model
+## Part 4: Position-Based Layout (replaces GridPattern)
 
-### Grid children and overrides live in event values
+### Design: position params instead of a container
 
-No side-channel metadata. Grid children are Pattern objects embedded directly in event values. Strudel's combinators pass them through opaquely (they don't recurse into value objects):
+Instead of a special GridPattern container type, every pattern gets position parameters. Grid layout is just a helper that computes and sets those params.
+
+**Position controls** (all 0–1 relative to parent canvas, patternable via `createMixParam`):
+- `x` — left edge position (default: 0)
+- `y` — top edge position (default: 0)
+- `width` — width as fraction of canvas (default: 1)
+- `height` — height as fraction of canvas (default: 1)
+
+### `.grid(i, cols, rows)` — position helper
+
+Sugar that computes `x`/`y`/`width`/`height` from a cell index in a grid:
 
 ```ts
-function grid(children: Pattern[], cols: PatOrValue, rows: PatOrValue): Pattern {
-  const colsPat = asPat(cols);
-  const rowsPat = asPat(rows);
+Pattern.prototype.grid = function(i: number, cols: number, rows: number) {
+  const col = i % cols;
+  const row = Math.floor(i / cols);
+  return this.x(col / cols).y(row / rows).width(1 / cols).height(1 / rows);
+};
+```
 
-  return new Pattern((state) => {
-    const c = sampleAt(colsPat, state, 2);
-    const r = sampleAt(rowsPat, state, 2);
+Since it's just setting position params, it composes with everything else — `.grid(0, 2, 2).alpha(0.5)` works.
 
-    return [new Hap(undefined, state.span, {
-      _type: "grid",
-      cols: Math.max(1, Math.floor(c)),
-      rows: Math.max(1, Math.floor(r)),
-      children: children,
-      overrides: [],
-    })];
-  });
+### `stack()` — Strudel's built-in
+
+`stack()` from `@strudel/core` unions events from multiple patterns. Each child is independent. This replaces the GridPattern container entirely.
+
+### `gridStack([patterns], cols, rows)` — convenience helper
+
+Cycles children to fill all cells, applies `.grid(i, cols, rows)` to each, then stacks:
+
+```ts
+function gridStack(children: Pattern[], cols: number, rows: number): Pattern {
+  const totalCells = cols * rows;
+  const positioned = [];
+  for (let i = 0; i < totalCells; i++) {
+    const child = children[i % children.length];
+    positioned.push(child.grid(i, cols, rows));
+  }
+  return stack(...positioned);
 }
 
 function four(children: Pattern[]): Pattern {
-  return grid(children, 2, 2);
-}
-
-function sampleAt(pat: Pattern, state: any, fallback: number): number {
-  const haps = pat.query(state);
-  return haps.length ? Number(haps[0].value) : fallback;
+  return gridStack(children, 2, 2);
 }
 ```
 
-### setI / modI modify event values
+### Render loop: position params
 
-Since children and overrides are in the event value, `setI` and `modI` just compose a transform on the value:
-
-```ts
-Pattern.prototype.setI = function(index: PatOrValue, screen: Pattern) {
-  const indexPat = asPat(index);
-  return new Pattern((state) => {
-    const haps = this.query(state);
-    return haps.map(h => {
-      if (h.value?._type !== "grid") return h;
-      const idxHaps = indexPat.query(state);
-      const newOverrides = [...h.value.overrides];
-      for (const ih of idxHaps) {
-        newOverrides.push({ type: 'set', index: Math.floor(Number(ih.value)), screen });
-      }
-      return h.withValue(v => ({ ...v, overrides: newOverrides }));
-    });
-  });
-};
-
-Pattern.prototype.modI = function(index: PatOrValue, fn: (pat: Pattern) => Pattern) {
-  const indexPat = asPat(index);
-  return new Pattern((state) => {
-    const haps = this.query(state);
-    return haps.map(h => {
-      if (h.value?._type !== "grid") return h;
-      const idxHaps = indexPat.query(state);
-      const newOverrides = [...h.value.overrides];
-      for (const ih of idxHaps) {
-        newOverrides.push({ type: 'mod', index: Math.floor(Number(ih.value)), fn });
-      }
-      return h.withValue(v => ({ ...v, overrides: newOverrides }));
-    });
-  });
-};
-```
-
-### Grid rendering
-
-The render loop handles grid events by iterating cells, applying canvas transforms, and recursively querying/rendering each child pattern:
+The render loop checks for position params and applies clip + transform:
 
 ```ts
-function renderGrid(ev: any, state, ctx, canvas) {
-  const { cols, rows, children, overrides } = ev;
-  const totalCells = cols * rows;
-  const cellW = canvas.width / cols;
-  const cellH = canvas.height / rows;
+function renderScreen(ev, ...) {
+  const px = ev.x !== undefined ? Number(ev.x) : 0;
+  const py = ev.y !== undefined ? Number(ev.y) : 0;
+  const pw = ev.width !== undefined ? Number(ev.width) : 1;
+  const ph = ev.height !== undefined ? Number(ev.height) : 1;
+  const hasPosition = px !== 0 || py !== 0 || pw !== 1 || ph !== 1;
 
-  for (let i = 0; i < totalCells; i++) {
-    // Resolve child: apply overrides, fall back to cycling through children
-    let child = children[i % children.length];
-    for (const o of overrides) {
-      const wrapped = ((o.index % totalCells) + totalCells) % totalCells;
-      if (wrapped === i) {
-        if (o.type === 'set') child = o.screen;
-        else child = o.fn(child);
-      }
-    }
-
-    // Set up cell viewport
+  if (hasPosition) {
     ctx.save();
     ctx.beginPath();
-    ctx.rect((i % cols) * cellW, Math.floor(i / cols) * cellH, cellW, cellH);
+    ctx.rect(px * canvas.width, py * canvas.height, pw * canvas.width, ph * canvas.height);
     ctx.clip();
-    ctx.translate((i % cols) * cellW, Math.floor(i / cols) * cellH);
-    ctx.scale(cellW / canvas.width, cellH / canvas.height);
-
-    // Query child pattern at current state and render
-    const childEvents = child.queryArc(t, t + 0.001);
-    for (const ce of childEvents) {
-      renderScreen(ce.value, ce, ctx, canvas, ...);
-    }
-
-    ctx.restore();
+    ctx.translate(px * canvas.width, py * canvas.height);
+    ctx.scale(pw, ph);
   }
+
+  // ... render color/video/image as before ...
+
+  if (hasPosition) ctx.restore();
 }
 ```
 
-Grid children are themselves Patterns — they compose normally with all controls and combinators.
+### What this eliminates
+
+- **GridPattern class** — deleted entirely
+- **`setI` / `modI`** — unnecessary; just modify the child pattern before stacking
+- **Grid-specific render code** — position is handled generically for all patterns
+- **`screen-pattern.ts`** — GridPattern was the last user; can be deleted
+- **Per-cell video state tracking** — each stacked pattern is independent, gets its own render slot naturally
+- **`instanceof` checks** — no more special container dispatch
+
+### What this enables
+
+- **Non-grid layouts** — any pattern can have arbitrary position
+- **Nesting is free** — positions compose (a grid cell can itself be positioned)
+- **`px` units later** — extend to `"100px"` values, resolve against canvas size at render time
+- **Position is patternable** — `video("clip.mp4").x(sine)` moves the video across the screen
 
 ---
 
@@ -531,16 +508,20 @@ Do this in order. Each step is independently shippable and testable.
 - Remove VideoPattern class
 - **Test:** video patterns render identically
 
-### Step 6: Convert GridPattern
-- `grid(children, cols, rows)` returns a Pattern with children and overrides in event values
-- `setI`, `modI` as methods on Pattern that modify event values
-- Remove GridPattern class
-- **Test:** grid rendering, cell cycling, overrides all work
+### Step 6: Replace GridPattern with position params
+- Add `x`, `y`, `width`, `height` as `createMixParam` controls in `visual-controls.ts`
+- Add `.grid(i, cols, rows)` helper on Pattern.prototype — sets x/y/width/height
+- Add `gridStack(children, cols, rows)` and `four(children)` as standalone functions
+- Update render loop: if position params present, clip + translate + scale before drawing
+- Render loop now handles multiple events per screen (stacked patterns produce multiple events per query)
+- Delete `grid-pattern.ts`, remove GridPattern from main.ts
+- Remove `setI`, `modI`, `resolveGrid`, `resolveChild` — no longer needed
+- **Test:** position params render correctly, gridStack produces correct layout, four() works
 
-### Step 7: Remove ScreenPattern base class and overlay()
-- All screen types are now plain Patterns with `_type` values and `set.mix`-composed controls
-- `overlay()` combinator is gone — `set.mix` replaces it
-- `screen-pattern.ts` deleted
+### Step 7: Remove ScreenPattern base class
+- GridPattern was the last user — now deleted in Step 6
+- Delete `screen-pattern.ts`
+- Remove all `ScreenPattern` imports from main.ts (`.p()` injection moves to Pattern.prototype only)
 - **Test:** full test suite passes
 
 ### Step 8: Add Fraction-based time
@@ -569,7 +550,7 @@ Do this in order. Each step is independently shippable and testable.
 | `src/color-pattern.ts`      | DELETE after step 3                                                                         |
 | `src/image-pattern.ts`      | DELETE after step 4                                                                         |
 | `src/video-pattern.ts`      | DELETE after step 5                                                                         |
-| `src/grid-pattern.ts`       | DELETE after step 6                                                                         |
+| `src/grid-pattern.ts`       | DELETE in step 6 — replaced by position params + gridStack helper                           |
 | `src/draw-fit.ts`           | No change                                                                                   |
 | `src/time-value.ts`         | No change                                                                                   |
 | `src/config.ts`             | No change                                                                                   |
@@ -616,4 +597,4 @@ When both values are objects (our `{ _type, src, speed, ... }` bags), `unionWith
 
 3. **Name collisions with Strudel's built-in controls.** Strudel already has `speed` registered as an audio control. We either: (a) reuse it (our values merge with audio values in the same event bag — fine if we namespace with `_type`), (b) use different names (`vspeed`?), or (c) override it. Option (a) is cleanest — Strudel's `speed` already does `{ speed: value }` in the event, which is exactly what we want.
 
-4. **Grid per-cell video state.** Each grid cell needs its own `VideoSlotState` for value-comparison tracking. Keyed by cell index, grown on demand as grid size changes. This is render-side state, not pattern state.
+4. **Grid per-cell video state.** No longer needed — with position-based layout via `stack()`, each pattern in the stack is a separate screen with its own render slot. Video state tracking happens naturally per-screen.

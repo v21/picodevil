@@ -88,6 +88,21 @@ i guess if there's randomness in the pattern for each, that would get evaluated 
 
 
 
+maybe grid is the wrong way to think about this
+maybe we want... like, stack takes an array of patterns, and runs them all independently
+so we want to stack stuff, but also set positions 
+and set positions in a way where we can override them
+or maybe just draw on top of them rather than overriding them?
+so what if `grid(i, w, h)` was on a pattern, and draws it on screen in the place that it would be in a grid of w x h - just setting pure positional stuff on them
+and then a `gridStack([patterns], w, h)` which takes patterns, repeats it til it's w x h long, then sets `grid` on each element so that it draws in the right place
+and junk setI and modI entirely
+or, i guess... that could be a config extra param on `gridStack`?
+
+anyway, i guess the first step to this would be that screens have position parameters - some resolved combo of `left` `top` `width`, `x` (which sets the center) etc. and then the `grid` and `gridStack` stuff is helpers on that
+ 
+
+
+
 
 ## claude strudel comparison
 
