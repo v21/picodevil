@@ -62,7 +62,7 @@ draw a tree of current render state, and update that as we iterate through time.
 
 
 # small things
-- where are we injecting p() ? is ti the right place
+/ where are we injecting p() ? is ti the right place
 / scale can just call scaleX and scaleY
 - once we've moved stuff across - do a pass on what's cruft left from the migration
 - run full test suite each time before offering to commit

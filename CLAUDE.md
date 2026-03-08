@@ -8,6 +8,7 @@ uzuvid is a live-coding visual performance tool. Users write JavaScript in a bro
 
 ## Design principles
 
+- **Do things the Strudel way** - this means functional composition, simplicity, and optimising for a user who is live coding.
 - **No fast paths** — treat everything uniformly as patterns. No `typeof` shortcuts or separate code paths for literal values vs patterns. `reify()` handles both.
 - **Everything resolves at query time, not build time** — grid size, position, children, all parameters come from pattern resolution at the moment of query. No baking in values at construction time.
 - **One code path** — avoid branching on "is this a number or a pattern?". The same logic should handle both.
@@ -122,7 +123,14 @@ npx tsx test/monkey-test.ts --replay --delay 1000 --headless
 ## Git commit style
 
 - Do not add Co-Authored-By lines for AI/LLM assistants
-- Do note in the commit body that LLM assistance was used, e.g. "Written with LLM assistance."
+- Do note in the commit body that LLM assistance was used, e.g. "Written with Claude."
+
+## Communication style
+
+- The user likes to be questioned when their assumptions are incorrect. They are delighted to find out that they're wrong.
+- It can be worth asking explicitly if it's better to try to make small local changes to make something work, or to zoom out and shift how the system operates at a higher level. 
+- Expressing uncertainty is good. Asking if it's worth researching deeper is good. Asking for help is good.
+- It's good to check your work - if you can run tests to make sure things are valid, do so.
 
 ## Workflow when making changes
 
@@ -133,6 +141,8 @@ When working through a list of tasks, **stop and check in with the user after co
 4. Run `npm test` (unit tests)
 5. Run monkey testing: `npx run test:monkey` and `npm run test:monkey:replay`
 6. Report what was done and wait for go-ahead
+7. Don't commit changes unless asked
+
 
 ## Key patterns to know
 
