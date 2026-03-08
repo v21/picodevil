@@ -2,6 +2,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Prec } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
+import { onWarnings } from "./warnings";
 
 declare global {
   interface Window {
@@ -19,6 +20,10 @@ export function setupEditor(parent: HTMLElement): EditorView {
   errorEl.className = "uzu-error";
   parent.appendChild(errorEl);
 
+  const warnEl = document.createElement("div");
+  warnEl.className = "uzu-warning";
+  parent.appendChild(warnEl);
+
   function showError(msg: string | null) {
     if (msg) {
       errorEl.textContent = msg;
@@ -28,6 +33,18 @@ export function setupEditor(parent: HTMLElement): EditorView {
       errorEl.style.display = "none";
     }
   }
+
+  // Show runtime warnings (deduped, auto-clear on next eval)
+  let warnTimeout: ReturnType<typeof setTimeout> | null = null;
+  onWarnings((msgs) => {
+    warnEl.textContent = msgs.join("\n");
+    warnEl.style.display = "block";
+    // Auto-hide after 5s if no new warnings
+    if (warnTimeout) clearTimeout(warnTimeout);
+    warnTimeout = setTimeout(() => {
+      warnEl.style.display = "none";
+    }, 5000);
+  });
 
   const evalKeymap = Prec.highest(keymap.of([
     {

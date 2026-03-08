@@ -21,6 +21,7 @@ import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
 import { transpile } from "./transpiler";
+import { warn, flushWarnings, clearWarnings } from "./warnings";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -192,6 +193,8 @@ function setCps(cps: number) {
 window.uzuEval = (code: string): string | null => {
   clearVideos();
   clearImages();
+  clearWarnings();
+  if (typeof window !== "undefined") (window as any).uzuWarnings = [];
   screens = [];
   lastScreenVals = [];
   pPatterns = {};
@@ -260,11 +263,29 @@ let lastScreenVals: (string | null)[] = [];
 
 function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, videoKeyPrefix: string = "") {
   const t = cycleNum + cyclePos;
-  const events = screen.queryArc(t, t + 0.001);
+  let events: any[];
+  try {
+    events = screen.queryArc(t, t + 0.001);
+  } catch (e) {
+    warn(`queryArc failed on screen ${screenIndex}: ${e instanceof Error ? e.message : e}`);
+    return;
+  }
+  if (!events || !Array.isArray(events)) {
+    warn(`screen ${screenIndex}: queryArc returned non-array: ${typeof events}`);
+    return;
+  }
   if (!events.length) return;
 
   for (let ei = 0; ei < events.length; ei++) {
-    const ev = events[ei].value;
+    const ev = events[ei]?.value;
+    if (ev == null || typeof ev !== "object") {
+      warn(`screen ${screenIndex} event ${ei}: expected object value, got ${typeof ev}`);
+      continue;
+    }
+    if (!ev._type) {
+      warn(`screen ${screenIndex} event ${ei}: missing _type (got keys: ${Object.keys(ev).join(",")})`);
+      continue;
+    }
     const evIndex = screenIndex * 1000 + ei; // unique index per event for video state tracking
 
     // resolve position params
@@ -272,6 +293,11 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
     const py = ev.y !== undefined ? Number(ev.y) : 0;
     const pw = ev.width !== undefined ? Number(ev.width) : 1;
     const ph = ev.height !== undefined ? Number(ev.height) : 1;
+    if (isNaN(px) || isNaN(py) || isNaN(pw) || isNaN(ph)) {
+      warn(`screen ${screenIndex} event ${ei}: NaN in position (x=${ev.x}, y=${ev.y}, w=${ev.width}, h=${ev.height})`);
+      continue;
+    }
+
     const hasPosition = px !== 0 || py !== 0 || pw !== 1 || ph !== 1;
 
     if (hasPosition) {
@@ -285,7 +311,12 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
 
     // resolve alpha from event
     if (ev.alpha !== undefined) {
-      ctx.globalAlpha = Math.max(0, Math.min(1, Number(ev.alpha)));
+      const a = Number(ev.alpha);
+      if (isNaN(a)) {
+        warn(`screen ${screenIndex} event ${ei}: NaN alpha (raw=${ev.alpha})`);
+      } else {
+        ctx.globalAlpha = Math.max(0, Math.min(1, a));
+      }
     }
 
     // resolve scale from event
@@ -299,26 +330,32 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
     }
 
-    if (ev._type === "color") {
-      const currentColor = parseColor(ev.color);
-      ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    } else if (ev._type === "image") {
-      const base = ev.urlBase ?? IMAGE_BASE;
-      const el = imagePool.get(base + ev.src);
-      if (el && el.naturalWidth > 0) {
-        const fitMode = ev.fit ?? "cover";
-        drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
+    try {
+      if (ev._type === "color") {
+        const currentColor = parseColor(ev.color);
+        ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      } else if (ev._type === "image") {
+        const base = ev.urlBase ?? IMAGE_BASE;
+        const el = imagePool.get(base + ev.src);
+        if (el && el.naturalWidth > 0) {
+          const fitMode = ev.fit ?? "cover";
+          drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
+        }
+      } else if (ev._type === "video") {
+        const videoResult = renderVideoFrame({
+          ev,
+          videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
+          now, dt,
+          lastVideoVal: lastScreenVals[evIndex] ?? null,
+          getOrCreateVideoEl: getVideoEl,
+        });
+        lastScreenVals[evIndex] = videoResult.lastVideoVal;
+      } else {
+        warn(`screen ${screenIndex} event ${ei}: unknown _type "${ev._type}"`);
       }
-    } else if (ev._type === "video") {
-      const videoResult = renderVideoFrame({
-        ev,
-        videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
-        now, dt,
-        lastVideoVal: lastScreenVals[evIndex] ?? null,
-        getOrCreateVideoEl: getVideoEl,
-      });
-      lastScreenVals[evIndex] = videoResult.lastVideoVal;
+    } catch (e) {
+      warn(`screen ${screenIndex} event ${ei} draw error: ${e instanceof Error ? e.message : e}`);
     }
 
     if (hasScale) ctx.restore();
@@ -340,6 +377,7 @@ function frame() {
     renderScreen(screens[i], cyclePos, cycleNum, now, now - lastFrameTime, i);
   }
 
+  flushWarnings();
   lastFrameTime = now;
   requestAnimationFrame(frame);
 }

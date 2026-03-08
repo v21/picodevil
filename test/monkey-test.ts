@@ -594,6 +594,17 @@ async function runCase(
 
     await page.waitForTimeout(delayMs);
 
+    // Collect runtime warnings emitted during rendering
+    const runtimeWarnings: string[] = await page.evaluate(() => {
+      const w = (window as any).uzuWarnings ?? [];
+      return [...w];
+    }).catch(() => []);
+    if (runtimeWarnings.length > 0) {
+      for (const w of runtimeWarnings) {
+        caseErrors.push(`[runtime warning] ${w}`);
+      }
+    }
+
     const alive = await page.evaluate(() => {
       return document.getElementById("c") !== null;
     }).catch(() => false);
