@@ -15,7 +15,7 @@ import "./visual-controls";
 import { setupEditor } from "./editor";
 import { color as makeColor } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
-import { ImagePattern } from "./image-pattern";
+import { image as makeImage } from "./image-pattern";
 import { GridPattern } from "./grid-pattern";
 import { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
@@ -180,14 +180,8 @@ function getImageEl(name: string, base: string): HTMLImageElement {
   return el;
 }
 
-function image(pat: string): ImagePattern {
-  return ImagePattern.fromSrc(mini(pat), mini, applyImage);
-}
-
-function applyImage(ip: ImagePattern) {
-  prewarmBlobs(ip);
-  screens.push(ip);
-  console.log("image screen added, screen count:", screens.length);
+function image(pat: string) {
+  return makeImage(pat);
 }
 
 function clearImages() {
@@ -212,12 +206,18 @@ function prewarmBlobs(screen: Screen) {
     const base = screen.videoUrlBase ?? VIDEO_BASE;
     const probe = screen.srcPattern.queryArc(0, 1);
     for (const ev of probe) fetchVideoBlob(base + ev.value);
-  } else if (screen instanceof ImagePattern) {
-    const base = screen.imageUrlBase ?? IMAGE_BASE;
-    const probe = screen.srcPattern.queryArc(0, 1);
-    for (const ev of probe) getImageEl(ev.value, base);
   } else if (screen instanceof GridPattern) {
     prewarmGrid(screen);
+  } else if ('queryArc' in screen && !(screen instanceof ScreenPattern)) {
+    // Plain pattern — probe for image events to prewarm
+    const probe = screen.queryArc(0, 1);
+    for (const h of probe) {
+      const v = h.value;
+      if (v?._type === "image") {
+        const base = v.urlBase ?? IMAGE_BASE;
+        getImageEl(v.src, base);
+      }
+    }
   }
 }
 
@@ -335,11 +335,12 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
     const currentColor = parseColor(ev.color);
     ctx.fillStyle = `rgb(${currentColor[0] * 255}, ${currentColor[1] * 255}, ${currentColor[2] * 255})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-  } else if (screen instanceof ImagePattern) {
-    const base = screen.imageUrlBase ?? IMAGE_BASE;
+  } else if (ev._type === "image") {
+    const base = ev.urlBase ?? IMAGE_BASE;
     const el = imagePool.get(base + ev.src);
     if (el && el.naturalWidth > 0) {
-      drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, screen.fitMode);
+      const fitMode = ev.fit ?? "cover";
+      drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
     }
   } else if (screen instanceof VideoPattern) {
     const videoResult = renderVideoFrame({

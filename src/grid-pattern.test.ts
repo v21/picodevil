@@ -4,7 +4,7 @@ import { reify } from "@strudel/core";
 import { GridPattern } from "./grid-pattern";
 import { color } from "./color-pattern";
 import { VideoPattern } from "./video-pattern";
-import { ImagePattern } from "./image-pattern";
+import { image as makeImage } from "./image-pattern";
 import "./visual-controls";
 
 function video(pat: string) {
@@ -12,7 +12,12 @@ function video(pat: string) {
 }
 
 function image(pat: string) {
-  return ImagePattern.fromSrc(mini(pat), mini);
+  return makeImage(pat);
+}
+
+function isImageScreen(screen: any): boolean {
+  const evs = screen.queryArc(0, 1);
+  return evs.length > 0 && evs[0].value?._type === "image";
 }
 
 /** Check if a screen produces color events (plain Pattern with _type: "color"). */
@@ -58,12 +63,12 @@ describe("GridPattern", () => {
     const g = new GridPattern([c, v, img], 3, 1, mini);
     expect(g.children[0]).toSatisfy(isColorScreen);
     expect(g.children[1]).toBeInstanceOf(VideoPattern);
-    expect(g.children[2]).toBeInstanceOf(ImagePattern);
+    expect(g.children[2]).toSatisfy(isImageScreen);
   });
 
   it("inherits ScreenPattern methods (alpha, fit, scale)", () => {
     const g = new GridPattern([color("red")], 2, 2, mini);
-    const g2 = g.alpha("0.5").fit("contain").scale("2");
+    const g2 = g.alpha(0.5).fit("contain").scale(2);
     const evs = g2.queryArc(0, 1);
     expect(evs[0].value.alpha).toBe(0.5);
     expect(g2.fitMode).toBe("contain");
@@ -73,7 +78,7 @@ describe("GridPattern", () => {
 
   it("cloning preserves grid properties", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
-    const g2 = g.alpha("0.5");
+    const g2 = g.alpha(0.5);
     expect(g2.resolveGrid(0)).toEqual({ cols: 2, rows: 1 });
     expect(g2.children).toHaveLength(2);
   });
@@ -129,13 +134,13 @@ describe("GridPattern", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
     const g2 = g.setI("1", image("pic.png"));
     expect(g2.resolveChild(0, 0.1)).toSatisfy(isColorScreen);
-    expect(g2.resolveChild(1, 0.1)).toBeInstanceOf(ImagePattern);
+    expect(g2.resolveChild(1, 0.1)).toSatisfy(isImageScreen);
     expect(g2.resolveChild(2, 0.1)).toSatisfy(isColorScreen);
   });
 
   it("setI preserves grid-level alpha and fit", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini)
-      .alpha("0.5").fit("contain");
+      .alpha(0.5).fit("contain");
     const g2 = g.setI(0, video("clip.mp4"));
     expect(g2.queryArc(0, 1)[0].value.alpha).toBe(0.5);
     expect(g2.fitMode).toBe("contain");
@@ -145,7 +150,7 @@ describe("GridPattern", () => {
   it("setI with numeric index works", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
     const g2 = g.setI(2, image("pic.png"));
-    expect(g2.resolveChild(2, 0.1)).toBeInstanceOf(ImagePattern);
+    expect(g2.resolveChild(2, 0.1)).toSatisfy(isImageScreen);
   });
 
   it("setI with Pattern stores override", () => {
@@ -177,7 +182,7 @@ describe("GridPattern", () => {
     expect(g2.overrides).toHaveLength(2);
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
     expect(g2.resolveChild(1, 0.1)).toSatisfy(isColorScreen);
-    expect(g2.resolveChild(2, 0.1)).toBeInstanceOf(ImagePattern);
+    expect(g2.resolveChild(2, 0.1)).toSatisfy(isImageScreen);
   });
 
   it("setI with '0,3' (stack) overrides both simultaneously", () => {
@@ -192,14 +197,14 @@ describe("GridPattern", () => {
 
   it("modI with number resolves at query time", () => {
     const g = new GridPattern([video("a.mp4"), video("b.mp4"), video("c.mp4")], 3, 1, mini);
-    const g2 = g.modI(0, s => s.alpha("0.5"));
+    const g2 = g.modI(0, s => s.alpha(0.5));
     expect(g2.resolveChild(0, 0.1).queryArc(0, 1)[0].value.alpha).toBe(0.5);
     expect(g2.resolveChild(1, 0.1).queryArc(0, 1)[0].value.alpha).toBeUndefined();
   });
 
   it("modI with mininotation applies to multiple indices", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini);
-    const g2 = g.modI("0,2", s => s.alpha("0.3"));
+    const g2 = g.modI("0,2", s => s.alpha(0.3));
     expect(g2.resolveChild(0, 0.5).queryArc(0, 1)[0].value.alpha).toBe(0.3);
     expect(g2.resolveChild(1, 0.5).queryArc(0, 1)[0].value.alpha).toBeUndefined();
     expect(g2.resolveChild(2, 0.5).queryArc(0, 1)[0].value.alpha).toBe(0.3);
@@ -207,21 +212,21 @@ describe("GridPattern", () => {
 
   it("modI is immutable", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
-    const g2 = g.modI(0, s => s.alpha("0.5"));
+    const g2 = g.modI(0, s => s.alpha(0.5));
     expect(g.resolveChild(0, 0.1).queryArc(0, 1)[0].value.alpha).toBeUndefined();
     expect(g2.resolveChild(0, 0.1).queryArc(0, 1)[0].value.alpha).toBe(0.5);
   });
 
   it("modI with Pattern stores override", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
-    const g2 = g.modI(mini("0"), s => s.alpha("0.5"));
+    const g2 = g.modI(mini("0"), s => s.alpha(0.5));
     expect(g2.overrides).toHaveLength(1);
     expect(g2.overrides[0].type).toBe("mod");
   });
 
   it("modI with Pattern resolves at query time", () => {
     const g = new GridPattern([video("a.mp4"), video("b.mp4"), video("c.mp4")], 3, 1, mini);
-    const g2 = g.modI(mini("0 2"), s => s.alpha("0.7"));
+    const g2 = g.modI(mini("0 2"), s => s.alpha(0.7));
     expect(g2.resolveChild(0, 0.1).queryArc(0, 1)[0].value.alpha).toBe(0.7);
     expect(g2.resolveChild(1, 0.1).queryArc(0, 1)[0].value.alpha).toBeUndefined();
     expect(g2.resolveChild(2, 0.6).queryArc(0, 1)[0].value.alpha).toBe(0.7);
@@ -229,7 +234,7 @@ describe("GridPattern", () => {
 
   it("modI and setI can be chained", () => {
     const g = new GridPattern([color("red"), color("blue"), color("green")], 3, 1, mini);
-    const g2 = g.setI(mini("0"), video("clip.mp4")).modI(mini("1"), s => s.alpha("0.5"));
+    const g2 = g.setI(mini("0"), video("clip.mp4")).modI(mini("1"), s => s.alpha(0.5));
     expect(g2.overrides).toHaveLength(2);
     expect(g2.resolveChild(0, 0.1)).toBeInstanceOf(VideoPattern);
     expect(g2.resolveChild(1, 0.1).queryArc(0, 1)[0].value.alpha).toBe(0.5);
@@ -237,14 +242,14 @@ describe("GridPattern", () => {
 
   it("modI with Pattern is immutable", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
-    const g2 = g.modI(mini("0"), s => s.alpha("0.5"));
+    const g2 = g.modI(mini("0"), s => s.alpha(0.5));
     expect(g.overrides).toHaveLength(0);
     expect(g2.overrides).toHaveLength(1);
   });
 
   it("setI then modI on same index: mod applies to the replaced screen", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
-    const g2 = g.setI(mini("0"), video("clip.mp4")).modI(mini("0"), s => s.alpha("0.7"));
+    const g2 = g.setI(mini("0"), video("clip.mp4")).modI(mini("0"), s => s.alpha(0.7));
     const child = g2.resolveChild(0, 0.1);
     expect(child).toBeInstanceOf(VideoPattern);
     expect(child.queryArc(0, 1)[0].value.alpha).toBe(0.7);
@@ -252,7 +257,7 @@ describe("GridPattern", () => {
 
   it("multiple modI on same index stack", () => {
     const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
-    const g2 = g.modI(mini("0"), s => s.alpha("0.5")).modI(mini("0"), s => s.scale("2"));
+    const g2 = g.modI(mini("0"), s => s.alpha(0.5)).modI(mini("0"), s => s.scale(2));
     const child = g2.resolveChild(0, 0.1);
     const ev = child.queryArc(0, 1)[0].value;
     expect(ev.alpha).toBe(0.5);
@@ -295,7 +300,7 @@ describe("GridPattern", () => {
 
   it("dynamic cols/rows preserves through cloning (alpha etc.)", () => {
     const g = new GridPattern([color("red")], "2 3", 2, mini);
-    const g2 = g.alpha("0.5");
+    const g2 = g.alpha(0.5);
     expect(g2.resolveGrid(0.1)).toEqual({ cols: 2, rows: 2 });
     expect(g2.resolveGrid(0.6)).toEqual({ cols: 3, rows: 2 });
   });
@@ -332,7 +337,7 @@ describe("GridPattern", () => {
     const g = new GridPattern(
       [color("red"), color("blue"), color("green"), color("yellow")], 2, 2, mini
     );
-    const g2 = g.modI(mini("4"), s => s.alpha("0.5"));
+    const g2 = g.modI(mini("4"), s => s.alpha(0.5));
     expect(g2.resolveChild(0, 0.1).queryArc(0, 1)[0].value.alpha).toBe(0.5);
     expect(g2.resolveChild(1, 0.1).queryArc(0, 1)[0].value.alpha).toBeUndefined();
   });

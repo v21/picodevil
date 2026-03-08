@@ -35,16 +35,16 @@ describe("transpiler", () => {
 
     it("preserves the expression body", () => {
       const result = transpile('$: video("clip.mp4").speed("0.5 1")');
-      expect(norm(result)).toContain("video('clip.mp4')");
-      expect(norm(result)).toContain(".speed('0.5 1')");
+      expect(norm(result)).toContain("video(mini('clip.mp4'))");
+      expect(norm(result)).toContain(".speed(mini('0.5 1'))");
     });
 
     it("handles multiple labeled statements", () => {
       const code = `$: color("red")
 $: video("clip.mp4")`;
       const result = norm(transpile(code));
-      expect(result).toContain("color('red').p('$')");
-      expect(result).toContain("video('clip.mp4').p('$')");
+      expect(result).toContain("color(mini('red')).p('$')");
+      expect(result).toContain("video(mini('clip.mp4')).p('$')");
     });
 
     it("passes through non-labeled statements", () => {
@@ -62,6 +62,25 @@ let y = 2`;
       expect(result).toContain(".p('$')");
       expect(result).toContain('x');
       expect(result).toContain('y');
+    });
+  });
+
+  describe("double-quoted string rewriting", () => {
+    it("rewrites double-quoted strings to mini() calls", () => {
+      const result = norm(transpile('color("red")'));
+      expect(result).toContain("color(mini('red'))");
+    });
+
+    it("leaves single-quoted strings as-is", () => {
+      const result = transpile("color('red')");
+      expect(norm(result)).toContain("color('red')");
+      expect(norm(result)).not.toContain("mini(");
+    });
+
+    it("handles mixed quotes", () => {
+      const result = norm(transpile(`image("a.png").urlBase('https://x.com/')`));
+      expect(result).toContain("image(mini('a.png'))");
+      expect(result).toContain(".urlBase('https://x.com/')");
     });
   });
 

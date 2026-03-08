@@ -263,7 +263,7 @@ function continuousSignalExpr(): string {
   const sig = pick(CONTINUOUS_SIGNALS);
   const parts: string[] = [sig];
   if (maybe(0.3)) {
-    parts.push(`.lerp("${pick(EASING_CURVES)}", "${pick(EASING_DIRS)}")`);
+    parts.push(`.lerp('${pick(EASING_CURVES)}', '${pick(EASING_DIRS)}')`);
   } else if (maybe(0.2)) {
     parts.push(`.spline(${randFloat(0.1, 1.0).toFixed(2)})`);
   }
@@ -401,7 +401,7 @@ const IMAGE_METHODS: (() => MethodCall)[] = [
 function imageChain(base: string): { code: string; desc: string } {
   const methods: MethodCall[] = [];
   // always add urlBase since images need it to resolve
-  methods.push({ code: `.urlBase("${base}")`, desc: `urlBase(...)` });
+  methods.push({ code: `.urlBase('${base}')`, desc: `urlBase(...)` });
   while (maybe(0.4)) {
     methods.push(pick(IMAGE_METHODS)());
   }

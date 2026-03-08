@@ -9,7 +9,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { mini } from "@strudel/mini";
 import { color as makeColor } from "./color-pattern";
 import "./visual-controls";
-import { ImagePattern } from "./image-pattern";
+import { image as makeImage } from "./image-pattern";
 import { VideoPattern } from "./video-pattern";
 import { GridPattern } from "./grid-pattern";
 import { drawFit } from "./draw-fit";
@@ -100,11 +100,12 @@ function renderScreen(
     const [r, g, b] = parseColor(ev.color);
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-  } else if (screen instanceof ImagePattern) {
-    const base = screen.imageUrlBase ?? TEST_BASE;
+  } else if (ev._type === "image") {
+    const base = ev.urlBase ?? TEST_BASE;
     const imgEl = (opts.imagePool ?? imagePool).get(base + ev.src);
     if (imgEl && imgEl.naturalWidth > 0) {
-      drawFit(ctx, imgEl, imgEl.naturalWidth, imgEl.naturalHeight, canvas.width, canvas.height, screen.fitMode);
+      const fitMode = ev.fit ?? "cover";
+      drawFit(ctx, imgEl, imgEl.naturalWidth, imgEl.naturalHeight, canvas.width, canvas.height, fitMode);
     }
   } else if (screen instanceof VideoPattern) {
     const pool = (opts.videoPool ?? new Map()) as Map<string, any>;
@@ -187,8 +188,8 @@ function color(pat: string) {
   return makeColor(pat);
 }
 
-function image(pat: string): ImagePattern {
-  return ImagePattern.fromSrc(mini(pat), mini).urlBase(TEST_BASE);
+function image(pat: string) {
+  return makeImage(pat).urlBase(TEST_BASE);
 }
 
 function video(pat: string): VideoPattern {
@@ -230,7 +231,7 @@ describe("visual rendering", () => {
       const { canvas, ctx } = makeCanvas();
       ctx.fillStyle = "white";
       ctx.fillRect(0, 0, W, H);
-      renderScreen(ctx, canvas, color("red").alpha("0.5"), 0);
+      renderScreen(ctx, canvas, color("red").alpha(0.5), 0);
       const [r, g, b] = pixel(ctx, 50, 50);
       expect(r).toBeGreaterThan(200);
       expect(g).toBeGreaterThan(100);
@@ -243,7 +244,7 @@ describe("visual rendering", () => {
       const { canvas, ctx } = makeCanvas();
       ctx.fillStyle = "white";
       ctx.fillRect(0, 0, W, H);
-      renderScreen(ctx, canvas, color("red").alpha("0"), 0);
+      renderScreen(ctx, canvas, color("red").alpha(0), 0);
       const [r, g, b] = pixel(ctx, 50, 50);
       expect(r).toBe(255);
       expect(g).toBe(255);
@@ -258,7 +259,7 @@ describe("visual rendering", () => {
     });
 
     it("semi-transparent overlay blends", () => {
-      const { ctx } = render([color("red"), color("blue").alpha("0.5")]);
+      const { ctx } = render([color("red"), color("blue").alpha(0.5)]);
       const [r, g, b] = pixel(ctx, 50, 50);
       expect(r).toBeGreaterThan(100);
       expect(r).toBeLessThan(160);
@@ -344,7 +345,7 @@ describe("visual rendering", () => {
     it("scaleX 0.5 leaves edges transparent", () => {
       const { canvas, ctx } = makeCanvas();
       ctx.clearRect(0, 0, W, H);
-      renderScreen(ctx, canvas, color("red").scaleX("0.5"), 0);
+      renderScreen(ctx, canvas, color("red").scaleX(0.5), 0);
       expect(pixel(ctx, 50, 50)).toEqual([255, 0, 0, 255]);
       const [, , , a] = pixel(ctx, 1, 50);
       expect(a).toBe(0);
@@ -400,7 +401,7 @@ describe("visual rendering", () => {
       const { canvas, ctx } = makeCanvas();
       ctx.fillStyle = "white";
       ctx.fillRect(0, 0, W, H);
-      renderScreen(ctx, canvas, image("red.png").alpha("0.5"), 0, { imagePool: pool });
+      renderScreen(ctx, canvas, image("red.png").alpha(0.5), 0, { imagePool: pool });
       const [r, g, b] = pixel(ctx, 50, 50);
       // Red blended with white at ~50%
       expect(r).toBeGreaterThan(200);
@@ -472,7 +473,7 @@ describe("visual rendering", () => {
       const { canvas, ctx } = makeCanvas();
       ctx.fillStyle = "white";
       ctx.fillRect(0, 0, W, H);
-      renderScreen(ctx, canvas, video("red.mp4").alpha("0.5"), 0, { videoPool: pool as any });
+      renderScreen(ctx, canvas, video("red.mp4").alpha(0.5), 0, { videoPool: pool as any });
       const [r, g] = pixel(ctx, 50, 50);
       expect(r).toBeGreaterThan(200);
       expect(g).toBeGreaterThan(50);

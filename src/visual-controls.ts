@@ -6,23 +6,16 @@
  * get sampled at the exact frame time rather than the event's onset.
  */
 import { reify, Pattern } from "@strudel/core";
-import { mini } from "@strudel/mini";
 
 const PatternProto = Object.getPrototypeOf(reify(0));
-
-/** Reify a value: strings go through mini(), everything else through reify(). */
-function asPattern(value: any) {
-  if (typeof value === "string") return mini(value);
-  return reify(value);
-}
 
 function createMixParam(name: string) {
   const withVal = (v: any) => ({ [name]: v });
 
   const func = function (value: any, pat?: any) {
-    if (!pat) return asPattern(value).withValue(withVal);
+    if (!pat) return reify(value).withValue(withVal);
     if (value === undefined) return pat.fmap(withVal);
-    return pat.set.mix(asPattern(value).withValue(withVal));
+    return pat.set.mix(reify(value).withValue(withVal));
   };
 
   PatternProto[name] = function (value: any) {
@@ -41,7 +34,7 @@ export const fit = createMixParam("fit");
 
 // scale sets both scaleX and scaleY
 PatternProto.scale = function (value: any) {
-  const p = asPattern(value).withValue((v: any) => ({ scaleX: v, scaleY: v }));
+  const p = reify(value).withValue((v: any) => ({ scaleX: v, scaleY: v }));
   return this.set.mix(p);
 };
 
@@ -50,3 +43,6 @@ export const speed = createMixParam("speed");
 export const start = createMixParam("start");
 export const end = createMixParam("end");
 export const duration = createMixParam("duration");
+
+// URL base control (image/video)
+export const urlBase = createMixParam("urlBase");
