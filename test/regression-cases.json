@@ -1,0 +1,10 @@
+[
+  {
+    "code": "$: color(\"red\").alpha(sine.sec())",
+    "description": ".sec() on continuous signals produces TimeValue strings that fail Number() parsing",
+    "errors": [
+      "[runtime warning] screen 0 event 0: NaN alpha (raw=0.706329669535454sec)"
+    ],
+    "timestamp": "2026-03-08T22:16:08.366Z"
+  }
+]

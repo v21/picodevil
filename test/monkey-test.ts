@@ -5,11 +5,10 @@
  * fails, fast-check reduces the failing input to a minimal reproduction.
  *
  * Usage:
- *   1. Start the video server:  cd server && npm start
- *   2. Run:  npx tsx test/monkey-test.ts [--rounds 50] [--delay 2000] [--headless]
- *   3. Replay failures: npx tsx test/monkey-test.ts --replay [--delay 2000] [--headless]
+ *   1. Run:  npx tsx test/monkey-test.ts [--rounds 50] [--delay 2000] [--headless]
+ *   2. Replay failures: npx tsx test/monkey-test.ts --replay [--delay 2000] [--headless]
  *
- * Failed tests (already shrunk) are saved to monkey-failures.json and
+ * Failed tests (already shrunk) are saved to regression-cases.json and
  * can be replayed as a conformance suite.
  */
 
@@ -30,7 +29,7 @@ const DELAY_MS = parseInt(flag("delay", "2000"), 10);
 const SHRINK_DELAY_MS = parseInt(flag("shrink-delay", "500"), 10);
 const HEADLESS = args.includes("--headless");
 const REPLAY = args.includes("--replay");
-const FAILURES_FILE = resolve(import.meta.dirname ?? ".", "monkey-failures.json");
+const FAILURES_FILE = resolve(import.meta.dirname ?? ".", "regression-cases.json");
 
 // ============================================================
 // Failure store
@@ -57,7 +56,7 @@ function saveFailures(failures: FailureCase[]) {
     return true;
   });
   writeFileSync(FAILURES_FILE, JSON.stringify(deduped, null, 2) + "\n");
-  console.log(`\nSaved ${deduped.length} failure(s) to monkey-failures.json`);
+  console.log(`\nSaved ${deduped.length} failure(s) to regression-cases.json`);
 }
 
 // ============================================================
@@ -69,20 +68,17 @@ async function runCase(
   code: string,
   delayMs: number,
   url: string,
-  isVideo: boolean,
 ): Promise<{ ok: boolean; errors: string[] }> {
   const caseErrors: string[] = [];
 
   const onConsole = (msg: any) => {
     if (msg.type() === "error") {
       const text = msg.text();
-      if (text.includes("net::ERR") || text.includes("Failed to load") || text.includes("failed to load") || text.includes("supported source") || text.includes("The element has no")) return;
       caseErrors.push(text);
     }
   };
   const onPageError = (err: any) => {
     const text = err.message || String(err);
-    if (text.includes("net::ERR") || text.includes("Failed to load") || text.includes("failed to load") || text.includes("supported source") || text.includes("The element has no")) return;
     caseErrors.push(text);
   };
 
@@ -150,16 +146,6 @@ async function main() {
   const url = `http://localhost:${port}`;
   console.log(`Vite running at ${url}`);
 
-  try {
-    await fetch("http://localhost:3456/");
-    console.log("Video server reachable at localhost:3456");
-  } catch (e: any) {
-    console.error("\nERROR: Video server not reachable at localhost:3456");
-    console.error("Start it with: cd server && npm start\n");
-    await server.close();
-    process.exit(2);
-  }
-
   const browser = await chromium.launch({ headless: HEADLESS });
   const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const page = await context.newPage();
@@ -186,8 +172,7 @@ async function main() {
 
     for (let i = 0; i < existingFailures.length; i++) {
       const f = existingFailures[i];
-      const isVideo = f.code.includes("video(");
-      const result = await runCase(page, f.code, DELAY_MS, url, isVideo);
+      const result = await runCase(page, f.code, DELAY_MS, url);
 
       if (result.ok) {
         passed++;
@@ -227,7 +212,7 @@ async function main() {
         const isShrinking = firstFailureSeen;
         const delay = isShrinking ? SHRINK_DELAY_MS : DELAY_MS;
 
-        const testResult = await runCase(page, expr.code, delay, url, expr.isVideo);
+        const testResult = await runCase(page, expr.code, delay, url);
 
         if (!isShrinking) {
           const truncated = expr.code.length > 100 ? expr.code.slice(0, 100) + "..." : expr.code;
@@ -265,7 +250,7 @@ async function main() {
         console.log(`  ${shrunkExpr.code}`);
 
         // Run the shrunk case one more time to get the actual errors
-        const finalResult = await runCase(page, shrunkExpr.code, DELAY_MS, url, shrunkExpr.isVideo);
+        const finalResult = await runCase(page, shrunkExpr.code, DELAY_MS, url);
         if (!finalResult.ok) {
           for (const err of finalResult.errors) {
             console.log(`  -> ${err}`);

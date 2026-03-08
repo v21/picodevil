@@ -12,30 +12,29 @@
  */
 
 import fc from "fast-check";
-import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
 
 // ============================================================
-// Terminal pools
+// Terminal pools — all served from /test-assets/ via Vite
 // ============================================================
 
 export const VIDEOS = [
-  "6dca7430d24af6c8a0dc337bd09e333e.mp4",
-  "BalgIMSzY3k.mp4",
+  "red.mp4",
+  "blue.mp4",
   "HCP-4P0eoOo.mp4",
-  "aGMOFLgB1CU.mp4",
   "hXJaBfcdCKM.mp4",
-  "iDcekQeBGOY.mp4",
 ];
 
-const __dirname = import.meta.dirname ?? dirname(fileURLToPath(import.meta.url));
-const IMAGE_URLS = readFileSync(resolve(__dirname, "image-assets.txt"), "utf-8")
-  .split("\n").map(l => l.trim()).filter(Boolean);
-export const IMAGES: { base: string; name: string }[] = IMAGE_URLS.map(url => {
-  const i = url.lastIndexOf("/");
-  return { base: url.slice(0, i + 1), name: url.slice(i + 1) };
-});
+export const IMAGES = [
+  "red.png",
+  "blue.png",
+  "sprite1.png",
+  "sprite2.png",
+  "photo1.jpg",
+  "photo2.jpg",
+  "anim1.gif",
+  "anim2.gif",
+  "texture.webp",
+];
 
 export const COLORS = [
   "red", "green", "blue", "yellow", "cyan", "magenta",
@@ -262,18 +261,12 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   ).map(([i, c, r]) => ({ code: `.grid(${i}, ${c}, ${r})` })),
 );
 
-function imageChain(base: string): fc.Arbitrary<string> {
-  return fc.array(sharedMethod, { minLength: 0, maxLength: 4 })
-    .map(ms => `.urlBase('${base}')` + ms.map(m => m.code).join(""));
-}
-
 // ============================================================
 // Screen expression arbitraries
 // ============================================================
 
 export interface GeneratedExpr {
   code: string;
-  isVideo: boolean;
 }
 
 /** A single screen expression (color, video, or image) without .out(). */
@@ -284,30 +277,22 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
   ).map(([pat, methods]) => ({
     code: `color("${pat}")${methods.map(m => m.code).join("")}`,
-    isVideo: false,
   })) },
 
-  // image (if available)
-  ...(IMAGES.length > 0 ? [{ weight: 2, arbitrary: fc.tuple(
-    fc.constantFrom(...IMAGES),
-    fc.array(fc.constantFrom(...IMAGES.map(i => i.name)), { minLength: 1, maxLength: 3 }),
-  ).chain(([img, names]) =>
-    fc.tuple(
-      miniArb(names, 1),
-      imageChain(img.base),
-    ).map(([pat, chain]) => ({
-      code: `image("${pat}")${chain}`,
-      isVideo: false,
-    }))
-  ) }] : []),
+  // image
+  { weight: 2, arbitrary: fc.tuple(
+    miniArb(IMAGES, 1),
+    fc.array(sharedMethod, { minLength: 0, maxLength: 4 }),
+  ).map(([pat, methods]) => ({
+    code: `image("${pat}").urlBase('/test-assets/')${methods.map(m => m.code).join("")}`,
+  })) },
 
   // video
   { weight: 5, arbitrary: fc.tuple(
     miniArb(VIDEOS, 2),
     videoChain,
   ).map(([pat, chain]) => ({
-    code: `video("${pat}")${chain}`,
-    isVideo: true,
+    code: `video("${pat}").urlBase('/test-assets/')${chain}`,
   })) },
 );
 
@@ -346,8 +331,6 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   ).map(([cps, children, cols, rows, chain, variant]) => {
     const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
     const childrenCode = children.map(c => c.code).join(", ");
-    const hasVideo = children.some(c => c.isVideo);
-
     let expr: string;
     if (variant === "four") {
       expr = `four([${childrenCode}])`;
@@ -357,7 +340,6 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
 
     return {
       code: `${cpsCode}$: ${expr}${chain}`,
-      isVideo: hasVideo,
     };
   }) },
 
@@ -369,7 +351,6 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
     return {
       code: `${cpsCode}$: ${screen.code}`,
-      isVideo: screen.isVideo,
     };
   }) },
 );

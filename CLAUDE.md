@@ -41,8 +41,8 @@ uzuvid/
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
   test/
     monkey-test.ts        — grammar-based random pattern generator + browser runner
-    monkey-failures.json  — saved failure cases for conformance replay
-    image-assets.txt      — list of image URLs for monkey testing
+    regression-cases.json — saved regression cases for conformance replay
+    arbitraries.ts        — fast-check arbitraries for code generation
   server/                 — standalone Node.js package (separate npm install)
     server.js             — HTTP server: downloads YouTube videos via yt-dlp, serves MP4s
     server.test.js        — tests (node --test), mocks spawn to avoid real downloads
@@ -153,6 +153,7 @@ When working through a list of tasks, **stop and check in with the user after co
 - `composePos()` handles grid nesting by composing inner position relative to outer cell
 - Mininotation `,` = `stack()` (simultaneous), ` ` = alternation; `"0,3"` in `.grid()` means both cells at once
 - Mininotation `/` is the "slow by N" operator, so URLs can't go in mini patterns — use `.urlBase()` instead
+- The transpiler wraps double-quoted strings in `mini()`. Use single quotes for literal string arguments like `.urlBase('/path/')` — double quotes would parse `/` as mininotation
 - Strudel Fraction types produce repeating-decimal strings — always use `Number(v)` before arithmetic
 - The `videoPool` and `imagePool` Maps cache media elements by full URL to avoid re-creation
 - Config constants live in `src/config.ts` — timing values are in milliseconds
