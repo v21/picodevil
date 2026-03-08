@@ -39,6 +39,7 @@ export const IMAGES = [
 export const COLORS = [
   "red", "green", "blue", "yellow", "cyan", "magenta",
   "purple", "orange", "white", "black", "pink",
+  "#ff0000", "#00ff00", "#0000ff", "#fff", "#000",
 ];
 
 const CONTINUOUS_SIGNALS = [
@@ -47,6 +48,7 @@ const CONTINUOUS_SIGNALS = [
   "tri", "tri2", "itri", "itri2",
   "square", "square2",
   "rand", "rand2", "perlin",
+  "mouseX", "mouseY",
 ];
 
 const DISCRETE_NUMERIC_SIGNALS = ["time"];
@@ -130,9 +132,17 @@ export function miniArb(pool: string[], maxDepth = 2): fc.Arbitrary<string> {
 // Signal & argument arbitraries
 // ============================================================
 
-/** Continuous signal with optional easing — no time conversion, returns numbers. */
+/** Continuous signal with optional modifiers and easing — no time conversion, returns numbers. */
 const continuousSignal: fc.Arbitrary<string> = fc.tuple(
   fc.constantFrom(...CONTINUOUS_SIGNALS),
+  fc.oneof(
+    { weight: 5, arbitrary: fc.constant("") },
+    { weight: 2, arbitrary: fc.tuple(
+      fc.double({ min: 0, max: 1, noNaN: true }),
+      fc.double({ min: 0, max: 2, noNaN: true }),
+    ).map(([lo, hi]) => `.range(${lo.toFixed(2)}, ${hi.toFixed(2)})`) },
+    { weight: 1, arbitrary: fc.constantFrom(2, 3, 4, 8).map(n => `.div(${n})`) },
+  ),
   fc.oneof(
     { weight: 5, arbitrary: fc.constant("") },
     { weight: 2, arbitrary: fc.tuple(
@@ -141,7 +151,7 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
     ).map(([c, d]) => `.lerp('${c}', '${d}')`) },
     { weight: 1, arbitrary: fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => `.spline(${n.toFixed(2)})`) },
   ),
-).map(([sig, mod]) => sig + mod);
+).map(([sig, mod, easing]) => sig + mod + easing);
 
 /** Continuous signal with optional time conversion — returns TimeValue strings. */
 const continuousTimeSignal: fc.Arbitrary<string> = fc.tuple(
@@ -159,6 +169,10 @@ const numericSignalFunction: fc.Arbitrary<string> = fc.oneof(
     .map(vs => `choose(${vs.join(", ")})`),
   fc.array(fc.constantFrom(...SPEED_LITERALS.filter(s => s !== "0")), { minLength: 2, maxLength: 5 })
     .map(vs => `chooseCycles(${vs.join(", ")})`),
+  fc.array(fc.constantFrom(...SPEED_LITERALS.filter(s => s !== "0")), { minLength: 2, maxLength: 5 })
+    .map(vs => `chooseIn(${vs.join(", ")})`),
+  fc.integer({ min: 1, max: 8 }).map(n => `run(${n})`),
+  fc.double({ min: 0, max: 1, noNaN: true }).map(n => `steady(${n.toFixed(2)})`),
 );
 
 /** Numeric signal expression with optional time conversion — for time args. */
@@ -224,6 +238,19 @@ const dimArg: fc.Arbitrary<string> = fc.oneof(
 );
 
 // ============================================================
+// Strudel pattern method arbitraries
+// ============================================================
+
+/** Strudel methods that work on any pattern. */
+const strudelMethod: fc.Arbitrary<string> = fc.oneof(
+  fc.integer({ min: 2, max: 8 }).map(n => `.slow(${n})`),
+  fc.integer({ min: 2, max: 8 }).map(n => `.fast(${n})`),
+  fc.constant(".rev()"),
+  fc.integer({ min: 2, max: 5 }).map(n => `.every(${n}, x => x.fast(2))`),
+  fc.integer({ min: 2, max: 5 }).map(n => `.every(${n}, x => x.rev())`),
+);
+
+// ============================================================
 // Method chain arbitraries
 // ============================================================
 
@@ -265,6 +292,7 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
     fc.integer({ min: 1, max: 4 }),
     fc.integer({ min: 1, max: 4 }),
   ).map(([i, c, r]) => ({ code: `.grid(${i}, ${c}, ${r})` })),
+  strudelMethod.map(code => ({ code })),
 );
 
 // ============================================================
@@ -283,6 +311,14 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
   ).map(([pat, methods]) => ({
     code: `color("${pat}")${methods.map(m => m.code).join("")}`,
+  })) },
+
+  // color via explicit mini()
+  { weight: 1, arbitrary: fc.tuple(
+    miniArb(COLORS, 2),
+    fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
+  ).map(([pat, methods]) => ({
+    code: `color(mini("${pat}"))${methods.map(m => m.code).join("")}`,
   })) },
 
   // image
@@ -324,17 +360,26 @@ const gridChain: fc.Arbitrary<string> = fc.array(
   { minLength: 0, maxLength: 2 },
 ).map(ms => ms.join(""));
 
-/** Full top-level expression using $: label syntax (transpiled to .p("$")). */
+/** Label prefix: $, named, _muted, or Ssolo. */
+const labelPrefix: fc.Arbitrary<string> = fc.oneof(
+  { weight: 6, arbitrary: fc.constant("$") },
+  { weight: 2, arbitrary: fc.constantFrom("bg", "fg", "main", "overlay") },
+  { weight: 1, arbitrary: fc.constantFrom("_bg", "_fg", "muted_") },
+  { weight: 1, arbitrary: fc.constantFrom("Sbg", "Sfg") },
+);
+
+/** Full top-level expression using label: syntax. */
 export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   // Grid expression (gridStack / four)
-  { weight: 7, arbitrary: fc.tuple(
+  { weight: 5, arbitrary: fc.tuple(
     fc.option(cpsValue, { nil: undefined }),
     fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
     fc.integer({ min: 2, max: 5 }),
     fc.integer({ min: 2, max: 5 }),
     gridChain,
     fc.constantFrom("gridStack", "four"),
-  ).map(([cps, children, cols, rows, chain, variant]) => {
+    labelPrefix,
+  ).map(([cps, children, cols, rows, chain, variant, label]) => {
     const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
     const childrenCode = children.map(c => c.code).join(", ");
     let expr: string;
@@ -345,7 +390,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     }
 
     return {
-      code: `${cpsCode}$: ${expr}${chain}`,
+      code: `${cpsCode}${label}: ${expr}${chain}`,
     };
   }) },
 
@@ -353,10 +398,23 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   { weight: 3, arbitrary: fc.tuple(
     fc.option(cpsValue, { nil: undefined }),
     screenExpr,
-  ).map(([cps, screen]) => {
+    labelPrefix,
+  ).map(([cps, screen, label]) => {
     const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
     return {
-      code: `${cpsCode}$: ${screen.code}`,
+      code: `${cpsCode}${label}: ${screen.code}`,
+    };
+  }) },
+
+  // Multiple layered $: lines
+  { weight: 2, arbitrary: fc.tuple(
+    fc.option(cpsValue, { nil: undefined }),
+    fc.array(fc.tuple(screenExpr, labelPrefix), { minLength: 2, maxLength: 4 }),
+  ).map(([cps, lines]) => {
+    const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
+    const lineCode = lines.map(([screen, label]) => `${label}: ${screen.code}`).join("\n");
+    return {
+      code: `${cpsCode}${lineCode}`,
     };
   }) },
 );
