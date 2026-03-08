@@ -17,7 +17,6 @@ import { color as makeColor } from "./color-pattern";
 import { video as makeVideo } from "./video-pattern";
 import { image as makeImage } from "./image-pattern";
 import { gridStack, four as fourFn } from "./grid-stack";
-import { ScreenPattern } from "./screen-pattern";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame } from "./video-playback";
 import { drawFit } from "./draw-fit";
@@ -43,21 +42,18 @@ let cyclesPerSecond = CYCLES_PER_SECOND;
 let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 
-/** Inject .p() onto both ScreenPattern.prototype and Pattern.prototype. */
-function injectP(proto: any) {
-  proto.p = function (id: string) {
-    if (id.startsWith('_') || id.endsWith('_')) return this;
-    if (id.includes('$')) {
-      id = `${id}${anonymousIndex}`;
-      anonymousIndex++;
-    }
-    pPatterns[id] = this;
-    return this;
-  };
-}
-injectP(ScreenPattern.prototype);
+/** Inject .p() onto Pattern.prototype. */
 import { reify } from "@strudel/core";
-injectP(Object.getPrototypeOf(reify(0)));  // Pattern.prototype
+const PatternProto = Object.getPrototypeOf(reify(0));
+PatternProto.p = function (id: string) {
+  if (id.startsWith('_') || id.endsWith('_')) return this;
+  if (id.includes('$')) {
+    id = `${id}${anonymousIndex}`;
+    anonymousIndex++;
+  }
+  pPatterns[id] = this;
+  return this;
+};
 
 function collectScreens(): Screen[] {
   const patterns: Screen[] = [];

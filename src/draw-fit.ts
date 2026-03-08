@@ -1,4 +1,4 @@
-import type { FitMode } from "./screen-pattern";
+export type FitMode = "cover" | "contain" | "fill" | "none";
 
 export function drawFit(
   ctx: CanvasRenderingContext2D,

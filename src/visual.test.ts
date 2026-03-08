@@ -11,10 +11,9 @@ import { color as makeColor } from "./color-pattern";
 import "./visual-controls";
 import { image as makeImage } from "./image-pattern";
 import { video as makeVideo } from "./video-pattern";
-import { GridPattern } from "./grid-pattern";
+import { gridStack } from "./grid-stack";
 import { drawFit } from "./draw-fit";
 import { renderVideoFrame } from "./video-playback";
-import type { ScreenPattern } from "./screen-pattern";
 
 // --- minimal render harness ---
 
@@ -70,32 +69,13 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
 // --- image pool for tests ---
 const imagePool = new Map<string, HTMLImageElement>();
 
-/** Render a single screen at cycle time t. Mirrors main.ts renderScreen. */
-function renderScreen(
+/** Render a single event value. */
+function renderEvent(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  screen: any,
-  t: number,
+  ev: any,
   opts: { imagePool?: Map<string, HTMLImageElement>; videoPool?: Map<string, HTMLVideoElement> } = {},
 ): void {
-  const events = screen.queryArc(t, t + 0.001);
-  if (!events.length) return;
-  const ev = events[0].value;
-
-  if (ev.alpha !== undefined) {
-    ctx.globalAlpha = Math.max(0, Math.min(1, Number(ev.alpha)));
-  }
-
-  const sx = ev.scaleX !== undefined ? Number(ev.scaleX) : 1;
-  const sy = ev.scaleY !== undefined ? Number(ev.scaleY) : 1;
-  const hasScale = sx !== 1 || sy !== 1;
-  if (hasScale) {
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.scale(sx, sy);
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-  }
-
   if (ev._type === "color") {
     const [r, g, b] = parseColor(ev.color);
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
@@ -125,41 +105,54 @@ function renderScreen(
       lastVideoVal: null,
       getOrCreateVideoEl: getOrCreate as any,
     });
-  } else if (screen instanceof GridPattern) {
-    renderGrid(ctx, canvas, screen, t, opts);
   }
-
-  if (hasScale) ctx.restore();
-  ctx.globalAlpha = 1;
 }
 
-function renderGrid(
+/** Render a single screen at cycle time t. Mirrors main.ts renderScreen. */
+function renderScreen(
   ctx: CanvasRenderingContext2D,
   canvas: HTMLCanvasElement,
-  gridScreen: GridPattern,
+  screen: any,
   t: number,
   opts: { imagePool?: Map<string, HTMLImageElement>; videoPool?: Map<string, HTMLVideoElement> } = {},
 ): void {
-  const { cols, rows } = gridScreen.resolveGrid(t);
-  const totalCells = cols * rows;
-  const cellW = canvas.width / cols;
-  const cellH = canvas.height / rows;
+  const events = screen.queryArc(t, t + 0.001);
+  if (!events.length) return;
 
-  for (let i = 0; i < totalCells; i++) {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
+  for (const hap of events) {
+    const ev = hap.value;
 
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(col * cellW, row * cellH, cellW, cellH);
-    ctx.clip();
-    ctx.translate(col * cellW, row * cellH);
-    ctx.scale(cellW / canvas.width, cellH / canvas.height);
 
-    const child = gridScreen.resolveChild(i, t);
-    renderScreen(ctx, canvas, child, t, opts);
+    if (ev.alpha !== undefined) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, Number(ev.alpha)));
+    }
+
+    const sx = ev.scaleX !== undefined ? Number(ev.scaleX) : 1;
+    const sy = ev.scaleY !== undefined ? Number(ev.scaleY) : 1;
+    if (sx !== 1 || sy !== 1) {
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.scale(sx, sy);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
+
+    // Position params (used by grid layout)
+    const px = ev.x !== undefined ? Number(ev.x) : 0;
+    const py = ev.y !== undefined ? Number(ev.y) : 0;
+    const pw = ev.width !== undefined ? Number(ev.width) : 1;
+    const ph = ev.height !== undefined ? Number(ev.height) : 1;
+    if (px !== 0 || py !== 0 || pw !== 1 || ph !== 1) {
+      ctx.beginPath();
+      ctx.rect(px * canvas.width, py * canvas.height, pw * canvas.width, ph * canvas.height);
+      ctx.clip();
+      ctx.translate(px * canvas.width, py * canvas.height);
+      ctx.scale(pw, ph);
+    }
+
+    renderEvent(ctx, canvas, ev, opts);
 
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -270,23 +263,23 @@ describe("visual rendering", () => {
 
   describe("grid", () => {
     it("2x1 grid splits horizontally", () => {
-      const g = new GridPattern([color("red"), color("blue")], 2, 1, mini);
+      const g = gridStack([color("red"), color("blue")], 2, 1);
       const { ctx } = render([g]);
       expect(pixel(ctx, 10, 50)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx, 90, 50)).toEqual([0, 0, 255, 255]);
     });
 
     it("1x2 grid splits vertically", () => {
-      const g = new GridPattern([color("red"), color("blue")], 1, 2, mini);
+      const g = gridStack([color("red"), color("blue")], 1, 2);
       const { ctx } = render([g]);
       expect(pixel(ctx, 50, 10)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx, 50, 90)).toEqual([0, 0, 255, 255]);
     });
 
     it("2x2 grid with 4 colors", () => {
-      const g = new GridPattern(
+      const g = gridStack(
         [color("red"), color("green"), color("blue"), color("yellow")],
-        2, 2, mini,
+        2, 2,
       );
       const { ctx } = render([g]);
       expect(pixel(ctx, 10, 10)).toEqual([255, 0, 0, 255]);
@@ -297,7 +290,7 @@ describe("visual rendering", () => {
     });
 
     it("children cycle when fewer than cells", () => {
-      const g = new GridPattern([color("red"), color("blue")], 2, 2, mini);
+      const g = gridStack([color("red"), color("blue")], 2, 2);
       const { ctx } = render([g]);
       expect(pixel(ctx, 10, 10)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx, 90, 10)).toEqual([0, 0, 255, 255]);
@@ -305,30 +298,8 @@ describe("visual rendering", () => {
       expect(pixel(ctx, 90, 90)).toEqual([0, 0, 255, 255]);
     });
 
-    it("nested grid", () => {
-      const inner = new GridPattern([color("red"), color("blue")], 2, 1, mini);
-      const outer = new GridPattern([inner, color("green")], 2, 1, mini);
-      const { ctx } = render([outer]);
-      expect(pixel(ctx, 5, 50)).toEqual([255, 0, 0, 255]);
-      expect(pixel(ctx, 35, 50)).toEqual([0, 0, 255, 255]);
-      const [r, g, b] = pixel(ctx, 75, 50);
-      expect(r).toBe(0); expect(g).toBe(128); expect(b).toBe(0);
-    });
-
-    it("setI overrides a cell", () => {
-      const g = new GridPattern(
-        [color("red"), color("red"), color("red"), color("red")],
-        2, 2, mini,
-      ).setI(1, color("blue"));
-      const { ctx } = render([g]);
-      expect(pixel(ctx, 10, 10)).toEqual([255, 0, 0, 255]);
-      expect(pixel(ctx, 90, 10)).toEqual([0, 0, 255, 255]);
-      expect(pixel(ctx, 10, 90)).toEqual([255, 0, 0, 255]);
-      expect(pixel(ctx, 90, 90)).toEqual([255, 0, 0, 255]);
-    });
-
     it("dynamic grid size changes with time", () => {
-      const g = new GridPattern([color("red"), color("blue"), color("green")], "2 3", 1, mini);
+      const g = gridStack([color("red"), color("blue"), color("green")], mini("2 3"), 1);
       const { ctx: ctx1 } = render([g], 0.1);
       expect(pixel(ctx1, 25, 50)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx1, 75, 50)).toEqual([0, 0, 255, 255]);
@@ -409,7 +380,7 @@ describe("visual rendering", () => {
     });
 
     it("image in grid", () => {
-      const g = new GridPattern([image("red.png"), image("blue.png")], 2, 1, mini);
+      const g = gridStack([image("red.png"), image("blue.png")], 2, 1);
       const { ctx } = render([g], 0, { imagePool: pool });
       const [r1] = pixel(ctx, 10, 50);
       expect(r1).toBeGreaterThan(200);
@@ -479,7 +450,7 @@ describe("visual rendering", () => {
     });
 
     it("video in grid cell", () => {
-      const g = new GridPattern([video("red.mp4"), color("blue")], 2, 1, mini);
+      const g = gridStack([video("red.mp4"), color("blue")], 2, 1);
       const { ctx } = render([g], 0, { videoPool: pool as any });
       const [r1] = pixel(ctx, 10, 50);
       expect(r1).toBeGreaterThan(200);
