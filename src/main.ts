@@ -184,6 +184,15 @@ function prewarmBlobs(screen: Screen) {
   }
 }
 
+/**
+ * Sets the global cycles per second (tempo). Default is 0.5 (one cycle = 2 seconds).
+ *
+ * @param {number} cps cycles per second
+ * @example
+ * setCps(1)   // one cycle per second
+ * setCps(0.25) // one cycle every 4 seconds
+ *
+ */
 function setCps(cps: number) {
   cyclesPerSecond = cps;
 }

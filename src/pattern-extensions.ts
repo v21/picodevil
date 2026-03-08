@@ -4,8 +4,24 @@ import {
 
 const PatternProto = CorePattern.prototype as any;
 
-// unit helpers: tag pattern values so parseTimeValue interprets them as seconds/ms
+/**
+ * Tags pattern values as seconds, so .start() / .end() / .duration() interpret them as absolute time.
+ *
+ * @returns {Pattern} pattern with values tagged as seconds
+ * @example
+ * $: video("clip.mp4").start(mini("5").sec())   // start at 5 seconds
+ *
+ */
 PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
+
+/**
+ * Tags pattern values as milliseconds, so .start() / .end() / .duration() interpret them as absolute time.
+ *
+ * @returns {Pattern} pattern with values tagged as milliseconds
+ * @example
+ * $: video("clip.mp4").duration(mini("500").ms()) // play 500ms
+ *
+ */
 PatternProto.ms = function () { return this.fmap((v: number) => v + "ms"); };
 
 // --- easing functions (Robert Penner's standard set) ---
@@ -123,8 +139,19 @@ function findCurrentIndex(evs: NumEvent[], t: number): number {
   return 0;
 }
 
-// --- .lerp() — eased interpolation between discrete pattern values ---
-
+/**
+ * Smoothly interpolates between discrete pattern values using an easing function, instead of stepping.
+ *
+ * @param {string} curve easing curve name: "linear", "sine", "quad", "cubic", "quart", "quint",
+ *   "expo", "circ", "elastic", "bounce", "back"
+ * @param {string} direction easing direction: "in", "out", "inout"
+ * @returns {Pattern} continuous pattern that transitions smoothly between values
+ * @example
+ * $: color("red").x("0 0.5".lerp())                       // smooth linear slide
+ * $: video("clip.mp4").alpha("0 1".lerp("sine", "inout"))  // smooth sine fade
+ * $: color("red").scale("0.5 1 0.5".lerp("bounce", "out")) // bouncy scale
+ *
+ */
 PatternProto.lerp = function (curve = "linear", direction = "inout") {
   const src = this;
   const ease = getEase(curve, direction);
@@ -144,8 +171,17 @@ PatternProto.lerp = function (curve = "linear", direction = "inout") {
   });
 };
 
-// --- .spline() — Catmull-Rom spline interpolation between discrete pattern values ---
-// Optional tension parameter (default 0.5, where 0 = sharp, 1 = very smooth)
+/**
+ * Catmull-Rom spline interpolation between discrete pattern values. Produces very smooth curves
+ * that pass through each value.
+ *
+ * @param {number} tension smoothness of the curve (0 = sharp corners, 0.5 = default, 1 = very smooth)
+ * @returns {Pattern} continuous pattern with smooth spline interpolation
+ * @example
+ * $: video("clip.mp4").x("0 0.3 0.7 1".spline())        // smooth path
+ * $: color("red").alpha("0 1 0.5 1".spline(0.8))         // high-tension smooth alpha
+ *
+ */
 
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number, tension: number): number {
   const t2 = t * t;
