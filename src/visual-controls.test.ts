@@ -242,6 +242,30 @@ describe("visual controls via createMixParam", () => {
       expect(v1).toMatchObject({ height: 0.5 });
     });
 
+    it(".grid() composes with existing position (nesting)", () => {
+      // Inner: cell 0 of 2x1 → {x:0, y:0, w:0.5, h:1}
+      // Outer: cell 1 of 2x1 → {x:0.5, y:0, w:0.5, h:1}
+      // Composed: x=0.5+0*0.5=0.5, w=0.5*0.5=0.25
+      const pat = src("x").grid(0, 2, 1).grid(1, 2, 1);
+      const v = query(pat, 0);
+      expect(v.x).toBeCloseTo(0.5);
+      expect(v.y).toBeCloseTo(0);
+      expect(v.width).toBeCloseTo(0.25);
+      expect(v.height).toBeCloseTo(1);
+    });
+
+    it(".grid() nesting: inner cell in outer cell", () => {
+      // Inner: cell 3 of 2x2 → {x:0.5, y:0.5, w:0.5, h:0.5}
+      // Outer: cell 0 of 2x2 → {x:0, y:0, w:0.5, h:0.5}
+      // Composed: x=0+0.5*0.5=0.25, y=0+0.5*0.5=0.25, w=0.25, h=0.25
+      const pat = src("x").grid(3, 2, 2).grid(0, 2, 2);
+      const v = query(pat, 0);
+      expect(v.x).toBeCloseTo(0.25);
+      expect(v.y).toBeCloseTo(0.25);
+      expect(v.width).toBeCloseTo(0.25);
+      expect(v.height).toBeCloseTo(0.25);
+    });
+
     it("position params are patternable", () => {
       const pat = src("x").x(sine);
       const v0 = query(pat, 0.0);

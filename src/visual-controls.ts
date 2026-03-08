@@ -77,20 +77,31 @@ function cellPos(i: number, cols: number, rows: number) {
 
 // Helper: resolve first value of a pattern at a given time span, or return number directly
 function resolveNum(val: any, begin: any, end: any): number {
-  if (typeof val === 'number') return val;
   const evs = reify(val).queryArc(begin, end);
   return evs.length ? Math.round(Number(evs[0].value)) : 0;
 }
 
+// Compose a new grid cell position with any existing position on the event value.
+// "outer" = new grid cell, "inner" = existing position from prior .grid() calls.
+// finalX = outer.x + inner.x * outer.width, etc.
+function composePos(value: any, outer: { x: number; y: number; width: number; height: number }) {
+  const ix = value.x ?? 0;
+  const iy = value.y ?? 0;
+  const iw = value.width ?? 1;
+  const ih = value.height ?? 1;
+  return {
+    ...value,
+    x: outer.x + ix * outer.width,
+    y: outer.y + iy * outer.height,
+    width: iw * outer.width,
+    height: ih * outer.height,
+  };
+}
+
 // .grid(i, cols, rows) — sets x/y/width/height for cell(s) in a cols×rows grid
-// All args can be numbers, arrays (for i), or Patterns
+// Composes with existing position (supports nesting).
+// All args can be numbers or Patterns.
 PatternProto.grid = function (i: any, cols: any, rows: any) {
-  // Fast path: all args are literal numbers
-  if (typeof i === 'number' && typeof cols === 'number' && typeof rows === 'number') {
-    const pos = cellPos(i, cols, rows);
-    return this.x(pos.x).y(pos.y).width(pos.width).height(pos.height);
-  }
-  // At least one arg is a pattern — resolve all at query time
   const self = this;
   const iPat = reify(i);
   return new Pattern((state: any) => {
@@ -101,8 +112,11 @@ PatternProto.grid = function (i: any, cols: any, rows: any) {
     const results: any[] = [];
     for (const iEv of iEvents) {
       const idx = Math.round(Number(iEv.value));
-      const positioned = self.grid(idx, c, r);
-      results.push(...positioned.queryArc(begin, end));
+      const pos = cellPos(idx, c, r);
+      const composed = self.withValue((v: any) =>
+        composePos(typeof v === 'object' && v !== null ? v : { value: v }, pos)
+      );
+      results.push(...composed.queryArc(begin, end));
     }
     return results;
   });
