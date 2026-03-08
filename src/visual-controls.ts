@@ -6,7 +6,8 @@
  * get sampled at the exact frame time rather than the event's onset.
  */
 import { reify, Pattern } from "@strudel/core";
-import { PatternProto } from "./pattern-proto";
+
+const PatternProto = Pattern.prototype as any;
 
 function createMixParam(name: string) {
   const withVal = (v: any) => ({ [name]: v });

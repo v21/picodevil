@@ -43,8 +43,8 @@ let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 
 /** Inject .p() onto Pattern.prototype. */
-import { PatternProto } from "./pattern-proto";
-PatternProto.p = function (id: string) {
+import { Pattern } from "@strudel/core";
+(Pattern.prototype as any).p = function (id: string) {
   if (id.startsWith('_') || id.endsWith('_')) return this;
   if (id.includes('$')) {
     id = `${id}${anonymousIndex}`;

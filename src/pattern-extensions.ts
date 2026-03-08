@@ -1,7 +1,8 @@
 import {
   Hap, Pattern as CorePattern,
 } from "@strudel/core";
-import { PatternProto } from "./pattern-proto";
+
+const PatternProto = CorePattern.prototype as any;
 
 // unit helpers: tag pattern values so parseTimeValue interprets them as seconds/ms
 PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
