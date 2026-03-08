@@ -189,9 +189,6 @@ async function main() {
 
     console.log("\n" + "=".repeat(60));
     console.log(`CONFORMANCE REPLAY: ${passed} fixed, ${failed} still failing out of ${existingFailures.length}`);
-    if (passed > 0) {
-      saveFailures(stillFailing);
-    }
     console.log("=".repeat(60));
 
     await browser.close();
@@ -200,87 +197,99 @@ async function main() {
 
   } else {
     // Property-based testing with fast-check
+    // Runs multiple fc.check passes so that after finding + shrinking one
+    // failure, we continue testing with the remaining round budget.
     console.log(`Running ${ROUNDS} rounds with fast-check (delay=${DELAY_MS}ms, shrink-delay=${SHRINK_DELAY_MS}ms).\n`);
 
-    let caseNum = 0;
-    let firstFailureSeen = false;
+    let totalCaseNum = 0;
+    let roundsRemaining = ROUNDS;
     const newFailures: FailureCase[] = [];
 
-    const result = await fc.check(
-      fc.asyncProperty(topExpr, async (expr: GeneratedExpr) => {
-        caseNum++;
-        const isShrinking = firstFailureSeen;
-        const delay = isShrinking ? SHRINK_DELAY_MS : DELAY_MS;
+    while (roundsRemaining > 0) {
+      let firstFailureSeen = false;
 
-        const testResult = await runCase(page, expr.code, delay, url);
+      const result = await fc.check(
+        fc.asyncProperty(topExpr, async (expr: GeneratedExpr) => {
+          const isShrinking = firstFailureSeen;
+          if (!isShrinking) totalCaseNum++;
+          const delay = isShrinking ? SHRINK_DELAY_MS : DELAY_MS;
 
-        if (!isShrinking) {
-          const truncated = expr.code.length > 100 ? expr.code.slice(0, 100) + "..." : expr.code;
-          if (testResult.ok) {
-            console.log(`  [${caseNum}/${ROUNDS}] OK | ${truncated}`);
-          } else {
-            console.log(`  [${caseNum}/${ROUNDS}] FAIL | ${expr.code}`);
-            for (const err of testResult.errors) {
-              console.log(`    -> ${err}`);
+          const testResult = await runCase(page, expr.code, delay, url);
+
+          if (!isShrinking) {
+            const truncated = expr.code.length > 100 ? expr.code.slice(0, 100) + "..." : expr.code;
+            if (testResult.ok) {
+              console.log(`  [${totalCaseNum}/${ROUNDS}] OK | ${truncated}`);
+            } else {
+              console.log(`  [${totalCaseNum}/${ROUNDS}] FAIL | ${expr.code}`);
+              for (const err of testResult.errors) {
+                console.log(`    -> ${err}`);
+              }
+              console.log(`  Shrinking...`);
+              firstFailureSeen = true;
             }
-            console.log(`  Shrinking...`);
-            firstFailureSeen = true;
+          } else if (!testResult.ok) {
+            console.log(`  [shrink] still fails (${expr.code.length} chars)`);
           }
-        } else if (!testResult.ok) {
-          console.log(`  [shrink] still fails (${expr.code.length} chars)`);
+
+          return testResult.ok;
+        }),
+        {
+          numRuns: roundsRemaining,
+        },
+      );
+
+      if (result.failed) {
+        // Deduct rounds used (runs before failure)
+        roundsRemaining -= result.numRuns;
+
+        if (result.counterexample) {
+          const shrunkExpr = result.counterexample[0] as GeneratedExpr;
+          console.log(`\n  Minimal failing case (after ${result.numShrinks} shrinks):`);
+          console.log(`  ${shrunkExpr.code}`);
+
+          const finalResult = await runCase(page, shrunkExpr.code, DELAY_MS, url);
+          if (!finalResult.ok) {
+            for (const err of finalResult.errors) {
+              console.log(`  -> ${err}`);
+            }
+            newFailures.push({
+              code: shrunkExpr.code,
+              description: `shrunk from ${result.numShrinks} shrinks`,
+              errors: finalResult.errors,
+              timestamp: new Date().toISOString(),
+            });
+          }
         }
 
-        return testResult.ok;
-      }),
-      {
-        numRuns: ROUNDS,
-      },
-    );
+        if ("error" in result && result.error) {
+          console.log(`\nError: ${result.error}`);
+        }
+
+        if (roundsRemaining > 0) {
+          console.log(`\n  Continuing with ${roundsRemaining} remaining rounds...\n`);
+        }
+      } else {
+        // All remaining rounds passed
+        roundsRemaining = 0;
+      }
+    }
 
     // Summary
     console.log("\n" + "=".repeat(60));
 
-    if (result.failed) {
-      console.log(`PROPERTY-BASED TEST: FAILED after ${result.numRuns} runs, ${result.numShrinks} shrinks`);
-
-      // Extract the shrunk counterexample
-      if (result.counterexample) {
-        const shrunkExpr = result.counterexample[0] as GeneratedExpr;
-        console.log(`\nMinimal failing case (after ${result.numShrinks} shrinks):`);
-        console.log(`  ${shrunkExpr.code}`);
-
-        // Run the shrunk case one more time to get the actual errors
-        const finalResult = await runCase(page, shrunkExpr.code, DELAY_MS, url);
-        if (!finalResult.ok) {
-          for (const err of finalResult.errors) {
-            console.log(`  -> ${err}`);
-          }
-          newFailures.push({
-            code: shrunkExpr.code,
-            description: `shrunk from ${result.numShrinks} shrinks`,
-            errors: finalResult.errors,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
-
-      if ("error" in result && result.error) {
-        console.log(`\nError: ${result.error}`);
-      }
-    } else {
-      console.log(`PROPERTY-BASED TEST: ${result.numRuns} runs passed`);
-    }
-
     if (newFailures.length > 0) {
+      console.log(`PROPERTY-BASED TEST: ${newFailures.length} failure(s) found in ${ROUNDS} rounds`);
       saveFailures([...existingFailures, ...newFailures]);
     } else {
+      console.log(`PROPERTY-BASED TEST: ${ROUNDS} runs passed`);
       console.log("\nNo errors detected!");
     }
     console.log("=".repeat(60));
 
     await browser.close();
     await server.close();
-    process.exit(result.failed ? 1 : 0);
+    process.exit(newFailures.length > 0 ? 1 : 0);
   }
 }
 

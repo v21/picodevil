@@ -130,6 +130,7 @@ export function miniArb(pool: string[], maxDepth = 2): fc.Arbitrary<string> {
 // Signal & argument arbitraries
 // ============================================================
 
+/** Continuous signal with optional easing — no time conversion, returns numbers. */
 const continuousSignal: fc.Arbitrary<string> = fc.tuple(
   fc.constantFrom(...CONTINUOUS_SIGNALS),
   fc.oneof(
@@ -140,12 +141,17 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
     ).map(([c, d]) => `.lerp('${c}', '${d}')`) },
     { weight: 1, arbitrary: fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => `.spline(${n.toFixed(2)})`) },
   ),
+).map(([sig, mod]) => sig + mod);
+
+/** Continuous signal with optional time conversion — returns TimeValue strings. */
+const continuousTimeSignal: fc.Arbitrary<string> = fc.tuple(
+  continuousSignal,
   fc.oneof(
     { weight: 7, arbitrary: fc.constant("") },
     { weight: 1, arbitrary: fc.constant(".sec()") },
     { weight: 1, arbitrary: fc.constant(".ms()") },
   ),
-).map(([sig, mod, time]) => sig + mod + time);
+).map(([sig, time]) => sig + time);
 
 const numericSignalFunction: fc.Arbitrary<string> = fc.oneof(
   fc.integer({ min: 2, max: 10 }).map(n => `irand(${n})`),
@@ -155,9 +161,9 @@ const numericSignalFunction: fc.Arbitrary<string> = fc.oneof(
     .map(vs => `chooseCycles(${vs.join(", ")})`),
 );
 
-/** Numeric signal expression (no booleans — safe for time args). */
+/** Numeric signal expression with optional time conversion — for time args. */
 const numericSignalExpr: fc.Arbitrary<string> = fc.oneof(
-  { weight: 6, arbitrary: continuousSignal },
+  { weight: 6, arbitrary: continuousTimeSignal },
   { weight: 2, arbitrary: fc.constantFrom(...DISCRETE_NUMERIC_SIGNALS) },
   { weight: 2, arbitrary: numericSignalFunction },
 );

@@ -24,6 +24,7 @@ export interface VideoFrameResult {
 /** Parse a raw start/end value (string, number, or TimeValue) into a TimeValue. */
 function toTimeValue(raw: any): TimeValue {
   if (raw == null) return { value: 0, unit: "rel" };
+  if (typeof raw === "bigint") return { value: Number(raw), unit: "rel" };
   if (typeof raw === "object" && "unit" in raw) return raw;
   const n = Number(raw);
   if (!isNaN(n)) return { value: n, unit: "rel" };
@@ -38,7 +39,7 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
   const endRaw = c.ev.end;
   const endIsDuration = c.ev.endIsDuration ?? false;
 
-  const videoKey = JSON.stringify({ src, speed, start: startRaw, end: endRaw, endIsDuration });
+  const videoKey = `${src}|${speed}|${Number(startRaw)}|${Number(endRaw)}|${endIsDuration}`;
   if (videoKey !== lastVideoVal) {
     lastVideoVal = videoKey;
   }
