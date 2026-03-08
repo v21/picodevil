@@ -294,8 +294,12 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   scaleArg.map(a => ({ code: `.scale(${a})` })),
   posArg.map(a => ({ code: `.x(${a})` })),
   posArg.map(a => ({ code: `.y(${a})` })),
+  posArg.map(a => ({ code: `.left(${a})` })),
+  posArg.map(a => ({ code: `.top(${a})` })),
   dimArg.map(a => ({ code: `.width(${a})` })),
   dimArg.map(a => ({ code: `.height(${a})` })),
+  dimArg.map(a => ({ code: `.w(${a})` })),
+  dimArg.map(a => ({ code: `.h(${a})` })),
   fc.tuple(
     fc.integer({ min: 0, max: 8 }),
     fc.integer({ min: 1, max: 4 }),
@@ -351,13 +355,19 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
 // Top-level expression arbitrary
 // ============================================================
 
-/** CPS value. */
-const cpsValue: fc.Arbitrary<number> = fc.oneof(
-  { weight: 1, arbitrary: fc.constant(0) },
-  { weight: 1, arbitrary: fc.double({ min: 0.01, max: 0.5, noNaN: true }) },
-  { weight: 3, arbitrary: fc.double({ min: 0.5, max: 2, noNaN: true }) },
-  { weight: 8, arbitrary: fc.double({ min: 2, max: 10, noNaN: true }) },
-  { weight: 1, arbitrary: fc.double({ min: 10, max: 1000, noNaN: true }) },
+/** CPS value — numeric or patterned. */
+const cpsValue: fc.Arbitrary<string> = fc.oneof(
+  { weight: 1, arbitrary: fc.constant("setCps(0)") },
+  { weight: 1, arbitrary: fc.double({ min: 0.01, max: 0.5, noNaN: true }).map(v => `setCps(${v.toFixed(1)})`) },
+  { weight: 3, arbitrary: fc.double({ min: 0.5, max: 2, noNaN: true }).map(v => `setCps(${v.toFixed(1)})`) },
+  { weight: 8, arbitrary: fc.double({ min: 2, max: 10, noNaN: true }).map(v => `setCps(${v.toFixed(1)})`) },
+  { weight: 1, arbitrary: fc.double({ min: 10, max: 1000, noNaN: true }).map(v => `setCps(${v.toFixed(1)})`) },
+  { weight: 3, arbitrary: fc.double({ min: 0.5, max: 2, noNaN: true }).map(v => `setCpm(${(v * 60).toFixed(1)})`) },
+  { weight: 2, arbitrary: fc.tuple(
+    fc.constantFrom(...CONTINUOUS_SIGNALS),
+    fc.double({ min: 0.1, max: 4, noNaN: true }),
+    fc.double({ min: 0.5, max: 8, noNaN: true }),
+  ).map(([sig, lo, hi]) => `setCps(${sig}.range(${lo.toFixed(2)}, ${hi.toFixed(2)}))`) },
 );
 
 /** Grid method chain applied after gridStack/four/grid. */
@@ -389,7 +399,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     fc.constantFrom("gridStack", "four"),
     labelPrefix,
   ).map(([cps, children, cols, rows, chain, variant, label]) => {
-    const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
+    const cpsCode = cps !== undefined ? `${cps}\n` : "";
     const childrenCode = children.map(c => c.code).join(", ");
     let expr: string;
     if (variant === "four") {
@@ -409,7 +419,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     screenExpr,
     labelPrefix,
   ).map(([cps, screen, label]) => {
-    const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
+    const cpsCode = cps !== undefined ? `${cps}\n` : "";
     return {
       code: `${cpsCode}${label}: ${screen.code}`,
     };
@@ -420,7 +430,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     fc.option(cpsValue, { nil: undefined }),
     fc.array(fc.tuple(screenExpr, labelPrefix), { minLength: 2, maxLength: 4 }),
   ).map(([cps, lines]) => {
-    const cpsCode = cps !== undefined ? `setCps(${cps.toFixed(1)})\n` : "";
+    const cpsCode = cps !== undefined ? `${cps}\n` : "";
     const lineCode = lines.map(([screen, label]) => `${label}: ${screen.code}`).join("\n");
     return {
       code: `${cpsCode}${lineCode}`,

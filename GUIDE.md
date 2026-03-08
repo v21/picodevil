@@ -73,17 +73,17 @@ uzuvid uses Strudel's mininotation for expressing patterns concisely. **Double-q
 
 ### Key mininotation syntax
 
-| Syntax | Meaning | Example |
-|--------|---------|---------|
-| `space` | Divide time equally | `"a b c"` — three equal parts per cycle |
-| `,` | Stack (play simultaneously) | `"a , b"` — both at once |
-| `*N` | Repeat N times | `"a*4"` — four times per cycle |
-| `/N` | Slow down by N | `"a/2"` — once every 2 cycles |
-| `< >` | Alternate per cycle | `"<a b c>"` — a different one each cycle |
-| `[ ]` | Group | `"[a b] c"` — a and b share first half |
-| `!N` | Replicate | `"a!3"` — same as `"a a a"` |
-| `?` | Sometimes rest | `"a?"` — 50% chance of silence |
-| `~` | Rest (silence) | `"a ~ b"` — gap in the middle |
+| Syntax  | Meaning                     | Example                                  |
+| ------- | --------------------------- | ---------------------------------------- |
+| `space` | Divide time equally         | `"a b c"` — three equal parts per cycle  |
+| `,`     | Stack (play simultaneously) | `"a , b"` — both at once                 |
+| `*N`    | Repeat N times              | `"a*4"` — four times per cycle           |
+| `/N`    | Slow down by N              | `"a/2"` — once every 2 cycles            |
+| `< >`   | Alternate per cycle         | `"<a b c>"` — a different one each cycle |
+| `[ ]`   | Group                       | `"[a b] c"` — a and b share first half   |
+| `!N`    | Replicate                   | `"a!3"` — same as `"a a a"`              |
+| `?`     | Sometimes rest              | `"a?"` — 50% chance of silence           |
+| `~`     | Rest (silence)              | `"a ~ b"` — gap in the middle            |
 
 ```js
 $: color("red blue green")            // 3 colors per cycle
@@ -112,12 +112,12 @@ $: color("red").x(0.5).width(0.5)       // right half
 $: video("clip.mp4").x("0 0.5").width(0.5) // bounces left/right
 ```
 
-| Method | Description | Default |
-|--------|-------------|---------|
-| `.x(v)` | Horizontal position | 0 |
-| `.y(v)` | Vertical position | 0 |
-| `.width(v)` | Width | 1 |
-| `.height(v)` | Height | 1 |
+| Method       | Description         | Default |
+| ------------ | ------------------- | ------- |
+| `.x(v)`      | Horizontal position | 0       |
+| `.y(v)`      | Vertical position   | 0       |
+| `.width(v)`  | Width               | 1       |
+| `.height(v)` | Height              | 1       |
 
 ### Transparency
 
@@ -230,30 +230,30 @@ $: four([color("red"), color("blue"), color("green"), video("clip.mp4")])
 
 Continuous signals vary smoothly over each cycle (0–1 range unless noted). Use them anywhere you'd use a number.
 
-| Signal | Shape |
-|--------|-------|
-| `sine` | Sine wave 0→1→0 |
-| `sine2` | Sine wave -1→1→-1 |
-| `cosine` | Cosine wave 1→0→1 |
-| `cosine2` | Cosine wave 1→-1→1 |
-| `saw` | Ramp 0→1 |
-| `saw2` | Ramp -1→1 |
-| `isaw` | Ramp 1→0 |
-| `isaw2` | Ramp 1→-1 |
-| `tri` | Triangle 0→1→0 |
-| `tri2` | Triangle -1→1→-1 |
-| `itri` | Triangle 1→0→1 |
-| `itri2` | Triangle 1→-1→1 |
-| `square` | Square wave 0/1 |
-| `square2` | Square wave -1/1 |
-| `rand` | Random 0–1 |
-| `rand2` | Random -1–1 |
-| `irand` | Random integer (use with range) |
-| `brand` | Random boolean 0/1 |
-| `perlin` | Perlin noise |
-| `time` | Elapsed time |
-| `mouseX` | Mouse X position |
-| `mouseY` | Mouse Y position |
+| Signal    | Shape                           |
+| --------- | ------------------------------- |
+| `sine`    | Sine wave 0→1→0                 |
+| `sine2`   | Sine wave -1→1→-1               |
+| `cosine`  | Cosine wave 1→0→1               |
+| `cosine2` | Cosine wave 1→-1→1              |
+| `saw`     | Ramp 0→1                        |
+| `saw2`    | Ramp -1→1                       |
+| `isaw`    | Ramp 1→0                        |
+| `isaw2`   | Ramp 1→-1                       |
+| `tri`     | Triangle 0→1→0                  |
+| `tri2`    | Triangle -1→1→-1                |
+| `itri`    | Triangle 1→0→1                  |
+| `itri2`   | Triangle 1→-1→1                 |
+| `square`  | Square wave 0/1                 |
+| `square2` | Square wave -1/1                |
+| `rand`    | Random 0–1                      |
+| `rand2`   | Random -1–1                     |
+| `irand`   | Random integer (use with range) |
+| `brand`   | Random boolean 0/1              |
+| `perlin`  | Perlin noise                    |
+| `time`    | Elapsed time                    |
+| `mouseX`  | Mouse X position                |
+| `mouseY`  | Mouse Y position                |
 
 ```js
 $: color("red").alpha(sine)             // pulsing transparency
@@ -287,18 +287,28 @@ $: color("red").alpha("0 1 0.5 1".spline(0.8))  // tension 0–1 (default 0.5)
 
 ## Utility functions
 
-| Function | Description |
-|----------|-------------|
-| `setCps(n)` | Set cycles per second (default 0.5) |
-| `run(n)` | Pattern of integers 0 to n-1 |
-| `choose(a, b, ...)` | Random choice each cycle |
-| `chooseIn(a, b, ...)` | Random choice within subdivisions |
-| `chooseCycles(a, b, ...)` | Random choice that changes each cycle |
-| `signal(fn)` | Custom signal from a function |
-| `steady(v)` | Constant value as a pattern |
+| Function                  | Description                                             |
+| ------------------------- | ------------------------------------------------------- |
+| `setCps(n)`               | Set cycles per second (default 0.5). Accepts a pattern. |
+| `setCpm(n)`               | Set cycles per minute. Accepts a pattern.               |
+| `run(n)`                  | Pattern of integers 0 to n-1                            |
+| `choose(a, b, ...)`       | Random choice each cycle                                |
+| `chooseIn(a, b, ...)`     | Random choice within subdivisions                       |
+| `chooseCycles(a, b, ...)` | Random choice that changes each cycle                   |
+| `signal(fn)`              | Custom signal from a function                           |
+| `steady(v)`               | Constant value as a pattern                             |
+| `stack(a, b, ...)`        | Layer patterns simultaneously                           |
+| `cat(a, b, ...)`          | Concatenate patterns in sequence                        |
+| `fastcat(a, b, ...)`      | Concatenate without stretching                          |
+| `slowcat(a, b, ...)`      | Alias for `cat`                                         |
+| `silence`                 | Empty pattern (no events)                               |
+| `pure(v)`                 | Constant value each cycle                               |
+| `reify(v)`                | Wrap value as pattern (passes patterns through)         |
 
 ```js
 setCps(1)  // one cycle per second
+setCpm(120)  // 120 cycles per minute (= 2 cps)
+setCps(sine.range(0.5, 2).slow(10))  // tempo varies smoothly
 
 $: video(choose("a.mp4", "b.mp4", "c.mp4"))
 $: color("red").alpha(run(4).div(4))  // 0, 0.25, 0.5, 0.75

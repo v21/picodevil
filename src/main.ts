@@ -41,6 +41,9 @@ resize();
 type Screen = { queryArc(begin: number, end: number): any[] };
 let screens: Screen[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
+let cpsPattern: Pattern | null = null;
+let accumulatedCycle = 0;
+let lastFrameSec = 0;
 
 // --- $: label system ---
 let pPatterns: Record<string, Screen> = {};
@@ -196,8 +199,24 @@ function prewarmBlobs(screen: Screen) {
  * setCps(0.25) // one cycle every 4 seconds
  *
  */
-function setCps(cps: number) {
-  cyclesPerSecond = cps;
+function setCps(cps: number | Pattern) {
+  if (typeof cps === "number") {
+    const nowSec = (performance.now() - startTime) / 1000;
+    const currentCycle = nowSec * cyclesPerSecond;
+    startTime = performance.now() - (currentCycle / cps) * 1000;
+    cyclesPerSecond = cps;
+    cpsPattern = null;
+  } else {
+    cpsPattern = cps;
+  }
+}
+
+function setCpm(cpm: number | Pattern) {
+  if (typeof cpm === "number") {
+    setCps(cpm / 60);
+  } else {
+    setCps(cpm.fmap((v: number) => v / 60));
+  }
 }
 
 
@@ -211,6 +230,7 @@ window.uzuEval = (code: string): string | null => {
   lastScreenVals = [];
   pPatterns = {};
   anonymousIndex = 0;
+  cpsPattern = null;
   try {
     const transpiled = transpile(code);
     const signals = {
@@ -227,8 +247,8 @@ window.uzuEval = (code: string): string | null => {
     const sigNames = Object.keys(signals);
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
-    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, gridStack, four, setCps, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", "setCpm", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, gridStack, four, setCps, setCpm, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
@@ -271,7 +291,7 @@ function parseColor(val: string): [number, number, number] {
 }
 
 // --- render loop ---
-const startTime = performance.now();
+let startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
@@ -381,8 +401,19 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
 function frame() {
   const now = performance.now() - startTime;
   const nowSec = now / 1000;
-  const cyclePos = (nowSec * cyclesPerSecond) % 1;
-  const cycleNum = Math.floor(nowSec * cyclesPerSecond);
+  const deltaSec = nowSec - lastFrameSec;
+  lastFrameSec = nowSec;
+
+  let cps = cyclesPerSecond;
+  if (cpsPattern) {
+    const haps = cpsPattern.queryArc(accumulatedCycle, accumulatedCycle + 0.001);
+    if (haps.length > 0) cps = Number(haps[0].value);
+  }
+  accumulatedCycle += deltaSec * cps;
+
+  const cycle = cpsPattern ? accumulatedCycle : nowSec * cyclesPerSecond;
+  const cyclePos = cycle % 1;
+  const cycleNum = Math.floor(cycle);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
