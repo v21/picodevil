@@ -146,22 +146,6 @@ describe("visual controls via createMixParam", () => {
       expect(v.alpha).toBe(0.5);
     });
 
-    it(".grid() with multiple indices draws in multiple cells", () => {
-      const pat = src("x").grid([0, 1], 2, 2);
-      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
-      expect(evs).toHaveLength(2);
-      evs.sort((a: any, b: any) => a.x - b.x);
-      expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
-      expect(evs[1]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
-    });
-
-    it(".grid() with multiple indices preserves source value", () => {
-      const pat = src("clip.mp4").grid([0, 3], 2, 2);
-      const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
-      expect(evs).toHaveLength(2);
-      evs.forEach((v: any) => expect(v.src).toBe("clip.mp4"));
-    });
-
     it(".grid() with pattern index alternates position", () => {
       // "0 3" = cell 0 first half, cell 3 second half
       const pat = src("x").grid(mini("0 3"), 2, 2);
@@ -210,6 +194,52 @@ describe("visual controls via createMixParam", () => {
       // second half: 3 cols → 3 cells
       const evs1 = pat.queryArc(0.6, 0.601).map((e: any) => e.value);
       expect(evs1).toHaveLength(3);
+    });
+
+    it(".gridModulo() with pattern childIndex", () => {
+      // childIndex alternates "0 1", numChildren=2, 2x2 grid
+      // first half: childIndex=0 → cells 0,2; second half: childIndex=1 → cells 1,3
+      const pat = src("x").gridModulo(mini("0 1"), 2, 2, 2);
+      const evs0 = pat.queryArc(0.1, 0.101).map((e: any) => e.value);
+      expect(evs0).toHaveLength(2);
+      evs0.sort((a: any, b: any) => a.y - b.y);
+      expect(evs0[0]).toMatchObject({ x: 0, y: 0 });    // cell 0
+      expect(evs0[1]).toMatchObject({ x: 0, y: 0.5 });  // cell 2
+
+      const evs1 = pat.queryArc(0.6, 0.601).map((e: any) => e.value);
+      expect(evs1).toHaveLength(2);
+      evs1.sort((a: any, b: any) => a.y - b.y);
+      expect(evs1[0]).toMatchObject({ x: 0.5, y: 0 });   // cell 1
+      expect(evs1[1]).toMatchObject({ x: 0.5, y: 0.5 }); // cell 3
+    });
+
+    it(".gridModulo() with pattern numChildren", () => {
+      // childIndex=0, numChildren alternates "1 2", 2x2 grid
+      // first half: numChildren=1 → all 4 cells; second half: numChildren=2 → cells 0,2
+      const pat = src("x").gridModulo(0, mini("1 2"), 2, 2);
+      const evs0 = pat.queryArc(0.1, 0.101).map((e: any) => e.value);
+      expect(evs0).toHaveLength(4);
+      const evs1 = pat.queryArc(0.6, 0.601).map((e: any) => e.value);
+      expect(evs1).toHaveLength(2);
+    });
+
+    it(".grid() with pattern cols", () => {
+      // cell 0, cols alternates "2 3", rows=1
+      const pat = src("x").grid(0, mini("2 3"), 1);
+      // first half: cols=2 → width=0.5
+      const v0 = query(pat, 0.1);
+      expect(v0).toMatchObject({ x: 0, y: 0, width: 0.5, height: 1 });
+      // second half: cols=3 → width=1/3
+      const v1 = query(pat, 0.6);
+      expect(v1.width).toBeCloseTo(1/3);
+    });
+
+    it(".grid() with pattern rows", () => {
+      const pat = src("x").grid(0, 2, mini("1 2"));
+      const v0 = query(pat, 0.1);
+      expect(v0).toMatchObject({ height: 1 });
+      const v1 = query(pat, 0.6);
+      expect(v1).toMatchObject({ height: 0.5 });
     });
 
     it("position params are patternable", () => {

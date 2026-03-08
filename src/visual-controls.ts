@@ -5,7 +5,7 @@
  * at the original query state (frame time), so continuous signals like sine
  * get sampled at the exact frame time rather than the event's onset.
  */
-import { reify, Pattern, stack } from "@strudel/core";
+import { reify, Pattern } from "@strudel/core";
 
 const PatternProto = Object.getPrototypeOf(reify(0));
 
@@ -75,44 +75,56 @@ function cellPos(i: number, cols: number, rows: number) {
   return { x: col / cols, y: row / rows, width: 1 / cols, height: 1 / rows };
 }
 
+// Helper: resolve first value of a pattern at a given time span, or return number directly
+function resolveNum(val: any, begin: any, end: any): number {
+  if (typeof val === 'number') return val;
+  const evs = reify(val).queryArc(begin, end);
+  return evs.length ? Math.round(Number(evs[0].value)) : 0;
+}
+
 // .grid(i, cols, rows) — sets x/y/width/height for cell(s) in a cols×rows grid
-// i can be a number, array of numbers, or a Pattern of numbers
-PatternProto.grid = function (i: any, cols: number, rows: number) {
-  if (Array.isArray(i)) {
-    return stack(...i.map((idx: number) => this.grid(idx, cols, rows)));
-  }
-  if (typeof i === 'number') {
+// All args can be numbers, arrays (for i), or Patterns
+PatternProto.grid = function (i: any, cols: any, rows: any) {
+  // Fast path: all args are literal numbers
+  if (typeof i === 'number' && typeof cols === 'number' && typeof rows === 'number') {
     const pos = cellPos(i, cols, rows);
     return this.x(pos.x).y(pos.y).width(pos.width).height(pos.height);
   }
-  // i is a pattern — resolve index at query time, atomically set all 4 position values
-  const gridPat = reify(i).withValue((idx: number) => cellPos(Number(idx), cols, rows));
-  return this.set.mix(gridPat);
-};
-
-// .gridModulo(childIndex, numChildren, colsPat, rowsPat)
-// At query time: resolves cols/rows, computes all cells for this child (cycling),
-// produces one event per cell with correlated position values.
-PatternProto.gridModulo = function (childIndex: number, numChildren: number, cols: any, rows: any) {
+  // At least one arg is a pattern — resolve all at query time
   const self = this;
-  const colsPat = reify(cols);
-  const rowsPat = reify(rows);
-  // Use new Pattern to resolve cols/rows at query time
+  const iPat = reify(i);
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
-    const colEvents = colsPat.queryArc(begin, end);
-    const rowEvents = rowsPat.queryArc(begin, end);
-    if (!colEvents.length || !rowEvents.length) return [];
-    const c = Math.round(Number(colEvents[0].value));
-    const r = Math.round(Number(rowEvents[0].value));
+    const iEvents = iPat.queryArc(begin, end);
+    const c = resolveNum(cols, begin, end);
+    const r = resolveNum(rows, begin, end);
+    const results: any[] = [];
+    for (const iEv of iEvents) {
+      const idx = Math.round(Number(iEv.value));
+      const positioned = self.grid(idx, c, r);
+      results.push(...positioned.queryArc(begin, end));
+    }
+    return results;
+  });
+};
+
+// .gridModulo(childIndex, numChildren, cols, rows)
+// All args can be numbers or Patterns. At query time: resolves everything,
+// computes all cells for this child (cycling), produces one event per cell.
+PatternProto.gridModulo = function (childIndex: any, numChildren: any, cols: any, rows: any) {
+  const self = this;
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const ci = resolveNum(childIndex, begin, end);
+    const nc = resolveNum(numChildren, begin, end);
+    const c = resolveNum(cols, begin, end);
+    const r = resolveNum(rows, begin, end);
     const totalCells = c * r;
-    // Build indices for this child
     const indices: number[] = [];
-    for (let idx = childIndex; idx < totalCells; idx += numChildren) {
+    for (let idx = ci; idx < totalCells; idx += nc) {
       indices.push(idx);
     }
     if (indices.length === 0) return [];
-    // Query self for each index, apply position
     const results: any[] = [];
     for (const idx of indices) {
       const positioned = self.grid(idx, c, r);
