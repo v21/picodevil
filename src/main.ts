@@ -227,6 +227,13 @@ function setCpm(cpm: number | Pattern) {
   }
 }
 
+function hush() {
+  screens = [];
+  pPatterns = {};
+  anonymousIndex = 0;
+  return silence;
+}
+
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string): string | null => {
@@ -255,8 +262,9 @@ window.uzuEval = (code: string): string | null => {
     const sigNames = Object.keys(signals);
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
-    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", "setCpm", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, gridStack, four, setCps, setCpm, ...Object.values(signals), ...Object.values(combinators),
+    const setcps = setCps, setcpm = setCpm;
+    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", "setCpm", "setcps", "setcpm", "hush", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, gridStack, four, setCps, setCpm, setcps, setcpm, hush, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
