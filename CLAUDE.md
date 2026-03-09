@@ -135,7 +135,7 @@ npx tsx test/monkey-test.ts --replay --delay 1000 --headless
 ## Workflow when making changes
 
 When working through a list of tasks, **stop and check in with the user after completing each one** — don't proceed to the next task without confirmation. For each task:
-1. **Write a failing test first** (red) — unit test in `src/*.test.ts` or monkey tester coverage in `test/monkey-test.ts`, whichever is appropriate. Skip this only when the change is purely visual, config-only, or otherwise impractical to test upfront.
+1. **Write a failing test first** (red) — unit test in `src/*.test.ts` and monkey tester coverage in `test/monkey-test.ts`. Skip this only when the change is config-only, or otherwise impractical to test upfront.
 2. **Implement the change** to make the test pass (green)
 3. When adding new user-facing functionality, also add coverage to the monkey tester
 4. Run `npm test` (unit tests)
