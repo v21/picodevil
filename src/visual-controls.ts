@@ -315,6 +315,24 @@ PatternProto.grid = function (i: any, cols: any, rows: any) {
  * video("a.mp4").gridModulo(0, 2, 2, 2)
  *
  */
+/**
+ * Returns an infinite generator of pattern variants, each transformed by `fn(pattern, index)`.
+ * Pass to gridStack() — it will pull exactly cols×rows items at query time.
+ *
+ * @param {(x: Pattern, i: number) => Pattern} fn transform applied to each copy
+ * @example
+ * $: gridStack(video("clip.mp4").repeatWith((x, i) => x.speed(i * 0.5 + 0.5)), 2, 2)
+ */
+PatternProto.repeatWith = function (fn: (x: any, i: number) => any): Iterable<any> {
+  const self = this;
+  return {
+    [Symbol.iterator]: function* () {
+      let i = 0;
+      while (true) yield fn(self, i++);
+    }
+  };
+};
+
 PatternProto.gridModulo = function (childIndex: any, numChildren: any, cols: any, rows: any) {
   const self = this;
   return new Pattern((state: any) => {

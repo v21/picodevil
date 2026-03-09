@@ -84,6 +84,35 @@ describe("gridStack single pattern", () => {
   });
 });
 
+describe("repeatWith", () => {
+  it("produces variants via the callback, pulled by gridStack", () => {
+    const pat = gridStack(color("red").repeatWith((x: any, i: number) => x.alpha(i * 0.5)), 3, 1);
+    const evs = queryAll(pat, 0.1);
+    evs.sort((a: any, b: any) => a.x - b.x);
+    expect(evs).toHaveLength(3);
+    expect(evs[0].alpha).toBe(0);
+    expect(evs[1].alpha).toBe(0.5);
+    expect(evs[2].alpha).toBe(1);
+  });
+
+  it("gridStack pulls exactly cols*rows items", () => {
+    const pat = gridStack(color("red").repeatWith((x: any, i: number) => x.alpha(i / 5)), 2, 2);
+    expect(queryAll(pat, 0.1)).toHaveLength(4);
+  });
+
+  it("works with dynamic cols via Pattern", () => {
+    const pat = gridStack(color("red").repeatWith((x: any, i: number) => x.alpha(i / 5)), mini("2 3"), 1);
+    expect(queryAll(pat, 0.1)).toHaveLength(2);
+    expect(queryAll(pat, 0.6)).toHaveLength(3);
+  });
+
+  it("accepts any iterable — gridStack consumes cols*rows items", () => {
+    function* variants() { yield color("red"); yield color("blue"); yield color("green"); yield color("yellow"); }
+    const pat = gridStack(variants(), 2, 2);
+    expect(queryAll(pat, 0.1)).toHaveLength(4);
+  });
+});
+
 describe("gridStack default cols/rows", () => {
   it("defaults rows to cols when rows is omitted", () => {
     const pat = gridStack([color("red"), color("blue"), color("green"), color("yellow")], 2);

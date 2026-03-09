@@ -50,7 +50,8 @@ let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 
 /** Inject .p() onto Pattern.prototype. */
-import { Pattern } from "@strudel/core";
+import { Pattern, useRNG } from "@strudel/core";
+useRNG('precise');
 (Pattern.prototype as any).p = function (id: string) {
   if (id.startsWith('_') || id.endsWith('_')) return this;
   if (id.includes('$')) {
@@ -263,8 +264,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "gridStack", "setCps", "setCpm", "setcps", "setcpm", "hush", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, gridStack, setCps, setCpm, setcps, setcpm, hush, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "gridStack", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, gridStack, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
@@ -311,7 +312,7 @@ let startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
-function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, videoKeyPrefix: string = "") {
+function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number) {
   const t = cycleNum + cyclePos;
   let events: any[];
   try {
@@ -395,7 +396,7 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
       } else if (ev._type === "video") {
         const videoResult = renderVideoFrame({
           ev,
-          videoPool, poolKeyPrefix: videoKeyPrefix, canvas, ctx,
+          videoPool, poolKeyPrefix: `cell${evIndex}:`, canvas, ctx,
           now, dt,
           lastVideoVal: lastScreenVals[evIndex] ?? null,
           getOrCreateVideoEl: getVideoEl,
