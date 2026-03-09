@@ -19,6 +19,19 @@ import { resolve } from "path";
 import fc from "fast-check";
 import { topExpr, type GeneratedExpr } from "./arbitraries";
 
+/** A test sequence: one or more code snippets to eval in order on the same page. */
+const evalSequence: fc.Arbitrary<GeneratedExpr[]> = fc.oneof(
+  // Single eval (most common, shrinks simplest)
+  { weight: 5, arbitrary: topExpr.map(e => [e]) },
+  // Re-eval same code 2-3 times (tests cleanup)
+  { weight: 3, arbitrary: fc.tuple(
+    topExpr,
+    fc.integer({ min: 2, max: 3 }),
+  ).map(([e, n]) => Array(n).fill(e)) },
+  // Sequence of different codes (tests state transitions)
+  { weight: 2, arbitrary: fc.array(topExpr, { minLength: 2, maxLength: 3 }) },
+);
+
 const args = process.argv.slice(2);
 function flag(name: string, def: string): string {
   const i = args.indexOf(`--${name}`);
@@ -36,7 +49,8 @@ const FAILURES_FILE = resolve(import.meta.dirname ?? ".", "regression-cases.json
 // ============================================================
 
 interface FailureCase {
-  code: string;
+  code: string;       // display string (first code or joined)
+  codes?: string[];   // full sequence if multi-step
   description: string;
   errors: string[];
   timestamp: string;
@@ -65,7 +79,7 @@ function saveFailures(failures: FailureCase[]) {
 
 async function runCase(
   page: any,
-  code: string,
+  codes: string[],
   delayMs: number,
   url: string,
 ): Promise<{ ok: boolean; errors: string[] }> {
@@ -82,45 +96,54 @@ async function runCase(
     caseErrors.push(text);
   };
 
+  // Fresh page state for each test sequence
+  await page.goto(url);
+  await page.waitForFunction(
+    () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+  );
+
   page.on("console", onConsole);
   page.on("pageerror", onPageError);
 
   try {
-    const evalError = await page.evaluate((c: string) => {
-      try {
-        if (typeof window.uzuSetCode === "function") window.uzuSetCode(c);
-        window.uzuEval(c);
-        return null;
-      } catch (e: any) {
-        return e?.message || String(e);
+    for (const code of codes) {
+      const evalError = await page.evaluate((c: string) => {
+        try {
+          if (typeof window.uzuSetCode === "function") window.uzuSetCode(c);
+          window.uzuEval(c);
+          return null;
+        } catch (e: any) {
+          return e?.message || String(e);
+        }
+      }, code);
+
+      if (evalError) {
+        caseErrors.push(evalError);
       }
-    }, code);
 
-    if (evalError) {
-      caseErrors.push(evalError);
-    }
+      await page.waitForTimeout(delayMs);
 
-    await page.waitForTimeout(delayMs);
+      // Collect runtime warnings
+      const runtimeWarnings: string[] = await page.evaluate(() => {
+        const w = (window as any).uzuWarnings ?? [];
+        return [...w];
+      }).catch(() => []);
+      for (const w of runtimeWarnings) {
+        caseErrors.push(`[runtime warning] ${w}`);
+      }
 
-    // Collect runtime warnings
-    const runtimeWarnings: string[] = await page.evaluate(() => {
-      const w = (window as any).uzuWarnings ?? [];
-      return [...w];
-    }).catch(() => []);
-    for (const w of runtimeWarnings) {
-      caseErrors.push(`[runtime warning] ${w}`);
-    }
+      const alive = await page.evaluate(() => {
+        return document.getElementById("c") !== null;
+      }).catch(() => false);
 
-    const alive = await page.evaluate(() => {
-      return document.getElementById("c") !== null;
-    }).catch(() => false);
-
-    if (!alive) {
-      caseErrors.push("Page crashed or became unresponsive");
-      await page.goto(url);
-      await page.waitForFunction(
-        () => typeof window.uzuEval === "function", null, { timeout: 10000 },
-      ).catch(() => {});
+      if (!alive) {
+        caseErrors.push("Page crashed or became unresponsive");
+        await page.goto(url);
+        await page.waitForFunction(
+          () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+        ).catch(() => {});
+        break; // can't continue sequence after crash
+      }
     }
   } finally {
     page.off("console", onConsole);
@@ -128,6 +151,28 @@ async function runCase(
   }
 
   return { ok: caseErrors.length === 0, errors: caseErrors };
+}
+
+/** Get the codes array from a FailureCase (handles legacy single-code format). */
+function getCodes(f: FailureCase): string[] {
+  return f.codes ?? [f.code];
+}
+
+/** Format a sequence for display. */
+function formatSeq(codes: string[]): string {
+  if (codes.length === 1) return codes[0];
+  return codes.map((c, i) => `[eval ${i + 1}/${codes.length}] ${c}`).join("\n");
+}
+
+/** Make a FailureCase from a code sequence. */
+function makeFailure(codes: string[], description: string, errors: string[]): FailureCase {
+  return {
+    code: codes.length === 1 ? codes[0] : codes.join("\n---\n"),
+    codes: codes.length > 1 ? codes : undefined,
+    description,
+    errors,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 // ============================================================
@@ -172,14 +217,16 @@ async function main() {
 
     for (let i = 0; i < existingFailures.length; i++) {
       const f = existingFailures[i];
-      const result = await runCase(page, f.code, DELAY_MS, url);
+      const codes = getCodes(f);
+      const result = await runCase(page, codes, DELAY_MS, url);
+      const display = formatSeq(codes);
 
       if (result.ok) {
         passed++;
-        console.log(`  [${i + 1}/${existingFailures.length}] FIXED | ${f.code}`);
+        console.log(`  [${i + 1}/${existingFailures.length}] FIXED | ${display}`);
       } else {
         failed++;
-        console.log(`  [${i + 1}/${existingFailures.length}] STILL FAILING | ${f.code}`);
+        console.log(`  [${i + 1}/${existingFailures.length}] STILL FAILING | ${display}`);
         for (const err of result.errors) {
           console.log(`    -> ${err}`);
         }
@@ -225,33 +272,31 @@ async function main() {
       let firstFailureSeen = false;
 
       const result = await fc.check(
-        fc.asyncProperty(topExpr, async (expr: GeneratedExpr) => {
+        fc.asyncProperty(evalSequence, async (seq: GeneratedExpr[]) => {
+          const codes = seq.map(e => e.code);
           const isShrinking = firstFailureSeen;
           if (!isShrinking) totalCaseNum++;
           const delay = isShrinking ? SHRINK_DELAY_MS : DELAY_MS;
 
-          const testResult = await runCase(page, expr.code, delay, url);
+          const testResult = await runCase(page, codes, delay, url);
 
           if (!isShrinking) {
-            const truncated = expr.code.length > 100 ? expr.code.slice(0, 100) + "..." : expr.code;
+            const display = formatSeq(codes);
+            const truncated = display.length > 100 ? display.slice(0, 100) + "..." : display;
             if (testResult.ok) {
               console.log(`  [${totalCaseNum}/${ROUNDS}] OK | ${truncated}`);
             } else {
-              console.log(`  [${totalCaseNum}/${ROUNDS}] FAIL | ${expr.code}`);
+              console.log(`  [${totalCaseNum}/${ROUNDS}] FAIL | ${display}`);
               for (const err of testResult.errors) {
                 console.log(`    -> ${err}`);
               }
               console.log(`  Shrinking...`);
               firstFailureSeen = true;
-              pendingFailure = {
-                code: expr.code,
-                description: "unshrunk (interrupted before shrinking completed)",
-                errors: testResult.errors,
-                timestamp: new Date().toISOString(),
-              };
+              pendingFailure = makeFailure(codes, "unshrunk (interrupted before shrinking completed)", testResult.errors);
             }
           } else if (!testResult.ok) {
-            console.log(`  [shrink] still fails (${expr.code.length} chars)`);
+            const totalChars = codes.reduce((s, c) => s + c.length, 0);
+            console.log(`  [shrink] still fails (${totalChars} chars, ${codes.length} eval(s))`);
           }
 
           return testResult.ok;
@@ -266,21 +311,17 @@ async function main() {
         roundsRemaining -= result.numRuns;
 
         if (result.counterexample) {
-          const shrunkExpr = result.counterexample[0] as GeneratedExpr;
-          console.log(`\n  Minimal failing case (after ${result.numShrinks} shrinks):`);
-          console.log(`  ${shrunkExpr.code}`);
+          const shrunkSeq = result.counterexample[0] as GeneratedExpr[];
+          const shrunkCodes = shrunkSeq.map(e => e.code);
+          console.log(`\n  Minimal failing case (after ${result.numShrinks} shrinks, ${shrunkCodes.length} eval(s)):`);
+          console.log(`  ${formatSeq(shrunkCodes)}`);
 
-          const finalResult = await runCase(page, shrunkExpr.code, DELAY_MS, url);
+          const finalResult = await runCase(page, shrunkCodes, DELAY_MS, url);
           if (!finalResult.ok) {
             for (const err of finalResult.errors) {
               console.log(`  -> ${err}`);
             }
-            newFailures.push({
-              code: shrunkExpr.code,
-              description: `shrunk from ${result.numShrinks} shrinks`,
-              errors: finalResult.errors,
-              timestamp: new Date().toISOString(),
-            });
+            newFailures.push(makeFailure(shrunkCodes, `shrunk from ${result.numShrinks} shrinks`, finalResult.errors));
             pendingFailure = null;
           }
         }
