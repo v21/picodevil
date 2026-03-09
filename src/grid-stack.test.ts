@@ -3,7 +3,7 @@ import { mini } from "@strudel/mini";
 import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
-import { gridStack, four } from "./grid-stack";
+import { gridStack } from "./grid-stack";
 import "./visual-controls";
 
 function queryAll(pat: any, t: number) {
@@ -76,14 +76,30 @@ describe("gridStack", () => {
   });
 });
 
-describe("four", () => {
-  it("is gridStack with 2x2", () => {
-    const pat = four([color("red"), color("blue"), color("green"), color("yellow")]);
+describe("gridStack single pattern", () => {
+  it("accepts a single pattern (not wrapped in array)", () => {
+    const pat = gridStack(color("red"), 2, 1);
+    const evs = queryAll(pat, 0.1);
+    expect(evs).toHaveLength(2);
+  });
+});
+
+describe("gridStack default cols/rows", () => {
+  it("defaults rows to cols when rows is omitted", () => {
+    const pat = gridStack([color("red"), color("blue"), color("green"), color("yellow")], 2);
     const evs = queryAll(pat, 0.1);
     expect(evs).toHaveLength(4);
     evs.sort((a: any, b: any) => a.y * 10 + a.x - (b.y * 10 + b.x));
-    expect(evs[0]).toMatchObject({ color: "red", width: 0.5, height: 0.5 });
-    expect(evs[3]).toMatchObject({ color: "yellow", x: 0.5, y: 0.5 });
+    expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+    expect(evs[3]).toMatchObject({ x: 0.5, y: 0.5 });
+  });
+
+  it("defaults cols and rows both to 2 when omitted", () => {
+    const pat = gridStack([color("red"), color("blue"), color("green"), color("yellow")]);
+    const evs = queryAll(pat, 0.1);
+    expect(evs).toHaveLength(4);
+    evs.sort((a: any, b: any) => a.y * 10 + a.x - (b.y * 10 + b.x));
+    expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
   });
 });
 

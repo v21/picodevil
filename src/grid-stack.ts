@@ -14,21 +14,9 @@ import "./visual-controls";
  * $: gridStack([video("a.mp4"), video("b.mp4")], 3, 1)
  *
  */
-export function gridStack(children: Pattern[], cols: any, rows: any): Pattern {
-  return stack(...children.map((child, i) =>
-    (child as any).gridModulo(i, children.length, cols, rows)
+export function gridStack(children: Pattern | Pattern[], cols: any = 2, rows: any = cols): Pattern {
+  const arr = Array.isArray(children) ? children : [children];
+  return stack(...arr.map((child, i) =>
+    (child as any).gridModulo(i, arr.length, cols, rows)
   ));
-}
-
-/**
- * Shorthand for gridStack(children, 2, 2) — arranges patterns in a 2×2 grid.
- *
- * @param {Pattern[]} children array of up to 4 patterns
- * @returns {Pattern} 2×2 grid of the given patterns
- * @example
- * $: four([color("red"), color("blue"), color("green"), video("clip.mp4")])
- *
- */
-export function four(children: Pattern[]): Pattern {
-  return gridStack(children, 2, 2);
 }

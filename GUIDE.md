@@ -218,13 +218,6 @@ Distributes an array of patterns across grid cells, cycling if there are more ce
 $: gridStack([color("red"), color("blue"), video("clip.mp4")], 2, 2)
 ```
 
-### `four(children)`
-
-Shorthand for `gridStack(children, 2, 2)` — a 2×2 grid.
-
-```js
-$: four([color("red"), color("blue"), color("green"), video("clip.mp4")])
-```
 
 ## Signals
 

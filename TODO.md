@@ -24,7 +24,7 @@ bugs:
 code quality:
 / extract video playback logic from main.ts render loop 
 / show eval errors in the editor, not just console
-- fix timing: changing CPS mid-performance causes discontinuous jump (need phase adjustment)
+/ fix timing: changing CPS mid-performance causes discontinuous jump (need phase adjustment)
 
 
 
@@ -60,6 +60,8 @@ draw a tree of current render state, and update that as we iterate through time.
 - we should also scrap the idea that each video has it's own playhead position - set this entirely from the patterns
 
 
+- something to feed in a unique randomness to each instance of a pattern within a grid
+
 
 # small things
 / where are we injecting p() ? is ti the right place
@@ -79,6 +81,30 @@ draw a tree of current render state, and update that as we iterate through time.
 
 - allow setting each pattern in a stack (either kind) to have a different seed for randomness. or just apply a function like `(x, i) => x.add(i)`
 
-add curry, compose, stack, cat (and variants)
+/ add curry, compose, stack, cat (and variants)
+add all and each
 
-registerControl instead of createMixParam ?
+
+if it fails, keep rendering the old one
+
+
+add methods to crop to certain part of the source image/vid
+
+gridStack.scale(.5) should shrink the grid, not the videos within
+same with .x
+
+
+shape:
+natural
+square
+landscape (16:9)
+portrait (9:16)
+circle
+blob (animates)
+hex
+
+
+circleStack (arranges stuff in a circle, there's an offset param if you want it to spin, and a radius one too (defaults to .4))
+
+
+gridStack should take a single source, and if we only pass in col it should duplicate it for rows

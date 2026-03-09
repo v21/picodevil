@@ -19,7 +19,7 @@ import { setupEditor } from "./editor";
 import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
-import { gridStack, four } from "./grid-stack";
+import { gridStack } from "./grid-stack";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
@@ -263,8 +263,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "gridStack", "four", "setCps", "setCpm", "setcps", "setcpm", "hush", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, gridStack, four, setCps, setCpm, setcps, setcpm, hush, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "gridStack", "setCps", "setCpm", "setcps", "setcpm", "hush", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, gridStack, setCps, setCpm, setcps, setcpm, hush, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();

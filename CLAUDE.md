@@ -78,7 +78,6 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - `video(str)` — pattern of `{src}` objects (video filenames from VIDEO_BASE)
 - `image(str)` — pattern of `{src, type:"image"}` objects (image filenames from IMAGE_BASE)
 - `gridStack(children[], cols, rows)` — distributes children across grid cells via `.gridModulo()`
-- `four(children[])` — shorthand for `gridStack(children, 2, 2)`
 - `setCps(n)` — set cycles per second
 - `$: expr` — transpiled to `expr.p("$")`, registers pattern for rendering
 - `name: expr` — transpiled to `expr.p("name")`, named pattern (last write wins)

@@ -101,10 +101,12 @@ export function miniArb(pool: string[], maxDepth = 2): fc.Arbitrary<string> {
       { weight: 1, arbitrary: fc.constant("~") },
       { weight: 2, arbitrary: tie("seq").map(s => `[${s}]`) },
       { weight: 1, arbitrary: tie("seq").map(s => `<${s}>`) },
-      { weight: 1, arbitrary: fc.tuple(
-        tie("seq"),
-        fc.option(fc.integer({ min: 2, max: 5 }), { nil: undefined }),
-      ).map(([s, pct]) => pct !== undefined ? `{${s}}%${pct}` : `{${s}}`) },
+      {
+        weight: 1, arbitrary: fc.tuple(
+          tie("seq"),
+          fc.option(fc.integer({ min: 2, max: 5 }), { nil: undefined }),
+        ).map(([s, pct]) => pct !== undefined ? `{${s}}%${pct}` : `{${s}}`)
+      },
     ),
 
     // Slice with optional operators
@@ -137,28 +139,34 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
   fc.constantFrom(...CONTINUOUS_SIGNALS),
   fc.oneof(
     { weight: 5, arbitrary: fc.constant("") },
-    { weight: 2, arbitrary: fc.tuple(
-      fc.double({ min: 0, max: 1, noNaN: true }),
-      fc.double({ min: 0, max: 2, noNaN: true }),
-    ).map(([lo, hi]) => `.range(${lo.toFixed(2)}, ${hi.toFixed(2)})`) },
+    {
+      weight: 2, arbitrary: fc.tuple(
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 2, noNaN: true }),
+      ).map(([lo, hi]) => `.range(${lo.toFixed(2)}, ${hi.toFixed(2)})`)
+    },
     { weight: 1, arbitrary: fc.constantFrom(2, 3, 4, 8).map(n => `.div(${n})`) },
   ),
   fc.oneof(
     { weight: 5, arbitrary: fc.constant("") },
-    { weight: 2, arbitrary: fc.tuple(
-      fc.oneof(
-        fc.constantFrom(...EASING_CURVES).map(c => `'${c}'`),
-        miniArb(EASING_CURVES, 1).map(m => `"${m}"`),
-      ),
-      fc.oneof(
-        fc.constantFrom(...EASING_DIRS).map(d => `'${d}'`),
-        miniArb(EASING_DIRS, 1).map(m => `"${m}"`),
-      ),
-    ).map(([c, d]) => `.lerp(${c}, ${d})`) },
-    { weight: 1, arbitrary: fc.oneof(
-      fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => `.spline(${n.toFixed(2)})`),
-      miniArb(["0.1", "0.3", "0.5", "0.8", "1"], 1).map(m => `.spline("${m}")`),
-    ) },
+    {
+      weight: 2, arbitrary: fc.tuple(
+        fc.oneof(
+          fc.constantFrom(...EASING_CURVES).map(c => `'${c}'`),
+          miniArb(EASING_CURVES, 1).map(m => `"${m}"`),
+        ),
+        fc.oneof(
+          fc.constantFrom(...EASING_DIRS).map(d => `'${d}'`),
+          miniArb(EASING_DIRS, 1).map(m => `"${m}"`),
+        ),
+      ).map(([c, d]) => `.lerp(${c}, ${d})`)
+    },
+    {
+      weight: 1, arbitrary: fc.oneof(
+        fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => `.spline(${n.toFixed(2)})`),
+        miniArb(["0.1", "0.3", "0.5", "0.8", "1"], 1).map(m => `.spline("${m}")`),
+      )
+    },
   ),
 ).map(([sig, mod, easing]) => sig + mod + easing);
 
@@ -319,36 +327,44 @@ export interface GeneratedExpr {
 /** A single screen expression (color, video, or image) without .out(). */
 export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   // color
-  { weight: 3, arbitrary: fc.tuple(
-    miniArb(COLORS, 2),
-    fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
-  ).map(([pat, methods]) => ({
-    code: `color("${pat}")${methods.map(m => m.code).join("")}`,
-  })) },
+  {
+    weight: 3, arbitrary: fc.tuple(
+      miniArb(COLORS, 2),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
+    ).map(([pat, methods]) => ({
+      code: `color("${pat}")${methods.map(m => m.code).join("")}`,
+    }))
+  },
 
   // color via explicit mini()
-  { weight: 1, arbitrary: fc.tuple(
-    miniArb(COLORS, 2),
-    fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
-  ).map(([pat, methods]) => ({
-    code: `color(mini("${pat}"))${methods.map(m => m.code).join("")}`,
-  })) },
+  {
+    weight: 1, arbitrary: fc.tuple(
+      miniArb(COLORS, 2),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
+    ).map(([pat, methods]) => ({
+      code: `color(mini("${pat}"))${methods.map(m => m.code).join("")}`,
+    }))
+  },
 
   // image
-  { weight: 2, arbitrary: fc.tuple(
-    miniArb(IMAGES, 1),
-    fc.array(sharedMethod, { minLength: 0, maxLength: 4 }),
-  ).map(([pat, methods]) => ({
-    code: `image("${pat}").urlBase('/test-assets/')${methods.map(m => m.code).join("")}`,
-  })) },
+  {
+    weight: 2, arbitrary: fc.tuple(
+      miniArb(IMAGES, 1),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 4 }),
+    ).map(([pat, methods]) => ({
+      code: `image("${pat}").urlBase('/test-assets/')${methods.map(m => m.code).join("")}`,
+    }))
+  },
 
   // video
-  { weight: 5, arbitrary: fc.tuple(
-    miniArb(VIDEOS, 2),
-    videoChain,
-  ).map(([pat, chain]) => ({
-    code: `video("${pat}").urlBase('/test-assets/')${chain}`,
-  })) },
+  {
+    weight: 5, arbitrary: fc.tuple(
+      miniArb(VIDEOS, 2),
+      videoChain,
+    ).map(([pat, chain]) => ({
+      code: `video("${pat}").urlBase('/test-assets/')${chain}`,
+    }))
+  },
 );
 
 // ============================================================
@@ -363,14 +379,16 @@ const cpsValue: fc.Arbitrary<string> = fc.oneof(
   { weight: 8, arbitrary: fc.double({ min: 2, max: 10, noNaN: true }).map(v => `setCps(${v.toFixed(1)})`) },
   { weight: 1, arbitrary: fc.double({ min: 10, max: 1000, noNaN: true }).map(v => `setCps(${v.toFixed(1)})`) },
   { weight: 3, arbitrary: fc.double({ min: 0.5, max: 2, noNaN: true }).map(v => `setCpm(${(v * 60).toFixed(1)})`) },
-  { weight: 2, arbitrary: fc.tuple(
-    fc.constantFrom(...CONTINUOUS_SIGNALS),
-    fc.double({ min: 0.1, max: 4, noNaN: true }),
-    fc.double({ min: 0.5, max: 8, noNaN: true }),
-  ).map(([sig, lo, hi]) => `setCps(${sig}.range(${lo.toFixed(2)}, ${hi.toFixed(2)}))`) },
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.constantFrom(...CONTINUOUS_SIGNALS),
+      fc.double({ min: 0.1, max: 4, noNaN: true }),
+      fc.double({ min: 0.5, max: 8, noNaN: true }),
+    ).map(([sig, lo, hi]) => `setCps(${sig}.range(${lo.toFixed(2)}, ${hi.toFixed(2)}))`)
+  },
 );
 
-/** Grid method chain applied after gridStack/four/grid. */
+/** Grid method chain applied after gridStack. */
 const gridChain: fc.Arbitrary<string> = fc.array(
   fc.oneof(
     alphaArg.map(a => `.alpha(${a})`),
@@ -389,51 +407,54 @@ const labelPrefix: fc.Arbitrary<string> = fc.oneof(
 
 /** Full top-level expression using label: syntax. */
 export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
-  // Grid expression (gridStack / four)
-  { weight: 5, arbitrary: fc.tuple(
-    fc.option(cpsValue, { nil: undefined }),
-    fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
-    fc.integer({ min: 2, max: 5 }),
-    fc.integer({ min: 2, max: 5 }),
-    gridChain,
-    fc.constantFrom("gridStack", "four"),
-    labelPrefix,
-  ).map(([cps, children, cols, rows, chain, variant, label]) => {
-    const cpsCode = cps !== undefined ? `${cps}\n` : "";
-    const childrenCode = children.map(c => c.code).join(", ");
-    let expr: string;
-    if (variant === "four") {
-      expr = `four([${childrenCode}])`;
-    } else {
+  // Grid expression (gridStack )
+  {
+    weight: 5, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
+      fc.integer({ min: 2, max: 5 }),
+      fc.integer({ min: 2, max: 5 }),
+      gridChain,
+      fc.constantFrom("gridStack"),
+      labelPrefix,
+    ).map(([cps, children, cols, rows, chain, variant, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map(c => c.code).join(", ");
+      let expr: string;
       expr = `gridStack([${childrenCode}], ${cols}, ${rows})`;
-    }
 
-    return {
-      code: `${cpsCode}${label}: ${expr}${chain}`,
-    };
-  }) },
+
+      return {
+        code: `${cpsCode}${label}: ${expr}${chain}`,
+      };
+    })
+  },
 
   // Standalone screen expression
-  { weight: 3, arbitrary: fc.tuple(
-    fc.option(cpsValue, { nil: undefined }),
-    screenExpr,
-    labelPrefix,
-  ).map(([cps, screen, label]) => {
-    const cpsCode = cps !== undefined ? `${cps}\n` : "";
-    return {
-      code: `${cpsCode}${label}: ${screen.code}`,
-    };
-  }) },
+  {
+    weight: 3, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      screenExpr,
+      labelPrefix,
+    ).map(([cps, screen, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      return {
+        code: `${cpsCode}${label}: ${screen.code}`,
+      };
+    })
+  },
 
   // Multiple layered $: lines
-  { weight: 2, arbitrary: fc.tuple(
-    fc.option(cpsValue, { nil: undefined }),
-    fc.array(fc.tuple(screenExpr, labelPrefix), { minLength: 2, maxLength: 4 }),
-  ).map(([cps, lines]) => {
-    const cpsCode = cps !== undefined ? `${cps}\n` : "";
-    const lineCode = lines.map(([screen, label]) => `${label}: ${screen.code}`).join("\n");
-    return {
-      code: `${cpsCode}${lineCode}`,
-    };
-  }) },
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(fc.tuple(screenExpr, labelPrefix), { minLength: 2, maxLength: 4 }),
+    ).map(([cps, lines]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const lineCode = lines.map(([screen, label]) => `${label}: ${screen.code}`).join("\n");
+      return {
+        code: `${cpsCode}${lineCode}`,
+      };
+    })
+  },
 );
