@@ -23,6 +23,7 @@ import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexNow, indexWith, indexNowWith, autoseed } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
+import { resolveMedia, addMedia, clearAll as clearMediaRegistry } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
@@ -85,11 +86,56 @@ function collectScreens(): Screen[] {
 }
 
 // --- video ---
+const MAX_FREE_PER_SRC = 2;  // max idle elements per unique src URL
+const MAX_FREE_TOTAL = 8;    // max idle elements across all srcs
 const videoPool = new Map<string, VideoEl>();       // active elements by pool key
 const freeVideoPool = new Map<string, VideoEl[]>(); // idle elements by original src URL, ready for reuse
 const videoBlobUrls = new Map<string, string>();    // network URL -> blob URL (one fetch per file)
 const videoBlobPending = new Map<string, Promise<void>>(); // in-flight fetches
 const videoDurations = new Map<string, number>();   // srcUrl -> duration in seconds (cached on load)
+
+/** Destroy a video element to free its WebMediaPlayer. */
+function destroyVideoEl(el: VideoEl) {
+  el.pause();
+  el.removeAttribute("src");
+  el.load();
+}
+
+/** Add an element to the free pool, enforcing per-src and total caps. */
+function freeVideoEl(el: VideoEl) {
+  el.pause();
+  const srcUrl = el._srcUrl ?? el.src;
+  const freeList = freeVideoPool.get(srcUrl) ?? [];
+  if (freeList.length >= MAX_FREE_PER_SRC) {
+    destroyVideoEl(el);
+    return;
+  }
+  freeList.push(el);
+  freeVideoPool.set(srcUrl, freeList);
+  trimFreePool();
+}
+
+/** Evict oldest free pool entries if total exceeds cap. */
+function trimFreePool() {
+  let total = 0;
+  for (const list of freeVideoPool.values()) total += list.length;
+  if (total <= MAX_FREE_TOTAL) return;
+  // Evict from the largest lists first
+  for (const [src, list] of freeVideoPool) {
+    while (list.length > 0 && total > MAX_FREE_TOTAL) {
+      destroyVideoEl(list.pop()!);
+      total--;
+    }
+    if (list.length === 0) freeVideoPool.delete(src);
+    if (total <= MAX_FREE_TOTAL) break;
+  }
+}
+
+/** Resolve a media src: check registry first, fall back to base+name. */
+function resolveMediaUrl(name: string, base: string): string {
+  const entry = resolveMedia(name);
+  return entry ? entry.url : base + name;
+}
 
 /** Fetch a video URL as a blob and cache the object URL. One network load per unique URL. */
 function fetchVideoBlob(srcUrl: string): void {
@@ -100,7 +146,7 @@ function fetchVideoBlob(srcUrl: string): void {
       const blobUrl = URL.createObjectURL(blob);
       videoBlobUrls.set(srcUrl, blobUrl);
       videoBlobPending.delete(srcUrl);
-      console.log("video cached as blob:", srcUrl);
+      // video cached as blob
     })
     .catch(e => {
       videoBlobPending.delete(srcUrl);
@@ -126,10 +172,9 @@ function makeVideoEl(name: string): VideoEl {
 }
 
 function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string = "", targetTime?: number): HTMLVideoElement {
-  const key = keyPrefix + base + name;
+  const srcUrl = resolveMediaUrl(name, base);
+  const key = keyPrefix + srcUrl;
   if (videoPool.has(key)) return videoPool.get(key)!;
-
-  const srcUrl = base + name;
 
   // Reuse an idle element with the same src, preferring one nearest the target time
   const freeList = freeVideoPool.get(srcUrl);
@@ -169,14 +214,7 @@ function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string =
 }
 
 function clearVideos() {
-  // Move active elements to free pool for reuse instead of destroying
-  for (const el of videoPool.values()) {
-    el.pause();
-    const srcUrl = el._srcUrl ?? el.src;
-    const freeList = freeVideoPool.get(srcUrl) ?? [];
-    freeList.push(el);
-    freeVideoPool.set(srcUrl, freeList);
-  }
+  for (const el of videoPool.values()) freeVideoEl(el);
   videoPool.clear();
 }
 
@@ -184,13 +222,13 @@ function clearVideos() {
 const imagePool = new Map<string, HTMLImageElement>();
 
 function getImageEl(name: string, base: string): HTMLImageElement {
-  const key = base + name;
-  if (imagePool.has(key)) return imagePool.get(key)!;
+  const srcUrl = resolveMediaUrl(name, base);
+  if (imagePool.has(srcUrl)) return imagePool.get(srcUrl)!;
   const el = new Image();
-  el.src = base + name;
+  el.src = srcUrl;
   el.addEventListener("load", () => console.log("image loaded:", name));
-  el.addEventListener("error", () => console.error("image failed to load:", key));
-  imagePool.set(key, el);
+  el.addEventListener("error", () => console.error("image failed to load:", srcUrl));
+  imagePool.set(srcUrl, el);
   return el;
 }
 
@@ -205,10 +243,10 @@ function prewarmBlobs(screen: Screen) {
     const v = h.value;
     if (v?._type === "video") {
       const base = v.urlBase ?? VIDEO_BASE;
-      fetchVideoBlob(base + v.src);
+      fetchVideoBlob(resolveMediaUrl(v.src, base));
     } else if (v?._type === "image") {
       const base = v.urlBase ?? IMAGE_BASE;
-      getImageEl(v.src, base);
+      getImageEl(v.src, base); // getImageEl handles resolution internally
     }
   }
 }
@@ -257,6 +295,10 @@ function hush() {
   return silence;
 }
 
+
+// Expose media registry for monkey tester
+(window as any).uzuAddMedia = addMedia;
+(window as any).uzuClearMedia = clearMediaRegistry;
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string): string | null => {
@@ -425,7 +467,7 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
     }
 
     const base = ev.urlBase ?? VIDEO_BASE;
-    const srcUrl = base + ev.src;
+    const srcUrl = resolveMediaUrl(ev.src, base);
     const evIndex = fe.screenIndex * 1000 + fe.eventIndex;
     const poolKey = `cell${evIndex}:` + srcUrl;
 
@@ -449,11 +491,7 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
   // Free active pool entries not used this frame
   for (const [key, el] of videoPool) {
     if (!framePoolKeys.has(key)) {
-      el.pause();
-      const srcUrl = el._srcUrl ?? el.src;
-      const freeList = freeVideoPool.get(srcUrl) ?? [];
-      freeList.push(el);
-      freeVideoPool.set(srcUrl, freeList);
+      freeVideoEl(el);
       videoPool.delete(key);
     }
   }
@@ -514,7 +552,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       } else if (ev._type === "image") {
         const base = ev.urlBase ?? IMAGE_BASE;
-        const el = imagePool.get(base + ev.src);
+        const el = imagePool.get(resolveMediaUrl(ev.src, base));
         if (el && el.naturalWidth > 0) {
           const fitMode = ev.fit ?? "cover";
           drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
@@ -573,7 +611,7 @@ function prewarmVideos(cycle: number, cps: number) {
       if (!ev || ev._type !== "video") continue;
 
       const base = ev.urlBase ?? VIDEO_BASE;
-      const srcUrl = base + ev.src;
+      const srcUrl = resolveMediaUrl(ev.src, base);
       const eventBegin = eventBeginFromHap(ev, hap, futureT);
       const cachedDur = videoDurations.get(srcUrl);
       const expectedTime = computeExpectedFromEvent(ev, futureT, eventBegin, cps, cachedDur);
@@ -618,8 +656,13 @@ function prewarmVideos(cycle: number, cps: number) {
       }, { once: true });
 
       const list = freeVideoPool.get(srcUrl) ?? [];
-      list.push(el);
-      freeVideoPool.set(srcUrl, list);
+      if (list.length >= MAX_FREE_PER_SRC) {
+        destroyVideoEl(el);
+      } else {
+        list.push(el);
+        freeVideoPool.set(srcUrl, list);
+        trimFreePool();
+      }
     }
   }
 }

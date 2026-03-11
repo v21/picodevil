@@ -122,6 +122,8 @@
       display: none;
     }
     #sidebar-panel .tab-content.active { display: block; }
+    #tab-videos.active { display: flex !important; flex-direction: column; }
+    #tab-videos { padding: 0 !important; }
 
     .uzu-warning {
       display: none;
@@ -151,9 +153,7 @@
       <button class="active" data-tab="videos">videos</button>
       <button data-tab="reference">reference</button>
     </div>
-    <div id="tab-videos" class="tab-content active">
-      <p style="color:#666">video loading coming soon</p>
-    </div>
+    <div id="tab-videos" class="tab-content active"></div>
     <div id="tab-reference" class="tab-content">
       <p style="color:#666">reference coming soon</p>
     </div>

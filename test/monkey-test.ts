@@ -17,7 +17,7 @@ import { createServer } from "vite";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import fc from "fast-check";
-import { topExpr, type GeneratedExpr } from "./arbitraries";
+import { topExpr, type GeneratedExpr, REGISTRY_SEED } from "./arbitraries";
 
 /** A test sequence: one or more code snippets to eval in order on the same page. */
 const evalSequence: fc.Arbitrary<GeneratedExpr[]> = fc.oneof(
@@ -101,6 +101,14 @@ async function runCase(
   await page.waitForFunction(
     () => typeof window.uzuEval === "function", null, { timeout: 10000 },
   );
+
+  // Seed the media registry with test entries
+  await page.evaluate((entries: typeof REGISTRY_SEED) => {
+    const addMedia = (window as any).uzuAddMedia;
+    if (addMedia) {
+      for (const { name, url } of entries) addMedia(url, name);
+    }
+  }, REGISTRY_SEED);
 
   page.on("console", onConsole);
   page.on("pageerror", onPageError);

@@ -24,6 +24,14 @@ export const VIDEOS = [
   "hXJaBfcdCKM.mp4",
 ];
 
+/** Registry shorthand names (no extension, no urlBase needed). */
+export const VIDEO_REGISTRY_NAMES = [
+  "redvid",
+  "bluevid",
+  "clipA",
+  "clipB",
+];
+
 export const IMAGES = [
   "red.png",
   "blue.png",
@@ -34,6 +42,26 @@ export const IMAGES = [
   "anim1.gif",
   "anim2.gif",
   "texture.webp",
+];
+
+/** Registry shorthand names for images. */
+export const IMAGE_REGISTRY_NAMES = [
+  "redimg",
+  "blueimg",
+  "sprite",
+  "photo",
+];
+
+/** Media registry entries to seed before monkey tests. Maps name → relative URL. */
+export const REGISTRY_SEED: Array<{ name: string; url: string }> = [
+  ...VIDEO_REGISTRY_NAMES.map((name, i) => ({
+    name,
+    url: `/test-assets/${VIDEOS[i % VIDEOS.length]}`,
+  })),
+  ...IMAGE_REGISTRY_NAMES.map((name, i) => ({
+    name,
+    url: `/test-assets/${IMAGES[i % IMAGES.length]}`,
+  })),
 ];
 
 export const COLORS = [
@@ -346,7 +374,7 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     }))
   },
 
-  // image
+  // image (with urlBase)
   {
     weight: 2, arbitrary: fc.tuple(
       miniArb(IMAGES, 1),
@@ -356,13 +384,33 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     }))
   },
 
-  // video
+  // image (via registry name, no urlBase)
   {
-    weight: 5, arbitrary: fc.tuple(
+    weight: 1, arbitrary: fc.tuple(
+      miniArb(IMAGE_REGISTRY_NAMES, 1),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 4 }),
+    ).map(([pat, methods]) => ({
+      code: `image("${pat}")${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // video (with urlBase)
+  {
+    weight: 4, arbitrary: fc.tuple(
       miniArb(VIDEOS, 2),
       videoChain,
     ).map(([pat, chain]) => ({
       code: `video("${pat}").urlBase('/test-assets/')${chain}`,
+    }))
+  },
+
+  // video (via registry name, no urlBase)
+  {
+    weight: 2, arbitrary: fc.tuple(
+      miniArb(VIDEO_REGISTRY_NAMES, 2),
+      videoChain,
+    ).map(([pat, chain]) => ({
+      code: `video("${pat}")${chain}`,
     }))
   },
 );
