@@ -2,7 +2,7 @@ import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Prec } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
-import { onWarnings } from "./warnings";
+import { onWarnings, warn } from "./warnings";
 
 declare global {
   interface Window {
@@ -33,6 +33,12 @@ export function setupEditor(parent: HTMLElement): EditorView {
       errorEl.style.display = "none";
     }
   }
+
+  // Pipe Strudel's internal query errors (caught by queryArc) into the warning system
+  document.addEventListener("strudel.log", (e: Event) => {
+    const msg = (e as CustomEvent).detail?.message;
+    if (msg) warn(msg);
+  });
 
   // Show runtime warnings (deduped, auto-clear on next eval)
   let warnTimeout: ReturnType<typeof setTimeout> | null = null;

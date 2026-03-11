@@ -251,18 +251,12 @@ sets cols to n (can be a pattern, obv)
 sets rows and cols to n (can be a pattern, obv)
 
 .grid(rows, cols, i)
-sets x,y, w, & h such that it's in the right place for a grid rows wide and cols tall, with index i (within existing x, y, w & h). all the arguments are optional - they'll be taken from the value if they're not set on the method. if only one of rows or cols is set, the other one is taken to be 1. if neither is set, default to 2x2
+sets x,y, w, & h such that it's in the right place for a grid rows wide and cols tall, with index i (within existing x, y, w & h). also accept negative indexes, counting back from the end - last write wins rules. all the arguments are optional - they'll be taken from the value if they're not set on the method. if only one of rows or cols is set, the other one is taken to be 1. if neither is set, default to 2x2
 
 
 .gridMod(rows, cols, i, count)
-sets x,y, w, & h such that it's in the right place for a grid rows wide and cols tall, with index i (within existing x, y, w & h). it repeats elements after it hits count (unless they happen to be present - but the repeat starts when the element is missing) all the arguments are optional - they'll be taken from the value if they're not set on the method. if only one of rows or cols is set, the other one is taken to be 1. if neither is set, default to 2x2
+sets x,y, w, & h such that it's in the right place for a grid rows wide and cols tall, with index i (within existing x, y, w & h). it repeats elements after it hits count (unless they happen to be present - but the repeat starts when the count is hit). also accepts negative indexes - last write wins. all the arguments are optional - they'll be taken from the value if they're not set on the method. if only one of rows or cols is set, the other one is taken to be 1. if neither is set, default to 2x2
 
-
-.circle(??)
-draws things in a circle
-
-.autoseed()
-does the same as `index`, but sets `seed` on them instead, hashing their index and their values
 
 
 and we can also use plain old `stack` and `fmod` to set extra elements:
@@ -277,5 +271,31 @@ stack(video("blue.mp4 goslings.mp4"), video("red.mp4 scales.mp4")).indexNow().st
 
 and we'll get a grid which alternates between checkerboard arrangements of blue and red, and goslings and scales, and which, every cycle, alternates between being 3x3 and 4x4. and then the bottom right cell is always last.mp4
 
+
+
+
+
+
+.radius
+
+.startOffset
+
+.circleCount
+
+.circle(radius, startOffset, circleCount, i)
+like grid but places each screen where it would be if they were all arranged in a circle. radius is expected to be 0-0.5 (screen coords), start offset goes from 0-1 (turns). count is the number of elements to place in the complete circle. all arguments optional, in which case they're taken from values
+
+.circleMod(radius, startOffset, circleCount, count, i)
+like gridMod, but for circles. as above.
+
+.autoseed()
+does the same as `index`, but sets `seed` on them instead, hashing their index and their values
+
+
+`allatonce` takes a pattern, queries it over (0,1) and it makes every hap last the entire cycle
+
+
+`stackN(n, ...pats)` takes a pattern and stacks it with itself n times
+if passed an array of patterns, it cycles through the patterns to make up to N
 
 

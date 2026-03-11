@@ -238,6 +238,9 @@ createMixParam("i");
 export const count = createMixParam("count");
 export const rows = createMixParam("rows");
 export const cols = createMixParam("cols");
+createMixParam("radius");
+createMixParam("startOffset");
+createMixParam("circleCount");
 
 PatternProto.rowscols = function (value: any) {
   return this.rows(value).cols(value);
@@ -254,6 +257,11 @@ function cellPos(i: number, cols: number, rows: number) {
 function resolveNum(val: any, begin: any, end: any): number {
   const evs = reify(val).queryArc(begin, end);
   return evs.length ? Math.round(Number(evs[0].value)) : 0;
+}
+
+function resolveFloat(val: any, begin: any, end: any): number {
+  const evs = reify(val).queryArc(begin, end);
+  return evs.length ? Number(evs[0].value) : 0;
 }
 
 // Compose a new grid cell position with any existing position on the event value.
@@ -397,6 +405,100 @@ PatternProto.iteratorWith = function (fn: (x: any, i: number) => any): Iterable<
  */
 PatternProto.iterator = function (): Iterable<any> {
   return this.iteratorWith((x: any) => x);
+};
+
+// ─── circle / circleMod ───────────────────────────────────────────────────────
+
+function circlePos(i: number, count: number, radius: number, startOffset: number, w: number, h: number) {
+  const angle = Math.PI * 2 * (i / count + startOffset) - Math.PI / 2;
+  const cx = 0.5 + radius * Math.cos(angle);
+  const cy = 0.5 + radius * Math.sin(angle);
+  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
+}
+
+function circleElementSize(n: number, r: number): number {
+  return 2 * r * Math.sin(Math.PI / Math.max(n, 2));
+}
+
+/**
+ * Positions a pattern centered on a point along a circle.
+ * @param radiusArg radius in screen coords (0–0.5); falls back to event radius (default 0.3)
+ * @param startOffsetArg rotation offset 0–1 turns, 0=top; falls back to event startOffset
+ * @param circleCountArg total elements in circle; falls back to event circleCount
+ * @param iArg which slot; falls back to event i
+ */
+PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCountArg?: any, iArg?: any) {
+  const self = this;
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    return self.withValue((v: any) => {
+      const val = Object(v) === v ? v : {};
+      const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin, end) : (val.radius ?? 0.3);
+      const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin, end) : (val.startOffset ?? 0);
+      const n = circleCountArg !== undefined ? resolveNum(circleCountArg, begin, end) : (val.circleCount ?? 1);
+      const i = iArg !== undefined ? resolveNum(iArg, begin, end) : (val.i ?? 0);
+      const size = circleElementSize(n, r);
+      const w = val.width ?? size;
+      const h = val.height ?? size;
+      const pos = circlePos(i, n, r, so, w, h);
+      return { ...val, ...pos };
+    }).queryArc(begin, end);
+  });
+};
+
+/**
+ * Places a pattern across multiple circle positions using count as stride.
+ * Element appears at slots i, i+count, i+2*count, ... up to circleCount.
+ * @param radiusArg radius; falls back to event radius (default 0.3)
+ * @param startOffsetArg rotation offset; falls back to event startOffset
+ * @param circleCountArg total slots; falls back to event circleCount
+ */
+PatternProto.circleMod = function (radiusArg?: any, startOffsetArg?: any, circleCountArg?: any) {
+  const self = this;
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const selfEvs = self.queryArc(begin, end);
+    if (selfEvs.length === 0) return [];
+    const results: any[] = [];
+    for (const ev of selfEvs) {
+      const val = Object(ev.value) === ev.value ? ev.value : {};
+      const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin, end) : (val.radius ?? 0.3);
+      const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin, end) : (val.startOffset ?? 0);
+      const ci = val.i ?? 0;
+      const nc = val.count ?? 1;
+      const total = circleCountArg !== undefined ? resolveNum(circleCountArg, begin, end) : (val.circleCount ?? nc);
+      const size = circleElementSize(total, r);
+      const w = val.width ?? size;
+      const h = val.height ?? size;
+      for (let idx = ci; idx < total; idx += nc) {
+        const pos = circlePos(idx, total, r, so, w, h);
+        results.push(ev.withValue(() => ({ ...val, ...pos })));
+      }
+    }
+    return results;
+  });
+};
+
+/**
+ * For each hap, calls fn(pat, value) where pat is a pure pattern of the hap's
+ * value and value is the raw hap value. Returns the result pattern's values.
+ *
+ * @example
+ * // Set radius dynamically from event's i value:
+ * index(color("red"), color("blue")).mapWithVal((p, v) => p.radius(v.i * 0.1 + 0.1))
+ */
+PatternProto.mapWithVal = function (fn: (pat: any, value: any) => any) {
+  const self = this;
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const evs = self.queryArc(begin, end);
+    return evs.flatMap((ev: any) => {
+      const transformed = fn(reify(ev.value), ev.value);
+      return transformed.queryArc(begin, end).map((te: any) =>
+        ev.withValue(() => te.value)
+      );
+    });
+  });
 };
 
 PatternProto.gridModulo = function (childIndex: any, numChildren: any, cols: any, rows: any) {

@@ -273,6 +273,53 @@ Explicit `rows`/`cols` arguments override the values:
 $: color("red").i(0).count(2).gridMod(2, 2)   // override grid size
 ```
 
+The circle methods use three circle-specific value setters:
+
+| Method               | Description                                         |
+| -------------------- | --------------------------------------------------- |
+| `.radius(n)`         | Circle radius in screen coords (0–0.5)              |
+| `.startOffset(n)`    | Rotation in turns (0=top, 0.25=right, 0.5=bottom)  |
+| `.circleCount(n)`    | Total number of slots in the circle                 |
+
+### `.circle(radius?, startOffset?, circleCount?, i?)`
+
+Positions a pattern centered on a point along a circle. The screen center is `(0.5, 0.5)`. All args are optional and fall back to event values (`.radius()`, `.startOffset()`, `.circleCount()`, `.i()`). Element width/height default to 0.2 for centering.
+
+```js
+// 4 videos arranged in a circle
+$: stack(
+  video("a.mp4").i(0).circleCount(4).circle(0.35),
+  video("b.mp4").i(1).circleCount(4).circle(0.35),
+  video("c.mp4").i(2).circleCount(4).circle(0.35),
+  video("d.mp4").i(3).circleCount(4).circle(0.35),
+).width(0.2).height(0.2)
+
+// Read radius and circleCount from value setters
+$: index(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4"))
+  .radius(0.35).circleCount(4).circle().width(0.2).height(0.2)
+
+// All args explicit: circle(radius, startOffset, circleCount, i)
+$: video("clip.mp4").circle(0.3, 0.25, 6, 2)   // slot 2 of 6, rotated 90°
+```
+
+### `.circleMod(radius?, startOffset?, circleCount?)`
+
+Like `.gridMod()` but for circles. Distributes a pattern across multiple slots using `count` (from event value) as a stride. Appears at slots `i`, `i + count`, `i + 2*count`, etc. up to `circleCount`.
+
+`count` is the **stride** (number of patterns sharing the circle); `circleCount` is the total number of slots.
+
+```js
+// 2 patterns sharing a 4-slot circle: red gets slots 0,2; blue gets slots 1,3
+$: stack(
+  color("red").i(0).count(2).circleCount(4).circleMod(0.35),
+  color("blue").i(1).count(2).circleCount(4).circleMod(0.35),
+).width(0.2).height(0.2)
+
+// Using index() — circleCount set separately
+$: index(video("a.mp4"), video("b.mp4")).circleCount(4).circleMod(0.35)
+  .width(0.2).height(0.2)
+```
+
 ### `gridStack(children, cols, rows)`
 
 Distributes patterns across grid cells. Accepts an array, a single pattern, or any iterable. `cols` defaults to 2, `rows` defaults to `cols`.
