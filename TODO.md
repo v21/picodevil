@@ -108,3 +108,174 @@ circleStack (arranges stuff in a circle, there's an offset param if you want it 
 
 
 gridStack should take a single source, and if we only pass in col it should duplicate it for rows
+
+
+
+array functions!
+
+we should be able to use a pattern to pluck elements from an array by index. maybe we can already, tbh
+
+we should be able to zip x sequences together
+
+we should be able to insert a value at index i into a generator. at an array of indexes
+
+let's also have grid() set the seed
+
+
+
+
+from:
+https://github.com/switchangel/strudel-scripts/blob/main/prebake.strudel
+
+
+/* Executes a function when a specific control key matches a specific value. For example
+
+$: s("bd hh sd hh").filtval("s", "bd", x => x.duck(2))
+
+To only have the kicks trigger the sidechain
+
+*/
+register('filtval', (key, val, func, pat) => {
+  return pat.when(
+    pat.fmap((v) => v[key] === val),
+    func,
+  );
+});
+
+
+- we could use this to set `i` on grid children, then only trigger stuff for particular `i`s
+
+look at bind functions - they talk about patterns of patterns
+node_modules/@strudel/core/pattern.mjs:266
+can we do this instead of arrays-of-functions?
+
+but it needs to apply to the output of the gridstack, because inside they haven't been set yet
+
+
+
+what if we sample temporal sequences in order to make them spatial. use current cycle, sample across it `i` times. 
+
+Claude:
+```
+but it would mean i could reuse existing pattern-of-pattern functions rather than reinventing them?
+
+i guess if i sampled the pattern passed to gridStack across the length of a single cycle (taking `i` number of equally spaced samples), then that could work? to turn a temporal sequence into a spatial one?
+Read grid-stack.ts
+Yes, exactly right. The core of your idea:
+
+
+// sample the pattern at N evenly-spaced points to get N child patterns
+const childAt = (pat, i, n) => pat.queryArc(i/n, (i+1)/n)[0]?.value
+Then gridStack becomes:
+
+
+export function gridStack(children, cols=2, rows=cols) {
+  return new Pattern((state) => {
+    const { begin, end } = state.span;
+    const c = resolveNum(cols, begin, end);
+    const r = resolveNum(rows, begin, end);
+    const n = c * r;
+    const childPats = Array.from({length: n}, (_, i) =>
+      children.queryArc(i/n, (i+1)/n)[0]?.value
+    ).filter(Boolean);
+    return stack(...childPats.map((child, i) =>
+      child.gridModulo(i, n, c, r)
+    )).query(state);
+  });
+}
+And the user-facing API becomes:
+
+
+gridStack(sequence(color("red"), video("a.mp4"), color("blue")), 2, 2)
+// or even with mini notation:
+gridStack(mini("red green blue").color(), 3, 1)
+What you get:
+
+Arrays-of-patterns disappear — just pass sequence(...) or any pattern whose values are patterns
+The existing iterable path also goes away
+cols×rows sampling reuses Strudel's sequencing as a spatial lookup table
+The "cycles children" behaviour falls out naturally from how mininotation sequences work
+One wrinkle: the sampling happens at [0, 1/n, 2/n...] in cycle-space, which is relative time. If the outer pattern changes across cycles (e.g. slowcat(p1, p2)), different cycles would assign different children to cells. That could be a feature or a surprise — worth deciding whether gridStack should always sample at cycle 0, or at the current begin.
+
+The current code has three separate code paths (array, single pattern, iterable) — this collapses it to one. That's a meaningful simplification and it's much more "Strudel way."
+```
+
+would lose the cycling/indexing children default behaviour - instead it would, for `gridStack(mini("red green blue").color(), 3, 3)` create red at the top of the screen, green in the middle, and blue at the bottom. but you could do something with fast to fix that. or you could sample at the start of each cycle and then do `gridStack("<red green blue>".color(), 3, 1)`. or maybe that's `slowGridStack`.
+
+and then also pass in i & row, col?
+also want a way to represent the nested nature of the grids? don't know how this works...
+
+
+
+... hm.
+or, simpler:
+
+`allatonce` takes a pattern, queries it over (0,1) and it makes every hap last the entire cycle
+
+
+`stackN(n, ...pats)` takes a pattern and stacks it with itself n times
+if passed an array of patterns, it cycles through the patterns to make up to N
+
+
+`indexNow(...pats)` takes a pattern or a list of patterns
+it stacks the patterns
+it adds `i` to each currently active pattern at the current query time
+and adds `count` to each (the numbers of patterns active)
+
+if we call it like this: `indexNow(["a b", "e f"], ["c d"])` it flattens the array structure - same as `indexNow("a b", "e f", "c d")`
+
+
+`index(...pats)` takes a pattern or a list of patterns
+it labels haps in their natural order, iterating and adding i
+and adds `count` to each (the numbers of patterns)
+
+`indexNowWith(iLabel, countLabel,  ...pats)`
+does the same as `indexNow` but it uses label instead of `i`
+
+`indexWith(liLabel, countLabel, ...pats)`
+does the same as `index` but it uses label instead of `i`
+
+.count(n)
+sets count to n (can be a pattern, obv)
+
+.i(i)
+sets i to i (can be a pattern, obv)
+
+.rows(n)
+sets rows to n (can be a pattern, obv)
+
+.cols(n)
+sets cols to n (can be a pattern, obv)
+
+.rowscols(n)
+sets rows and cols to n (can be a pattern, obv)
+
+.grid(rows, cols, i)
+sets x,y, w, & h such that it's in the right place for a grid rows wide and cols tall, with index i (within existing x, y, w & h). all the arguments are optional - they'll be taken from the value if they're not set on the method. if only one of rows or cols is set, the other one is taken to be 1. if neither is set, default to 2x2
+
+
+.gridMod(rows, cols, i, count)
+sets x,y, w, & h such that it's in the right place for a grid rows wide and cols tall, with index i (within existing x, y, w & h). it repeats elements after it hits count (unless they happen to be present - but the repeat starts when the element is missing) all the arguments are optional - they'll be taken from the value if they're not set on the method. if only one of rows or cols is set, the other one is taken to be 1. if neither is set, default to 2x2
+
+
+.circle(??)
+draws things in a circle
+
+.autoseed()
+does the same as `index`, but sets `seed` on them instead, hashing their index and their values
+
+
+and we can also use plain old `stack` and `fmod` to set extra elements:
+
+
+
+
+so then: we can do:
+```js
+stack(video("blue.mp4 goslings.mp4"), video("red.mp4 scales.mp4")).indexNow().stack(video("last.mp4").i(11)).rowscols("3 4").grid()
+```
+
+and we'll get a grid which alternates between checkerboard arrangements of blue and red, and goslings and scales, and which, every cycle, alternates between being 3x3 and 4x4. and then the bottom right cell is always last.mp4
+
+
+

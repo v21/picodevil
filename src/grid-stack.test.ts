@@ -4,7 +4,14 @@ import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
 import { gridStack } from "./grid-stack";
+import { cycle } from "./iterators";
 import "./visual-controls";
+
+function takeN(iter: Iterable<any>, n: number): any[] {
+  const result: any[] = [];
+  for (const item of iter) { result.push(item); if (result.length >= n) break; }
+  return result;
+}
 
 function queryAll(pat: any, t: number) {
   return pat.queryArc(t, t + 0.001).map((e: any) => e.value);
@@ -84,9 +91,9 @@ describe("gridStack single pattern", () => {
   });
 });
 
-describe("repeatWith", () => {
+describe("iteratorWith", () => {
   it("produces variants via the callback, pulled by gridStack", () => {
-    const pat = gridStack(color("red").repeatWith((x: any, i: number) => x.alpha(i * 0.5)), 3, 1);
+    const pat = gridStack(color("red").iteratorWith((x: any, i: number) => x.alpha(i * 0.5)), 3, 1);
     const evs = queryAll(pat, 0.1);
     evs.sort((a: any, b: any) => a.x - b.x);
     expect(evs).toHaveLength(3);
@@ -96,20 +103,54 @@ describe("repeatWith", () => {
   });
 
   it("gridStack pulls exactly cols*rows items", () => {
-    const pat = gridStack(color("red").repeatWith((x: any, i: number) => x.alpha(i / 5)), 2, 2);
+    const pat = gridStack(color("red").iteratorWith((x: any, i: number) => x.alpha(i / 5)), 2, 2);
     expect(queryAll(pat, 0.1)).toHaveLength(4);
   });
 
   it("works with dynamic cols via Pattern", () => {
-    const pat = gridStack(color("red").repeatWith((x: any, i: number) => x.alpha(i / 5)), mini("2 3"), 1);
+    const pat = gridStack(color("red").iteratorWith((x: any, i: number) => x.alpha(i / 5)), mini("2 3"), 1);
     expect(queryAll(pat, 0.1)).toHaveLength(2);
     expect(queryAll(pat, 0.6)).toHaveLength(3);
+  });
+
+  it("iterator() fills all cells with copies of the pattern", () => {
+    const pat = gridStack(color("red").iterator(), 2, 2);
+    const evs = queryAll(pat, 0.1);
+    expect(evs).toHaveLength(4);
+    evs.forEach((ev: any) => expect(ev.color).toBe("red"));
   });
 
   it("accepts any iterable — gridStack consumes cols*rows items", () => {
     function* variants() { yield color("red"); yield color("blue"); yield color("green"); yield color("yellow"); }
     const pat = gridStack(variants(), 2, 2);
     expect(queryAll(pat, 0.1)).toHaveLength(4);
+  });
+});
+
+describe("cycle", () => {
+  it("round-robins between args, cycling arrays independently", () => {
+    const a = color("red"), b = color("blue"), c = color("green");
+    const items = takeN(cycle([a, b], c), 6);
+    expect(items[0]).toBe(a);
+    expect(items[1]).toBe(c);
+    expect(items[2]).toBe(b);
+    expect(items[3]).toBe(c);
+    expect(items[4]).toBe(a);
+    expect(items[5]).toBe(c);
+  });
+
+  it("single patterns repeat", () => {
+    const a = color("red"), b = color("blue");
+    const items = takeN(cycle(a, b), 4);
+    expect(items).toEqual([a, b, a, b]);
+  });
+
+  it("works with gridStack", () => {
+    const pat = gridStack(cycle(color("red"), color("blue")), 2, 1);
+    const evs = queryAll(pat, 0.1);
+    evs.sort((a: any, b: any) => a.x - b.x);
+    expect(evs[0].color).toBe("red");
+    expect(evs[1].color).toBe("blue");
   });
 });
 

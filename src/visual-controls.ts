@@ -233,6 +233,16 @@ PatternProto.w = PatternProto.width;
 export const height = createMixParam("height");
 PatternProto.h = PatternProto.height;
 
+createMixParam("i");
+
+export const count = createMixParam("count");
+export const rows = createMixParam("rows");
+export const cols = createMixParam("cols");
+
+PatternProto.rowscols = function (value: any) {
+  return this.rows(value).cols(value);
+};
+
 // Helper: compute {x, y, width, height} for cell index i in a cols×rows grid
 function cellPos(i: number, cols: number, rows: number) {
   const col = i % cols;
@@ -267,10 +277,9 @@ function composePos(value: any, outer: { x: number; y: number; width: number; he
  * Positions the pattern in one or more cells of a cols×rows grid. All arguments can be patterns.
  * Composes with existing position from prior .grid() calls, enabling grid-of-grids nesting.
  *
- * @param {number | string | Pattern} i cell index (0-based, left-to-right top-to-bottom). Use mininotation ","
- *   to show in multiple cells simultaneously
- * @param {number | Pattern} cols number of columns
- * @param {number | Pattern} rows number of rows
+ * @param {number | Pattern} rowsArg number of rows (optional, reads from .rows() value if omitted)
+ * @param {number | Pattern} colsArg number of columns (optional, reads from .cols() value if omitted; defaults to 1 if only rows given)
+ * @param {number | Pattern} iArg cell index (optional, reads from .i() value if omitted)
  * @returns {Pattern} pattern positioned in the grid cell(s)
  * @example
  * $: video("clip.mp4").grid(0, 2, 2)           // top-left of 2×2
@@ -280,24 +289,36 @@ function composePos(value: any, outer: { x: number; y: number; width: number; he
  * $: color("red").grid(0, 2, 1).grid(0, 1, 2)  // nested grids
  *
  */
-PatternProto.grid = function (i: any, cols: any, rows: any) {
+PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
   const self = this;
-  const iPat = reify(i);
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
-    const iEvents = iPat.queryArc(begin, end);
-    const c = resolveNum(cols, begin, end);
-    const r = resolveNum(rows, begin, end);
-    const results: any[] = [];
-    for (const iEv of iEvents) {
-      const idx = Math.round(Number(iEv.value));
-      const pos = cellPos(idx, c, r);
-      const composed = self.withValue((v: any) =>
-        composePos(Object(v) === v ? v : {}, pos)
-      );
-      results.push(...composed.queryArc(begin, end));
+
+    if (iArg !== undefined) {
+      // iArg provided: iterate its events (supports mini("0,3") for simultaneous cells)
+      const iEvents = reify(iArg).queryArc(begin, end);
+      const results: any[] = [];
+      for (const iEv of iEvents) {
+        const iVal = Math.round(Number(iEv.value));
+        const positioned = self.withValue((v: any) => {
+          const val = Object(v) === v ? v : {};
+          const r = rowsArg !== undefined ? resolveNum(rowsArg, begin, end) : (val.rows ?? 2);
+          const c = colsArg !== undefined ? resolveNum(colsArg, begin, end) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
+          return composePos(val, cellPos(iVal, c, r));
+        });
+        results.push(...positioned.queryArc(begin, end));
+      }
+      return results;
     }
-    return results;
+
+    // No iArg: read i from each event's value
+    return self.withValue((v: any) => {
+      const val = Object(v) === v ? v : {};
+      const r = rowsArg !== undefined ? resolveNum(rowsArg, begin, end) : (val.rows ?? 2);
+      const c = colsArg !== undefined ? resolveNum(colsArg, begin, end) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
+      const iVal = val.i ?? 0;
+      return composePos(val, cellPos(iVal, c, r));
+    }).queryArc(begin, end);
   });
 };
 
@@ -316,14 +337,48 @@ PatternProto.grid = function (i: any, cols: any, rows: any) {
  *
  */
 /**
+ * Like .grid() but cycles this pattern across multiple cells based on i, count, cols, rows.
+ * All args optional — reads from event values (.i(), .count(), .rows(), .cols()) if not provided.
+ *
+ * @param {number | Pattern} rowsArg number of rows (optional)
+ * @param {number | Pattern} colsArg number of columns (optional)
+ * @example
+ * $: stack(video("a.mp4"), video("b.mp4")).indexNow().rowscols(2).gridMod()
+ */
+PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
+  const self = this;
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const selfEvs = self.queryArc(begin, end);
+    if (selfEvs.length === 0) return [];
+
+    const results: any[] = [];
+    for (const ev of selfEvs) {
+      const val = Object(ev.value) === ev.value ? ev.value : {};
+      const r = rowsArg !== undefined ? resolveNum(rowsArg, begin, end) : (val.rows ?? 2);
+      const c = colsArg !== undefined ? resolveNum(colsArg, begin, end) : (val.cols ?? 2);
+      const ci = val.i ?? 0;
+      const nc = val.count ?? 1;
+      const totalCells = r * c;
+      for (let idx = ci; idx < totalCells; idx += nc) {
+        const pos = cellPos(idx, c, r);
+        // Use ev.withValue to preserve Hap structure
+        results.push(ev.withValue(() => composePos(val, pos)));
+      }
+    }
+    return results;
+  });
+};
+
+/**
  * Returns an infinite generator of pattern variants, each transformed by `fn(pattern, index)`.
  * Pass to gridStack() — it will pull exactly cols×rows items at query time.
  *
  * @param {(x: Pattern, i: number) => Pattern} fn transform applied to each copy
  * @example
- * $: gridStack(video("clip.mp4").repeatWith((x, i) => x.speed(i * 0.5 + 0.5)), 2, 2)
+ * $: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i * 0.5 + 0.5)), 2, 2)
  */
-PatternProto.repeatWith = function (fn: (x: any, i: number) => any): Iterable<any> {
+PatternProto.iteratorWith = function (fn: (x: any, i: number) => any): Iterable<any> {
   const self = this;
   return {
     [Symbol.iterator]: function* () {
@@ -331,6 +386,17 @@ PatternProto.repeatWith = function (fn: (x: any, i: number) => any): Iterable<an
       while (true) yield fn(self, i++);
     }
   };
+};
+
+/**
+ * Returns an infinite iterable of this pattern (no transformation).
+ * Pass to gridStack() to fill all cells with copies of the same pattern.
+ *
+ * @example
+ * $: gridStack(video("clip.mp4").iterator(), 2, 2)
+ */
+PatternProto.iterator = function (): Iterable<any> {
+  return this.iteratorWith((x: any) => x);
 };
 
 PatternProto.gridModulo = function (childIndex: any, numChildren: any, cols: any, rows: any) {
@@ -349,7 +415,7 @@ PatternProto.gridModulo = function (childIndex: any, numChildren: any, cols: any
     if (indices.length === 0) return [];
     const results: any[] = [];
     for (const idx of indices) {
-      const positioned = self.grid(idx, c, r);
+      const positioned = self.grid(r, c, idx);
       results.push(...positioned.queryArc(begin, end));
     }
     return results;

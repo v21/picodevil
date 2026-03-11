@@ -309,10 +309,10 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   dimArg.map(a => ({ code: `.w(${a})` })),
   dimArg.map(a => ({ code: `.h(${a})` })),
   fc.tuple(
+    fc.integer({ min: 1, max: 4 }),
+    fc.integer({ min: 1, max: 4 }),
     fc.integer({ min: 0, max: 8 }),
-    fc.integer({ min: 1, max: 4 }),
-    fc.integer({ min: 1, max: 4 }),
-  ).map(([i, c, r]) => ({ code: `.grid(${i}, ${c}, ${r})` })),
+  ).map(([r, c, i]) => ({ code: `.grid(${r}, ${c}, ${i})` })),
   strudelMethod.map(code => ({ code })),
 );
 
@@ -407,25 +407,54 @@ const labelPrefix: fc.Arbitrary<string> = fc.oneof(
 
 /** Full top-level expression using label: syntax. */
 export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
-  // Grid expression (gridStack )
+  // gridStack expression
   {
-    weight: 5, arbitrary: fc.tuple(
+    weight: 4, arbitrary: fc.tuple(
       fc.option(cpsValue, { nil: undefined }),
       fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
       fc.integer({ min: 2, max: 5 }),
       fc.integer({ min: 2, max: 5 }),
       gridChain,
-      fc.constantFrom("gridStack"),
       labelPrefix,
-    ).map(([cps, children, cols, rows, chain, variant, label]) => {
+    ).map(([cps, children, cols, rows, chain, label]) => {
       const cpsCode = cps !== undefined ? `${cps}\n` : "";
-      const childrenCode = children.map(c => c.code).join(", ");
-      let expr: string;
-      expr = `gridStack([${childrenCode}], ${cols}, ${rows})`;
-
-
+      const childrenCode = children.map((c: any) => c.code).join(", ");
       return {
-        code: `${cpsCode}${label}: ${expr}${chain}`,
+        code: `${cpsCode}${label}: gridStack([${childrenCode}], ${cols}, ${rows})${chain}`,
+      };
+    })
+  },
+
+  // indexNow + rowscols + gridMod expression
+  {
+    weight: 3, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      return {
+        code: `${cpsCode}${label}: indexNow(${childrenCode}).rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // index + rowscols + gridMod expression
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      return {
+        code: `${cpsCode}${label}: index(${childrenCode}).rowscols(${cols}).gridMod()${chain}`,
       };
     })
   },

@@ -1,5 +1,6 @@
 import { stack, Pattern, reify } from "@strudel/core";
 import "./visual-controls";
+export { cycle } from "./iterators";
 
 function resolveNum(val: any, begin: any, end: any): number {
   const evs = reify(val).queryArc(begin, end);
@@ -17,7 +18,7 @@ function takeFromIterable(iter: Iterable<any>, n: number): any[] {
 
 /**
  * Distributes patterns across cells in a grid, cycling children if there are more cells than patterns.
- * Accepts an array, a single pattern, or any iterable (e.g. .repeatWith() generator).
+ * Accepts an array, a single pattern, or any iterable (e.g. .iteratorWith() generator).
  * Iterables are consumed lazily at query time, pulling exactly cols×rows items.
  *
  * @param {Pattern | Pattern[] | Iterable<Pattern>} children patterns or iterable of patterns
@@ -26,7 +27,7 @@ function takeFromIterable(iter: Iterable<any>, n: number): any[] {
  * @returns {Pattern} stacked pattern with each child assigned to grid cells via .gridModulo()
  * @example
  * $: gridStack([color("red"), color("blue"), video("clip.mp4")], 2, 2)
- * $: gridStack(video("clip.mp4").repeatWith((x, i) => x.speed(i * 0.5 + 0.5)), 2, 2)
+ * $: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i * 0.5 + 0.5)), 2, 2)
  *
  */
 export function gridStack(children: Pattern | Pattern[] | Iterable<Pattern>, cols: any = 2, rows: any = cols): Pattern {

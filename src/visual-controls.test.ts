@@ -115,16 +115,16 @@ describe("visual controls via createMixParam", () => {
       expect(query(src("x").height(0.5), 0).height).toBe(0.5);
     });
 
-    it(".grid(i, cols, rows) sets position for cell", () => {
+    it(".grid(rows, cols, i) sets position for cell", () => {
       // cell 0 in 2x2: top-left quarter
-      const v0 = query(src("x").grid(0, 2, 2), 0);
+      const v0 = query(src("x").grid(2, 2, 0), 0);
       expect(v0.x).toBe(0);
       expect(v0.y).toBe(0);
       expect(v0.width).toBe(0.5);
       expect(v0.height).toBe(0.5);
 
       // cell 1 in 2x2: top-right quarter
-      const v1 = query(src("x").grid(1, 2, 2), 0);
+      const v1 = query(src("x").grid(2, 2, 1), 0);
       expect(v1.x).toBe(0.5);
       expect(v1.y).toBe(0);
 
@@ -134,21 +134,21 @@ describe("visual controls via createMixParam", () => {
       expect(v2.y).toBe(0.5);
 
       // cell 3 in 2x2: bottom-right quarter
-      const v3 = query(src("x").grid(3, 2, 2), 0);
+      const v3 = query(src("x").grid(2, 2, 3), 0);
       expect(v3.x).toBe(0.5);
       expect(v3.y).toBe(0.5);
     });
 
     it(".grid() composes with other controls", () => {
-      const v = query(src("x").grid(0, 2, 2).alpha(0.5), 0);
+      const v = query(src("x").grid(2, 2, 0).alpha(0.5), 0);
       expect(v.x).toBe(0);
       expect(v.width).toBe(0.5);
       expect(v.alpha).toBe(0.5);
     });
 
     it(".grid() with pattern index alternates position", () => {
-      // "0 3" = cell 0 first half, cell 3 second half
-      const pat = src("x").grid(mini("0 3"), 2, 2);
+      // i alternates: cell 0 first half, cell 3 second half
+      const pat = src("x").grid(2, 2, mini("0 3"));
       const v0 = query(pat, 0.1);
       expect(v0).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
       const v1 = query(pat, 0.6);
@@ -157,7 +157,7 @@ describe("visual controls via createMixParam", () => {
 
     it(".grid() with stacked pattern index gives simultaneous positions", () => {
       // "0,3" in mini = stack(0, 3) = both at once
-      const pat = src("x").grid(mini("0,3"), 2, 2);
+      const pat = src("x").grid(2, 2, mini("0,3"));
       const evs = pat.queryArc(0, 0.001).map((e: any) => e.value);
       expect(evs).toHaveLength(2);
       evs.sort((a: any, b: any) => a.x - b.x);
@@ -224,8 +224,8 @@ describe("visual controls via createMixParam", () => {
     });
 
     it(".grid() with pattern cols", () => {
-      // cell 0, cols alternates "2 3", rows=1
-      const pat = src("x").grid(0, mini("2 3"), 1);
+      // rows=1, cols alternates "2 3", i=0
+      const pat = src("x").grid(1, mini("2 3"), 0);
       // first half: cols=2 → width=0.5
       const v0 = query(pat, 0.1);
       expect(v0).toMatchObject({ x: 0, y: 0, width: 0.5, height: 1 });
@@ -235,7 +235,8 @@ describe("visual controls via createMixParam", () => {
     });
 
     it(".grid() with pattern rows", () => {
-      const pat = src("x").grid(0, 2, mini("1 2"));
+      // rows alternates "1 2", cols=2, i=0
+      const pat = src("x").grid(mini("1 2"), 2, 0);
       const v0 = query(pat, 0.1);
       expect(v0).toMatchObject({ height: 1 });
       const v1 = query(pat, 0.6);
@@ -243,10 +244,10 @@ describe("visual controls via createMixParam", () => {
     });
 
     it(".grid() composes with existing position (nesting)", () => {
-      // Inner: cell 0 of 2x1 → {x:0, y:0, w:0.5, h:1}
-      // Outer: cell 1 of 2x1 → {x:0.5, y:0, w:0.5, h:1}
+      // Inner: cell 0 of 1x2 → {x:0, y:0, w:0.5, h:1}
+      // Outer: cell 1 of 1x2 → {x:0.5, y:0, w:0.5, h:1}
       // Composed: x=0.5+0*0.5=0.5, w=0.5*0.5=0.25
-      const pat = src("x").grid(0, 2, 1).grid(1, 2, 1);
+      const pat = src("x").grid(1, 2, 0).grid(1, 2, 1);
       const v = query(pat, 0);
       expect(v.x).toBeCloseTo(0.5);
       expect(v.y).toBeCloseTo(0);
@@ -258,7 +259,7 @@ describe("visual controls via createMixParam", () => {
       // Inner: cell 3 of 2x2 → {x:0.5, y:0.5, w:0.5, h:0.5}
       // Outer: cell 0 of 2x2 → {x:0, y:0, w:0.5, h:0.5}
       // Composed: x=0+0.5*0.5=0.25, y=0+0.5*0.5=0.25, w=0.25, h=0.25
-      const pat = src("x").grid(3, 2, 2).grid(0, 2, 2);
+      const pat = src("x").grid(2, 2, 3).grid(2, 2, 0);
       const v = query(pat, 0);
       expect(v.x).toBeCloseTo(0.25);
       expect(v.y).toBeCloseTo(0.25);

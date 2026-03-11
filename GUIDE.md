@@ -188,34 +188,118 @@ Note: use single quotes for `.urlBase()` since double quotes trigger mininotatio
 
 ## Grids
 
-### `.grid(index, cols, rows)`
+The grid system is built around two complementary ideas: **labelling** patterns with their position in a stack, and **placing** them into cells.
 
-Position a pattern in a grid cell. All arguments can be patterns.
+### Value setters
+
+These methods attach metadata to each event value. They accept numbers or patterns.
+
+| Method              | Description                                         |
+| ------------------- | --------------------------------------------------- |
+| `.i(n)`             | Cell index (0-based)                                |
+| `.count(n)`         | Stride — how many patterns share the grid           |
+| `.rows(n)`          | Number of rows                                      |
+| `.cols(n)`          | Number of columns                                   |
+| `.rowscols(n)`      | Set both rows and cols to the same value            |
 
 ```js
-$: video("clip.mp4").grid(0, 2, 2)   // top-left of a 2×2 grid
-$: video("clip.mp4").grid(3, 2, 2)   // bottom-right
-$: video("clip.mp4").grid("0 1 2 3", 2, 2) // cycles through cells
+color("red").i(2).rows(2).cols(2)   // value will have i:2, rows:2, cols:2
+color("red").rowscols(3)            // rows:3, cols:3
 ```
 
-Use mininotation `,` (stack) to show in multiple cells simultaneously:
+### `index(...patterns)` / `indexNow(...patterns)`
+
+Stack patterns and label each event with `i` (position) and `count` (total), so `.gridMod()` can place them automatically.
+
+- **`index`** — labels events by their temporal order within the current cycle. Events that appear earlier in the cycle get lower indices.
+- **`indexNow`** — labels events that are co-active at query time. `i` and `count` reflect only the patterns active at that moment.
 
 ```js
-$: video("clip.mp4").grid("0,1,2,3", 2, 2) // all 4 cells at once
+$: index(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
+$: indexNow(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
+
+// Method form (on an existing stack)
+$: stack(video("a.mp4"), video("b.mp4")).index().rowscols(2).gridMod()
 ```
 
-Grids nest — calling `.grid()` on something already in a grid composes positions:
+Use `indexWith` / `indexNowWith` to label with custom property names instead of `i` / `count`:
 
 ```js
-$: color("red").grid(0, 2, 1).grid(0, 1, 2)  // nested subdivision
+$: indexWith("slot", "total", video("a.mp4"), video("b.mp4"))
+```
+
+### `.grid(rows?, cols?, i?)`
+
+Position a pattern in a single grid cell. All arguments are optional — missing values fall back to the event's own `rows`, `cols`, and `i` properties (set by `.i()`, `.rows()`, `.cols()`, or `index()`).
+
+Cells are numbered left-to-right, top-to-bottom, starting at **0**.
+
+```js
+$: video("clip.mp4").grid(2, 2, 0)   // top-left of a 2×2 grid (rows=2, cols=2, i=0)
+$: video("clip.mp4").grid(2, 2, 3)   // bottom-right
+$: video("clip.mp4").i(1).grid(2)    // second row of a 2×1 grid (cols defaults to 1 when rows given)
+
+// Read everything from values
+$: video("clip.mp4").i(2).rows(2).cols(2).grid()
+```
+
+`.grid()` composes — calling it on a pattern that already has position nests it:
+
+```js
+$: color("red").i(0).rows(2).cols(2).grid()
+             .i(0).rows(2).cols(2).grid()  // top-left quarter of top-left quarter
+```
+
+### `.gridMod(rows?, cols?)`
+
+Places a pattern across **multiple** grid cells, cycling based on `count` as a stride. Given `i` and `count` from the event values, the pattern appears in cells `i`, `i + count`, `i + 2*count`, etc.
+
+`count` is the **stride** (number of patterns sharing the grid), not the total number of cells.
+
+```js
+// 2 patterns in a 2×2 grid: red gets cells 0,2; blue gets cells 1,3
+$: stack(
+  color("red").i(0).count(2).rowscols(2).gridMod(),
+  color("blue").i(1).count(2).rowscols(2).gridMod()
+)
+
+// Equivalent, using index() to label automatically
+$: index(color("red"), color("blue")).rowscols(2).gridMod()
+```
+
+Explicit `rows`/`cols` arguments override the values:
+
+```js
+$: color("red").i(0).count(2).gridMod(2, 2)   // override grid size
 ```
 
 ### `gridStack(children, cols, rows)`
 
-Distributes an array of patterns across grid cells, cycling if there are more cells than children.
+Distributes patterns across grid cells. Accepts an array, a single pattern, or any iterable. `cols` defaults to 2, `rows` defaults to `cols`.
 
 ```js
 $: gridStack([color("red"), color("blue"), video("clip.mp4")], 2, 2)
+$: gridStack(video("clip.mp4"), 3)                          // 3×3 grid, same video in each cell
+$: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i + 1)), 2, 2)
+$: gridStack(cycle([video("a.mp4"), video("b.mp4")], color("red")), 2, 2)
+```
+
+### `cycle(...args)`
+
+Round-robins between arguments. Arrays advance their own position; single patterns repeat forever.
+
+```js
+cycle([video("a.mp4"), video("b.mp4")], video("c.mp4"))
+// yields: a, c, b, c, a, c, ...
+```
+
+### `.iteratorWith(fn)` / `.iterator()`
+
+Returns an infinite iterable of pattern variants. `.iteratorWith(fn)` calls `fn(pattern, index)` for each item; `.iterator()` repeats the pattern unchanged.
+
+```js
+$: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i + 1)), 2, 2)
+$: gridStack(color("red").iterator(), 3, 1)
 ```
 
 
@@ -326,18 +410,18 @@ bg: color("darkblue purple")
 $: video("clip.mp4").alpha(0.7).scale(0.8)
 
 // 2×2 grid of videos with varying speed
-$: four([
+$: gridStack([
   video("a.mp4").speed(1),
   video("b.mp4").speed(-1),
   video("c.mp4").speed(0.5),
   video("d.mp4").speed(2)
-])
+], 2, 2)
 
 // Smoothly sliding video
 $: video("clip.mp4").x(sine.slow(4)).width(0.5)
 
 // Grid with patterned cell index
-$: video("clip.mp4").grid("0 1 2 3", 2, 2).speed("1 -1")
+$: video("clip.mp4").i("0 1 2 3").rowscols(2).grid().speed("1 -1")
 
 // Layered colors with interpolated alpha
 $: color("red").alpha("0 1".lerp("sine", "inout"))
