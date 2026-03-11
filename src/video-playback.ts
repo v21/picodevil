@@ -3,7 +3,7 @@ import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { parseTimeValue, resolveTime, type TimeValue } from "./time-value";
 import { drawFit } from "./draw-fit";
 
-export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string };
+export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string; _lastEventBegin?: number };
 
 export interface VideoFrameContext {
   ev: any;
@@ -93,14 +93,13 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
     const roughTarget = speed === 0 ? 0 : Math.abs(elapsedSec * speed);
 
     el = c.getOrCreateVideoEl(src, base, c.poolKeyPrefix, roughTarget);
-
-    if (el && isFinite(el.duration) && el.duration > 0) {
-      const startTV = startRaw != null ? toTimeValue(startRaw) : { value: 0, unit: "rel" as const };
-      const endTV = endRaw != null ? toTimeValue(endRaw) : { value: 1, unit: "rel" as const };
-      updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.currentCycle, c.eventBegin, c.cps);
-    }
-
     c.frameShareMap.set(shareKey, el);
+  }
+
+  if (el && isFinite(el.duration) && el.duration > 0) {
+    const startTV = startRaw != null ? toTimeValue(startRaw) : { value: 0, unit: "rel" as const };
+    const endTV = endRaw != null ? toTimeValue(endRaw) : { value: 1, unit: "rel" as const };
+    updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.currentCycle, c.eventBegin, c.cps);
   }
 
   if (el && el.videoWidth > 0) {
@@ -131,6 +130,10 @@ function updateVideoPlayback(
     speed, loopStart, loopEnd, duration: dur,
   });
 
+  // Detect event boundary: new event means force-seek to expected position
+  const isNewEvent = el._lastEventBegin !== eventBegin;
+  if (isNewEvent) el._lastEventBegin = eventBegin;
+
   if (speed < 0 || !isNativeRate(speed)) {
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
@@ -142,7 +145,7 @@ function updateVideoPlayback(
     if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
     if (el.playbackRate !== speed) setPlaybackRate(el, speed);
     const drift = Math.abs(el.currentTime - expected);
-    if (drift > DRIFT_THRESHOLD) {
+    if (isNewEvent || drift > DRIFT_THRESHOLD) {
       el.currentTime = expected;
     }
   }
