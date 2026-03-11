@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { stack } from "@strudel/core";
+import { stack, rand } from "@strudel/core";
 import { color } from "./color-pattern";
 import { autoseed } from "./index-patterns";
 import "./visual-controls";
@@ -54,5 +54,21 @@ describe("autoseed()", () => {
     const pat = autoseed([color("red"), color("blue")], color("green"));
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     expect(evs).toHaveLength(3);
+  });
+
+  it("decorrelates rand when used with mapWithVal + .seed()", () => {
+    // autoseed puts a seed on each event's value; to decorrelate rand,
+    // use mapWithVal to thread that seed into the rand pattern via .seed().
+    // Plain .speed(rand) after .autoseed() does NOT decorrelate — appBoth
+    // queries both sides with the same state, so rand sees no per-event seed.
+    const base = stack(color("red"), color("red"), color("red"), color("red"));
+    const withRand = base.autoseed().mapWithVal(
+      (p: any, v: any) => p.set.mix(rand.seed(v.seed).withValue((r: any) => ({ r })))
+    );
+    const evs = withRand.queryArc(0, 0.001).map((e: any) => e.value);
+    const rVals = evs.map((v: any) => v.r);
+    // With 4 identical patterns, without seeding all values would be the same.
+    // With seeding we expect at least 2 distinct values (exact count depends on hash).
+    expect(new Set(rVals).size).toBeGreaterThan(1);
   });
 });

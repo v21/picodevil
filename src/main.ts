@@ -23,9 +23,9 @@ import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexNow, indexWith, indexNowWith, autoseed } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
-import { renderVideoFrame, computeExpectedTime, type VideoEl } from "./video-playback";
+import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
-import { scoreFreeElement } from "./video-pool";
+import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
 import { transpile } from "./transpiler";
 import { warn, flushWarnings, clearWarnings } from "./warnings";
 
@@ -88,6 +88,7 @@ const videoPool = new Map<string, VideoEl>();       // active elements by pool k
 const freeVideoPool = new Map<string, VideoEl[]>(); // idle elements by original src URL, ready for reuse
 const videoBlobUrls = new Map<string, string>();    // network URL -> blob URL (one fetch per file)
 const videoBlobPending = new Map<string, Promise<void>>(); // in-flight fetches
+const videoDurations = new Map<string, number>();   // srcUrl -> duration in seconds (cached on load)
 
 /** Fetch a video URL as a blob and cache the object URL. One network load per unique URL. */
 function fetchVideoBlob(srcUrl: string): void {
@@ -113,6 +114,11 @@ function makeVideoEl(name: string): VideoEl {
   el.muted = true;
   el.playsInline = true;
   el.addEventListener("loadeddata", () => console.log("video loaded:", name));
+  el.addEventListener("loadedmetadata", () => {
+    if (el._srcUrl && isFinite(el.duration) && el.duration > 0) {
+      videoDurations.set(el._srcUrl, el.duration);
+    }
+  });
   el.addEventListener("seeking", () => { el._seeking = true; });
   el.addEventListener("seeked", () => { el._seeking = false; });
   return el;
@@ -344,35 +350,119 @@ let startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
-/** Per-frame map for sharing video elements across identical draws. Cleared each frame. */
-const frameShareMap = new Map<string, VideoEl>();
+/** Per-frame video element assignments, keyed by share key. */
+const frameAssignments = new Map<string, VideoEl>();
+/** Pool keys used this frame (for freeing unused active entries). */
+const framePoolKeys = new Set<string>();
 
-function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, cps: number) {
-  const t = cycleNum + cyclePos;
-  let events: any[];
-  try {
-    events = screen.queryArc(t, t + 0.001);
-  } catch (e) {
-    warn(`queryArc failed on screen ${screenIndex}: ${e instanceof Error ? e.message : e}`);
-    return;
-  }
-  if (!events || !Array.isArray(events)) {
-    warn(`screen ${screenIndex}: queryArc returned non-array: ${typeof events}`);
-    return;
-  }
-  if (!events.length) return;
+/** Compute share key for a video event — identical keys share one element. */
+function videoShareKey(ev: any, eventBegin: number): string {
+  const base = ev.urlBase ?? VIDEO_BASE;
+  const speed = ev.speed != null ? Number(ev.speed) : 1;
+  return `${base}${ev.src}|${speed}|${Number(ev.start)}|${Number(ev.end)}|${ev.endIsDuration ?? false}|${eventBegin}`;
+}
 
-  for (let ei = 0; ei < events.length; ei++) {
-    const ev = events[ei]?.value;
-    if (ev == null || typeof ev !== "object") {
-      warn(`screen ${screenIndex} event ${ei}: expected object value, got ${typeof ev}`);
+/** Compute eventBegin from a hap, respecting sync. */
+function eventBeginFromHap(ev: any, hap: any, t: number): number {
+  return ev.sync != null ? Number(ev.sync) : (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
+}
+
+interface FrameEvent {
+  screenIndex: number;
+  eventIndex: number;
+  ev: any;
+  hap: any;
+}
+
+/** Phase 1: Query all screens and collect events. */
+function collectFrameEvents(t: number): FrameEvent[] {
+  const result: FrameEvent[] = [];
+  for (let si = 0; si < screens.length; si++) {
+    let events: any[];
+    try {
+      events = screens[si].queryArc(t, t + 0.001);
+    } catch (e) {
+      warn(`queryArc failed on screen ${si}: ${e instanceof Error ? e.message : e}`);
       continue;
     }
-    if (!ev._type) {
-      warn(`screen ${screenIndex} event ${ei}: missing _type (got keys: ${Object.keys(ev).join(",")})`);
+    if (!events || !Array.isArray(events)) {
+      warn(`screen ${si}: queryArc returned non-array: ${typeof events}`);
       continue;
     }
-    const evIndex = screenIndex * 1000 + ei; // unique index per event for video state tracking
+    for (let ei = 0; ei < events.length; ei++) {
+      const ev = events[ei]?.value;
+      if (ev == null || typeof ev !== "object") {
+        warn(`screen ${si} event ${ei}: expected object value, got ${typeof ev}`);
+        continue;
+      }
+      if (!ev._type) {
+        warn(`screen ${si} event ${ei}: missing _type (got keys: ${Object.keys(ev).join(",")})`);
+        continue;
+      }
+      result.push({ screenIndex: si, eventIndex: ei, ev, hap: events[ei] });
+    }
+  }
+  return result;
+}
+
+/** Phase 2: Assign video elements for all video events. */
+function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) {
+  frameAssignments.clear();
+  framePoolKeys.clear();
+
+  for (const fe of frameEvents) {
+    if (fe.ev._type !== "video") continue;
+
+    const ev = fe.ev;
+    const eventBegin = eventBeginFromHap(ev, fe.hap, t);
+    const shareKey = videoShareKey(ev, eventBegin);
+
+    // Already assigned this frame (sharing)?
+    if (frameAssignments.has(shareKey)) {
+      framePoolKeys.add(shareKey); // mark as used
+      continue;
+    }
+
+    const base = ev.urlBase ?? VIDEO_BASE;
+    const srcUrl = base + ev.src;
+    const evIndex = fe.screenIndex * 1000 + fe.eventIndex;
+    const poolKey = `cell${evIndex}:` + srcUrl;
+
+    // Compute accurate expected time using cached duration
+    const cachedDur = videoDurations.get(srcUrl);
+    const expectedTime = computeExpectedFromEvent(ev, t, eventBegin, cps, cachedDur);
+
+    // Try active pool first (element from previous frame)
+    if (videoPool.has(poolKey)) {
+      frameAssignments.set(shareKey, videoPool.get(poolKey)!);
+      framePoolKeys.add(poolKey);
+      continue;
+    }
+
+    // Try free pool, scored by proximity to expected time
+    const el = getVideoEl(ev.src, base, `cell${evIndex}:`, expectedTime ?? undefined);
+    frameAssignments.set(shareKey, el as VideoEl);
+    framePoolKeys.add(`cell${evIndex}:` + srcUrl);
+  }
+
+  // Free active pool entries not used this frame
+  for (const [key, el] of videoPool) {
+    if (!framePoolKeys.has(key)) {
+      el.pause();
+      const srcUrl = el._srcUrl ?? el.src;
+      const freeList = freeVideoPool.get(srcUrl) ?? [];
+      freeList.push(el);
+      freeVideoPool.set(srcUrl, freeList);
+      videoPool.delete(key);
+    }
+  }
+}
+
+/** Phase 3: Draw all events. */
+function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: number, cps: number) {
+  for (const fe of frameEvents) {
+    const { screenIndex, eventIndex, ev, hap } = fe;
+    const evIndex = screenIndex * 1000 + eventIndex;
 
     // resolve position params
     const px = ev.x !== undefined ? Number(ev.x) : 0;
@@ -380,7 +470,7 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
     const pw = ev.width !== undefined ? Number(ev.width) : 1;
     const ph = ev.height !== undefined ? Number(ev.height) : 1;
     if (isNaN(px) || isNaN(py) || isNaN(pw) || isNaN(ph)) {
-      warn(`screen ${screenIndex} event ${ei}: NaN in position (x=${ev.x}, y=${ev.y}, w=${ev.width}, h=${ev.height})`);
+      warn(`screen ${screenIndex} event ${eventIndex}: NaN in position (x=${ev.x}, y=${ev.y}, w=${ev.width}, h=${ev.height})`);
       continue;
     }
 
@@ -399,7 +489,7 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
     if (ev.alpha !== undefined) {
       const a = Number(ev.alpha);
       if (isNaN(a)) {
-        warn(`screen ${screenIndex} event ${ei}: NaN alpha (raw=${ev.alpha})`);
+        warn(`screen ${screenIndex} event ${eventIndex}: NaN alpha (raw=${ev.alpha})`);
       } else {
         ctx.globalAlpha = Math.max(0, Math.min(1, a));
       }
@@ -429,28 +519,107 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
           drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
         }
       } else if (ev._type === "video") {
-        const hap = events[ei];
-        const eventBegin = ev.sync != null ? Number(ev.sync) : (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
-        const videoResult = renderVideoFrame({
-          ev,
-          videoPool, poolKeyPrefix: `cell${evIndex}:`, canvas, ctx,
-          now, dt,
-          currentCycle: t, eventBegin, cps,
-          lastVideoVal: lastScreenVals[evIndex] ?? null,
-          getOrCreateVideoEl: getVideoEl,
-          frameShareMap,
-        });
-        lastScreenVals[evIndex] = videoResult.lastVideoVal;
+        const eventBegin = eventBeginFromHap(ev, hap, t);
+        const shareKey = videoShareKey(ev, eventBegin);
+        const el = frameAssignments.get(shareKey);
+        if (el) {
+          // Update playback (uses real el.duration for precision)
+          if (isFinite(el.duration) && el.duration > 0) {
+            renderVideoFrame({
+              ev,
+              videoPool, poolKeyPrefix: `cell${evIndex}:`, canvas, ctx,
+              now, dt,
+              currentCycle: t, eventBegin, cps,
+              lastVideoVal: lastScreenVals[evIndex] ?? null,
+              getOrCreateVideoEl: (_n, _b, _k) => el, // element already assigned
+              frameShareMap: frameAssignments,
+            });
+          }
+          // Draw
+          if (el.videoWidth > 0) {
+            const fitMode = ev.fit ?? "cover";
+            drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode);
+          }
+        }
+        lastScreenVals[evIndex] = ev.src;
       } else {
-        warn(`screen ${screenIndex} event ${ei}: unknown _type "${ev._type}"`);
+        warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);
       }
     } catch (e) {
-      warn(`screen ${screenIndex} event ${ei} draw error: ${e instanceof Error ? e.message : e}`);
+      warn(`screen ${screenIndex} event ${eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
     }
 
     if (hasScale) ctx.restore();
     ctx.globalAlpha = 1;
     if (hasPosition) ctx.restore();
+  }
+}
+
+/** Prewarm: query ahead, seek free pool elements toward future targets, create if needed. */
+function prewarmVideos(cycle: number, cps: number) {
+  const lookaheadCycles = (PREWARM_LOOKAHEAD_MS / 1000) * cps;
+  const futureT = cycle + lookaheadCycles;
+
+  for (const screen of screens) {
+    let futureEvents: any[];
+    try {
+      futureEvents = screen.queryArc(futureT, futureT + 0.001);
+      if (!futureEvents || !Array.isArray(futureEvents)) continue;
+    } catch { continue; }
+
+    for (const hap of futureEvents) {
+      const ev = hap?.value;
+      if (!ev || ev._type !== "video") continue;
+
+      const base = ev.urlBase ?? VIDEO_BASE;
+      const srcUrl = base + ev.src;
+      const eventBegin = eventBeginFromHap(ev, hap, futureT);
+      const cachedDur = videoDurations.get(srcUrl);
+      const expectedTime = computeExpectedFromEvent(ev, futureT, eventBegin, cps, cachedDur);
+
+      // Start blob fetch if needed
+      fetchVideoBlob(srcUrl);
+
+      // Check if any free element exists for this src
+      const freeList = freeVideoPool.get(srcUrl);
+      if (freeList && freeList.length > 0 && expectedTime != null) {
+        // Seek the best free element toward the future target
+        let bestIdx = 0;
+        let bestScore = Infinity;
+        for (let i = 0; i < freeList.length; i++) {
+          const dur = isFinite(freeList[i].duration) ? freeList[i].duration : (cachedDur ?? 0);
+          const score = scoreFreeElement(freeList[i].currentTime, expectedTime, dur);
+          if (score < bestScore) { bestScore = score; bestIdx = i; }
+        }
+        const best = freeList[bestIdx];
+        // Seek if it's far from target and not already seeking
+        if (!best._seeking && bestScore > 0.15) {
+          best.currentTime = expectedTime;
+        }
+        continue;
+      }
+
+      // Also check if already active
+      const alreadyActive = [...videoPool.values()].some(el => el._srcUrl === srcUrl);
+      if (alreadyActive) continue;
+
+      // No element at all — create one and park in free pool
+      const el = makeVideoEl(ev.src) as VideoEl;
+      el._srcUrl = srcUrl;
+      const blobUrl = videoBlobUrls.get(srcUrl);
+      el.src = blobUrl ?? srcUrl;
+      el.preload = "auto";
+
+      // Pre-seek once metadata loads
+      el.addEventListener("loadedmetadata", () => {
+        const realExpected = computeExpectedFromEvent(ev, futureT, eventBegin, cps, el.duration);
+        if (realExpected != null) el.currentTime = realExpected;
+      }, { once: true });
+
+      const list = freeVideoPool.get(srcUrl) ?? [];
+      list.push(el);
+      freeVideoPool.set(srcUrl, list);
+    }
   }
 }
 
@@ -471,62 +640,20 @@ function frame() {
   const cyclePos = cycle % 1;
   const cycleNum = Math.floor(cycle);
 
+  const t = cycleNum + cyclePos;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  frameShareMap.clear();
 
-  // draw screens in order
-  for (let i = 0; i < screens.length; i++) {
-    renderScreen(screens[i], cyclePos, cycleNum, now, now - lastFrameTime, i, cps);
-  }
+  // Phase 1: Collect all events
+  const frameEvents = collectFrameEvents(t);
 
-  // Prewarm: query ahead and pre-create/seek video elements for upcoming events
-  if (cps > 0) {
-    const lookaheadCycles = (PREWARM_LOOKAHEAD_MS / 1000) * cps;
-    const futureT = cycle + lookaheadCycles;
-    for (const screen of screens) {
-      try {
-        const futureEvents = screen.queryArc(futureT, futureT + 0.001);
-        if (!futureEvents || !Array.isArray(futureEvents)) continue;
-        for (const hap of futureEvents) {
-          const ev = hap?.value;
-          if (!ev || ev._type !== "video") continue;
-          const base = ev.urlBase ?? VIDEO_BASE;
-          const srcUrl = base + ev.src;
-          const speed = ev.speed != null ? Number(ev.speed) : 1;
-          const eventBegin = ev.sync != null ? Number(ev.sync) : (hap?.whole?.begin != null ? Number(hap.whole.begin) : futureT);
+  // Phase 2: Assign video elements
+  assignVideoElements(frameEvents, t, cps);
 
-          // Already have a free element for this src? Check if any is close enough.
-          const freeList = freeVideoPool.get(srcUrl);
-          const alreadyActive = [...videoPool.values()].some(el => el._srcUrl === srcUrl);
-          if ((freeList && freeList.length > 0) || alreadyActive) continue;
+  // Phase 3: Draw
+  drawFrameEvents(frameEvents, t, now, now - lastFrameTime, cps);
 
-          // Start blob fetch if needed (no element created yet)
-          fetchVideoBlob(srcUrl);
-
-          // Create a new element, seek it, and park it in the free pool
-          const el = makeVideoEl(ev.src) as VideoEl;
-          el._srcUrl = srcUrl;
-          const blobUrl = videoBlobUrls.get(srcUrl);
-          el.src = blobUrl ?? srcUrl;
-          el.preload = "auto";
-
-          // Pre-seek once metadata loads
-          el.addEventListener("loadedmetadata", () => {
-            const realExpected = computeExpectedTime({
-              currentCycle: futureT, eventBegin, cps: cps || 0.5,
-              speed, loopStart: 0, loopEnd: el.duration, duration: el.duration,
-            });
-            el.currentTime = realExpected;
-          }, { once: true });
-
-          // Park in free pool immediately (will be picked up by getVideoEl)
-          const list = freeVideoPool.get(srcUrl) ?? [];
-          list.push(el);
-          freeVideoPool.set(srcUrl, list);
-        }
-      } catch { /* ignore query errors during prewarm */ }
-    }
-  }
+  // Phase 4: Prewarm
+  if (cps > 0) prewarmVideos(cycle, cps);
 
   // Record metrics
   const frameEnd = performance.now() - startTime;
