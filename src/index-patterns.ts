@@ -88,6 +88,58 @@ export function indexNowWith(iLabel: string, countLabel: string, ...args: PatOrA
   return applyIndexNow(flattenPats(args), iLabel, countLabel);
 }
 
+// ─── autoseed ─────────────────────────────────────────────────────────────────
+
+function hashStr(s: string): number {
+  let h = 2166136261; // FNV-1a 32-bit
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  return h;
+}
+
+function computeSeed(value: any, index: number, cycle: number): number {
+  const valStr = (() => {
+    try { return JSON.stringify(value); } catch { return String(value); }
+  })();
+  return hashStr(`${valStr}:${index}:${cycle}`);
+}
+
+function applyAutoseed(pats: any[]): any {
+  const stacked = stack(...pats);
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const cBegin = begin.floor ? begin.floor() : Math.floor(Number(begin));
+    const cEnd = Number(cBegin) + 1;
+    const cycle = Math.round(Number(cBegin));
+    const cycleEvs = stacked.queryArc(Number(cBegin), cEnd);
+    cycleEvs.sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    return cycleEvs
+      .map((ev: any, i: number) =>
+        ev.withValue((v: any) => {
+          const val = Object(v) === v ? v : {};
+          return { ...val, seed: computeSeed(val, i, cycle) };
+        })
+      )
+      .filter((ev: any) =>
+        Number(ev.part.begin) < Number(end) && Number(ev.part.end) > Number(begin)
+      );
+  });
+}
+
+/**
+ * Stacks patterns and labels each hap with a deterministic `seed` value.
+ * The seed is a hash of the event's value, its temporal index in the cycle,
+ * and the cycle number — so each pattern gets a unique, stable random stream.
+ *
+ * @example
+ * $: autoseed(video("a.mp4").x(rand), video("b.mp4").x(rand)).rowscols(2).gridMod()
+ */
+export function autoseed(...args: PatOrArr[]): any {
+  return applyAutoseed(flattenPats(args));
+}
+
 // Method forms
 PatternProto.index = function () {
   return index(this);
@@ -95,4 +147,8 @@ PatternProto.index = function () {
 
 PatternProto.indexNow = function () {
   return indexNow(this);
+};
+
+PatternProto.autoseed = function () {
+  return autoseed(this);
 };
