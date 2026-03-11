@@ -1,9 +1,9 @@
-import { REVERSE_SEEK_INTERVAL, VIDEO_BASE } from "./config";
+import { VIDEO_BASE } from "./config";
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { parseTimeValue, resolveTime, type TimeValue } from "./time-value";
 import { drawFit } from "./draw-fit";
 
-export type VideoEl = HTMLVideoElement & { _reverseAcc?: number; _seeking?: boolean; _srcUrl?: string };
+export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string };
 
 export interface VideoFrameContext {
   ev: any;
@@ -13,6 +13,9 @@ export interface VideoFrameContext {
   ctx: CanvasRenderingContext2D;
   now: number;
   dt: number;
+  currentCycle: number;
+  eventBegin: number;
+  cps: number;
   lastVideoVal: string | null;
   getOrCreateVideoEl: (name: string, base: string, keyPrefix: string) => VideoEl;
 }
@@ -30,6 +33,34 @@ function toTimeValue(raw: any): TimeValue {
   if (!isNaN(n)) return { value: n, unit: "rel" };
   return parseTimeValue(String(raw));
 }
+
+export interface ExpectedTimeParams {
+  currentCycle: number;
+  eventBegin: number;
+  cps: number;
+  speed: number;
+  loopStart: number;
+  loopEnd: number;
+  duration: number;
+}
+
+/** Compute expected video currentTime from pattern timing. Pure function. */
+export function computeExpectedTime(p: ExpectedTimeParams): number {
+  if (p.speed === 0) return p.loopStart;
+  const elapsedSec = (p.currentCycle - p.eventBegin) / p.cps;
+  const loopLen = Math.abs(p.loopEnd - p.loopStart);
+  if (loopLen === 0) return p.loopStart;
+  const dist = elapsedSec * Math.abs(p.speed);
+  const distInLoop = ((dist % loopLen) + loopLen) % loopLen; // always positive
+  if (p.speed > 0) {
+    return p.loopStart + distInLoop;
+  } else {
+    return p.loopEnd - distInLoop;
+  }
+}
+
+/** Max allowed drift in seconds before we correct video position. */
+const DRIFT_THRESHOLD = 0.15;
 
 export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
   let lastVideoVal = c.lastVideoVal;
@@ -50,7 +81,7 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
   if (el && isFinite(el.duration) && el.duration > 0) {
     const startTV = startRaw != null ? toTimeValue(startRaw) : { value: 0, unit: "rel" as const };
     const endTV = endRaw != null ? toTimeValue(endRaw) : { value: 1, unit: "rel" as const };
-    updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.now, c.dt);
+    updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.currentCycle, c.eventBegin, c.cps);
   }
 
   if (el && el.videoWidth > 0) {
@@ -67,81 +98,33 @@ function updateVideoPlayback(
   start: TimeValue,
   endTV: TimeValue,
   endIsDuration: boolean,
-  now: number,
-  dt: number,
+  currentCycle: number,
+  eventBegin: number,
+  cps: number,
 ): void {
   const dur = el.duration;
   const loopStart = resolveTime(start, dur);
   const resolvedEnd = resolveTime(endTV, dur);
   const loopEnd = endIsDuration ? loopStart + resolvedEnd : resolvedEnd;
-  const wrapped = loopStart > loopEnd;
 
-  function inRange(t: number): boolean {
-    if (wrapped) return t >= loopStart || t <= loopEnd;
-    return t >= loopStart && t <= loopEnd;
-  }
-
-  function wrapForward(t: number): number {
-    if (wrapped) {
-      if (t >= dur) return t - dur;
-      if (t > loopEnd && t < loopStart) return loopStart;
-    } else {
-      if (t >= loopEnd) return loopStart + (t - loopEnd);
-    }
-    return t;
-  }
-
-  function wrapBackward(t: number): number {
-    if (wrapped) {
-      if (t < 0) return dur + t;
-      if (t > loopEnd && t < loopStart) return loopEnd;
-    } else {
-      if (t <= loopStart) return loopEnd - (loopStart - t);
-    }
-    return t;
-  }
+  const expected = computeExpectedTime({
+    currentCycle, eventBegin, cps: cps || 0.5,
+    speed, loopStart, loopEnd, duration: dur,
+  });
 
   if (speed < 0 || !isNativeRate(speed)) {
+    // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
-    if (!el._reverseAcc) el._reverseAcc = 0;
-    el._reverseAcc += dt;
-
-    let target = el.currentTime;
-    let needsSeek = false;
-
-    if (speed === 0) {
-      if (target !== loopStart) {
-        target = loopStart;
-        needsSeek = true;
-      }
-    } else if (!inRange(target)) {
-      target = speed < 0 ? loopEnd : loopStart;
-      needsSeek = true;
-      el._reverseAcc = 0;
-    } else if (el._reverseAcc >= REVERSE_SEEK_INTERVAL) {
-      const seekDelta = (el._reverseAcc / 1000) * Math.abs(speed);
-      if (speed < 0) {
-        target = wrapBackward(target - seekDelta);
-      } else {
-        target = wrapForward(target + seekDelta);
-      }
-      needsSeek = true;
-      el._reverseAcc = 0;
+    if (!el._seeking && Math.abs(el.currentTime - expected) > 0.01) {
+      el.currentTime = expected;
     }
-
-    if (needsSeek && !el._seeking) el.currentTime = target;
   } else {
-    el._reverseAcc = 0;
+    // Native rate: let browser play, correct drift
     if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
     if (el.playbackRate !== speed) setPlaybackRate(el, speed);
-    if (!inRange(el.currentTime)) {
-      el.currentTime = loopStart;
-    }
-    if (wrapped && el.currentTime >= dur - 0.05) {
-      el.currentTime = 0;
-    }
-    if (!wrapped && el.currentTime >= loopEnd) {
-      el.currentTime = loopStart;
+    const drift = Math.abs(el.currentTime - expected);
+    if (drift > DRIFT_THRESHOLD) {
+      el.currentTime = expected;
     }
   }
 }

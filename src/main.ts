@@ -128,7 +128,6 @@ function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string =
   if (freeList && freeList.length > 0) {
     const el = freeList.pop()!;
     if (freeList.length === 0) freeVideoPool.delete(srcUrl);
-    el._reverseAcc = 0;
     el._seeking = false;
     el._srcUrl = srcUrl;
     el.playbackRate = 1;
@@ -314,7 +313,7 @@ let startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
 
-function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number) {
+function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, cps: number) {
   const t = cycleNum + cyclePos;
   let events: any[];
   try {
@@ -396,10 +395,13 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
           drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
         }
       } else if (ev._type === "video") {
+        const hap = events[ei];
+        const eventBegin = hap?.whole?.begin != null ? Number(hap.whole.begin) : t;
         const videoResult = renderVideoFrame({
           ev,
           videoPool, poolKeyPrefix: `cell${evIndex}:`, canvas, ctx,
           now, dt,
+          currentCycle: t, eventBegin, cps,
           lastVideoVal: lastScreenVals[evIndex] ?? null,
           getOrCreateVideoEl: getVideoEl,
         });
@@ -438,7 +440,7 @@ function frame() {
 
   // draw screens in order
   for (let i = 0; i < screens.length; i++) {
-    renderScreen(screens[i], cyclePos, cycleNum, now, now - lastFrameTime, i);
+    renderScreen(screens[i], cyclePos, cycleNum, now, now - lastFrameTime, i, cps);
   }
 
   flushWarnings();
