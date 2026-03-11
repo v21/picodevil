@@ -2,6 +2,33 @@ import { stack, Pattern, reify } from "@strudel/core";
 import "./visual-controls";
 export { cycle } from "./iterators";
 
+
+/**
+ * Stacks n copies of patterns, cycling through them to fill n slots.
+ * n can be a pattern, resolved at query time.
+ *
+ * @example
+ * $: stackN(4, color("red"))                          // 4 red layers
+ * $: stackN(4, color("red"), color("blue"))           // red, blue, red, blue
+ * $: stackN(sine.range(1,4).slow(4), color("red"))   // dynamic count
+ */
+export function stackN(n: any, ...args: any[]): Pattern {
+  const pats = args.flatMap((a) => (Array.isArray(a) ? a : [a])).map(reify);
+  if (!pats.length) return stack();
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const nEvs = reify(n).queryArc(Number(begin), Number(end));
+    if (nEvs.length === 0) return [];
+    return nEvs.flatMap((nEv: any) => {
+      const count = Math.max(1, Math.round(Number(nEv.value)));
+      const children = Array.from({ length: count }, (_, i) => pats[i % pats.length]);
+      const partBegin = Number(nEv.part.begin);
+      const partEnd = Number(nEv.part.end);
+      return stack(...children).queryArc(partBegin, partEnd);
+    });
+  });
+}
+
 function resolveNum(val: any, begin: any, end: any): number {
   const evs = reify(val).queryArc(begin, end);
   return evs.length ? Math.round(Number(evs[0].value)) : 0;
@@ -49,3 +76,7 @@ export function gridStack(children: Pattern | Pattern[] | Iterable<Pattern>, col
     child.gridModulo(i, arr.length, cols, rows)
   ));
 }
+
+(Pattern.prototype as any).stackN = function (n: any) {
+  return stackN(n, this);
+};

@@ -435,7 +435,7 @@ PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCou
       const val = Object(v) === v ? v : {};
       const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin, end) : (val.radius ?? 0.3);
       const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin, end) : (val.startOffset ?? 0);
-      const n = circleCountArg !== undefined ? resolveNum(circleCountArg, begin, end) : (val.circleCount ?? 1);
+      const n = circleCountArg !== undefined ? resolveNum(circleCountArg, begin, end) : (val.circleCount ?? val.count ?? 1);
       const i = iArg !== undefined ? resolveNum(iArg, begin, end) : (val.i ?? 0);
       const size = circleElementSize(n, r);
       const w = val.width ?? size;

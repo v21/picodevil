@@ -90,6 +90,13 @@ describe(".circle()", () => {
     expect(ev0.x).not.toBeCloseTo(ev1.x, 5);
   });
 
+  it("falls back to count when circleCount not set", () => {
+    const pat = color("red").i(0).count(4).radius(0.3).startOffset(0).circle();
+    const ev = queryAll(pat, 0.1)[0];
+    const s = circleElementSize(4, 0.3);
+    expect(approx(ev.x, circleX(0, 4, 0.3, 0, s))).toBe(true);
+  });
+
   it("reads from value setters when args omitted", () => {
     const pat = color("red").i(1).radius(0.3).startOffset(0).circleCount(4).circle();
     const ev = queryAll(pat, 0.1)[0];

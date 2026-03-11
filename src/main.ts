@@ -19,7 +19,7 @@ import { setupEditor } from "./editor";
 import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
-import { gridStack } from "./grid-stack";
+import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexNow, indexWith, indexNowWith, autoseed } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
@@ -266,8 +266,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "gridStack", "cycle", "index", "indexNow", "indexWith", "indexNowWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, gridStack, cycle, index, indexNow, indexWith, indexNowWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "gridStack", "stackN", "cycle", "index", "indexNow", "indexWith", "indexNowWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, gridStack, stackN, cycle, index, indexNow, indexWith, indexNowWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
