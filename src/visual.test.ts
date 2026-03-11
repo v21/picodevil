@@ -102,8 +102,12 @@ function renderEvent(
       ctx,
       now: 0,
       dt: 16,
+      currentCycle: 0,
+      eventBegin: 0,
+      cps: 0.5,
       lastVideoVal: null,
       getOrCreateVideoEl: getOrCreate as any,
+      frameShareMap: new Map(),
     });
   }
 }

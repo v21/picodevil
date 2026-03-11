@@ -299,3 +299,30 @@ does the same as `index`, but sets `seed` on them instead, hashing their index a
 if passed an array of patterns, it cycles through the patterns to make up to N
 
 
+
+
+sync()
+sets start to the current time in the cycle, so that videos appear to play freely, rather than resetting at the end of events
+
+
+
+video element system:
+- we have a pool of video elements we can pull from for displayed screens
+- when getting a video element for a newly shown screen, try to find one which is both showing the right video, and at the right seek position
+- if multiple screens are showing the same video at the same seek position, at the same speed, they can share it (this is quite common with the way we do stacks)
+- maybe we wan tto use this same logic for canvas elements and images?
+- also we probably want to pull videos in as blobs so we can create new video elements quicker. idk - maybe this isn't worth doing and the browser cache mechanisms are better
+- next step, and here's the cool bit: we query a little ahead of the current position, to understand what screens will soon be displayed. we can then get these warmed up in advance, seeked to the right place, etc
+
+does the pool matching work when looping a short section of the clip?
+does the pool matching take into account sync?
+yes - we use `video playback identity (src+speed+start+end+eventBegin).`
+(possibly we can do better?)
+
+
+does the video sharing take into account slight drift between the video clock and the strudel clock? or isn't that a thing?
+
+does prewarm create elements when the pool already has some? does it prefer to seek rather than make new elements?
+
+perform experiments to test what the correct scoring function is
+perform experiments to test what the correct look ahead function is

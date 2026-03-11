@@ -7,7 +7,9 @@
     "dev": "vite",
     "test": "vitest run",
     "test:monkey": "tsx test/monkey-test.ts --rounds 20 --delay 1000 --headless",
-    "test:monkey:replay": "tsx test/monkey-test.ts --replay --delay 1000 --headless"
+    "test:monkey:replay": "tsx test/monkey-test.ts --replay --delay 1000 --headless",
+    "test:stress": "tsx test/stress-test.ts",
+    "test:stress:headless": "tsx test/stress-test.ts --headless"
   },
   "keywords": [],
   "author": "",

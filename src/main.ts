@@ -22,9 +22,10 @@ import { image } from "./image-pattern";
 import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexNow, indexWith, indexNowWith, autoseed } from "./index-patterns";
-import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND } from "./config";
-import { renderVideoFrame, type VideoEl } from "./video-playback";
+import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
+import { renderVideoFrame, computeExpectedTime, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
+import { scoreFreeElement } from "./video-pool";
 import { transpile } from "./transpiler";
 import { warn, flushWarnings, clearWarnings } from "./warnings";
 
@@ -117,16 +118,29 @@ function makeVideoEl(name: string): VideoEl {
   return el;
 }
 
-function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string = ""): HTMLVideoElement {
+function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string = "", targetTime?: number): HTMLVideoElement {
   const key = keyPrefix + base + name;
   if (videoPool.has(key)) return videoPool.get(key)!;
 
   const srcUrl = base + name;
 
-  // Reuse an idle element with the same src (already loaded/buffered)
+  // Reuse an idle element with the same src, preferring one nearest the target time
   const freeList = freeVideoPool.get(srcUrl);
   if (freeList && freeList.length > 0) {
-    const el = freeList.pop()!;
+    let bestIdx = freeList.length - 1;
+    if (targetTime != null && freeList.length > 1) {
+      let bestScore = Infinity;
+      for (let i = 0; i < freeList.length; i++) {
+        const el = freeList[i];
+        const dur = isFinite(el.duration) ? el.duration : 0;
+        const score = scoreFreeElement(el.currentTime, targetTime, dur);
+        if (score < bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+    }
+    const el = freeList.splice(bestIdx, 1)[0];
     if (freeList.length === 0) freeVideoPool.delete(srcUrl);
     el._seeking = false;
     el._srcUrl = srcUrl;
@@ -308,10 +322,30 @@ function parseColor(val: string): [number, number, number] {
   return [1, 1, 1];
 }
 
+// --- performance metrics (exposed for stress testing) ---
+const uzuMetrics = {
+  frameTimes: [] as number[],   // last N frame durations in ms
+  seekCount: 0,                 // total seeks this session
+  poolSize: 0,                  // active video pool size
+  freePoolSize: 0,              // free video pool size
+  shareHits: 0,                 // times frameShareMap avoided a new element
+  maxFrameTime: 0,              // worst frame time seen
+  reset() {
+    this.frameTimes = [];
+    this.seekCount = 0;
+    this.shareHits = 0;
+    this.maxFrameTime = 0;
+  },
+};
+(window as any).uzuMetrics = uzuMetrics;
+
 // --- render loop ---
 let startTime = performance.now();
 let lastFrameTime = startTime;
 let lastScreenVals: (string | null)[] = [];
+
+/** Per-frame map for sharing video elements across identical draws. Cleared each frame. */
+const frameShareMap = new Map<string, VideoEl>();
 
 function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: number, dt: number, screenIndex: number, cps: number) {
   const t = cycleNum + cyclePos;
@@ -404,6 +438,7 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
           currentCycle: t, eventBegin, cps,
           lastVideoVal: lastScreenVals[evIndex] ?? null,
           getOrCreateVideoEl: getVideoEl,
+          frameShareMap,
         });
         lastScreenVals[evIndex] = videoResult.lastVideoVal;
       } else {
@@ -437,11 +472,72 @@ function frame() {
   const cycleNum = Math.floor(cycle);
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  frameShareMap.clear();
 
   // draw screens in order
   for (let i = 0; i < screens.length; i++) {
     renderScreen(screens[i], cyclePos, cycleNum, now, now - lastFrameTime, i, cps);
   }
+
+  // Prewarm: query ahead and pre-create/seek video elements for upcoming events
+  if (cps > 0) {
+    const lookaheadCycles = (PREWARM_LOOKAHEAD_MS / 1000) * cps;
+    const futureT = cycle + lookaheadCycles;
+    for (const screen of screens) {
+      try {
+        const futureEvents = screen.queryArc(futureT, futureT + 0.001);
+        if (!futureEvents || !Array.isArray(futureEvents)) continue;
+        for (const hap of futureEvents) {
+          const ev = hap?.value;
+          if (!ev || ev._type !== "video") continue;
+          const base = ev.urlBase ?? VIDEO_BASE;
+          const srcUrl = base + ev.src;
+          const speed = ev.speed != null ? Number(ev.speed) : 1;
+          const eventBegin = ev.sync != null ? Number(ev.sync) : (hap?.whole?.begin != null ? Number(hap.whole.begin) : futureT);
+
+          // Already have a free element for this src? Check if any is close enough.
+          const freeList = freeVideoPool.get(srcUrl);
+          const alreadyActive = [...videoPool.values()].some(el => el._srcUrl === srcUrl);
+          if ((freeList && freeList.length > 0) || alreadyActive) continue;
+
+          // Start blob fetch if needed (no element created yet)
+          fetchVideoBlob(srcUrl);
+
+          // Create a new element, seek it, and park it in the free pool
+          const el = makeVideoEl(ev.src) as VideoEl;
+          el._srcUrl = srcUrl;
+          const blobUrl = videoBlobUrls.get(srcUrl);
+          el.src = blobUrl ?? srcUrl;
+          el.preload = "auto";
+
+          // Pre-seek once metadata loads
+          el.addEventListener("loadedmetadata", () => {
+            const realExpected = computeExpectedTime({
+              currentCycle: futureT, eventBegin, cps: cps || 0.5,
+              speed, loopStart: 0, loopEnd: el.duration, duration: el.duration,
+            });
+            el.currentTime = realExpected;
+          }, { once: true });
+
+          // Park in free pool immediately (will be picked up by getVideoEl)
+          const list = freeVideoPool.get(srcUrl) ?? [];
+          list.push(el);
+          freeVideoPool.set(srcUrl, list);
+        }
+      } catch { /* ignore query errors during prewarm */ }
+    }
+  }
+
+  // Record metrics
+  const frameEnd = performance.now() - startTime;
+  const frameDuration = frameEnd - now;
+  uzuMetrics.frameTimes.push(frameDuration);
+  if (uzuMetrics.frameTimes.length > 300) uzuMetrics.frameTimes.shift(); // keep last 5s at 60fps
+  if (frameDuration > uzuMetrics.maxFrameTime) uzuMetrics.maxFrameTime = frameDuration;
+  uzuMetrics.poolSize = videoPool.size;
+  let freeCount = 0;
+  for (const list of freeVideoPool.values()) freeCount += list.length;
+  uzuMetrics.freePoolSize = freeCount;
 
   flushWarnings();
   lastFrameTime = now;

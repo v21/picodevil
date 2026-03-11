@@ -17,7 +17,9 @@ export interface VideoFrameContext {
   eventBegin: number;
   cps: number;
   lastVideoVal: string | null;
-  getOrCreateVideoEl: (name: string, base: string, keyPrefix: string) => VideoEl;
+  getOrCreateVideoEl: (name: string, base: string, keyPrefix: string, targetTime?: number) => VideoEl;
+  /** Per-frame map for sharing video elements across identical draws. */
+  frameShareMap: Map<string, VideoEl>;
 }
 
 export interface VideoFrameResult {
@@ -76,12 +78,29 @@ export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
   }
 
   const base = c.ev.urlBase ?? VIDEO_BASE;
-  const el = c.getOrCreateVideoEl(src, base, c.poolKeyPrefix);
 
-  if (el && isFinite(el.duration) && el.duration > 0) {
-    const startTV = startRaw != null ? toTimeValue(startRaw) : { value: 0, unit: "rel" as const };
-    const endTV = endRaw != null ? toTimeValue(endRaw) : { value: 1, unit: "rel" as const };
-    updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.currentCycle, c.eventBegin, c.cps);
+  // Share key: identical video+timing can reuse one element for drawing
+  const shareKey = `${base}${src}|${speed}|${Number(startRaw)}|${Number(endRaw)}|${endIsDuration}|${c.eventBegin}`;
+  const shared = c.frameShareMap.get(shareKey);
+
+  let el: VideoEl;
+  if (shared) {
+    // Reuse already-configured element — just draw, no new pool entry needed
+    el = shared;
+  } else {
+    // Compute a rough target time for pool selection
+    const elapsedSec = (c.currentCycle - c.eventBegin) / (c.cps || 0.5);
+    const roughTarget = speed === 0 ? 0 : Math.abs(elapsedSec * speed);
+
+    el = c.getOrCreateVideoEl(src, base, c.poolKeyPrefix, roughTarget);
+
+    if (el && isFinite(el.duration) && el.duration > 0) {
+      const startTV = startRaw != null ? toTimeValue(startRaw) : { value: 0, unit: "rel" as const };
+      const endTV = endRaw != null ? toTimeValue(endRaw) : { value: 1, unit: "rel" as const };
+      updateVideoPlayback(el, speed, startTV, endTV, endIsDuration, c.currentCycle, c.eventBegin, c.cps);
+    }
+
+    c.frameShareMap.set(shareKey, el);
   }
 
   if (el && el.videoWidth > 0) {
