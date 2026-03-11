@@ -68,6 +68,16 @@ describe("video()", () => {
     expect(evs[0].value.endIsDuration).toBe(true);
   });
 
+  it("sync() defaults to 0", () => {
+    const evs = video("a.mp4").sync().queryArc(0, 1);
+    expect(evs[0].value.sync).toBe(0);
+  });
+
+  it("sync() accepts a value", () => {
+    const evs = video("a.mp4").sync(5).queryArc(0, 1);
+    expect(evs[0].value.sync).toBe(5);
+  });
+
   it("urlBase() merges into events", () => {
     const evs = video("a.mp4").urlBase("https://x.com/").queryArc(0, 1);
     expect(evs[0].value.urlBase).toBe("https://x.com/");

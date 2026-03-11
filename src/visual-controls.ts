@@ -114,6 +114,25 @@ PatternProto.scale = function (value: any) {
 export const speed = createMixParam("speed");
 
 /**
+ * Overrides the event origin for video playback timing. Without sync(), each event
+ * restarts the video. With sync(), the video plays as if it started at the given
+ * cycle (default 0), making playback continuous across event boundaries.
+ *
+ * @param {number | string | Pattern} value cycle origin (default 0)
+ * @returns {Pattern} pattern with sync origin applied
+ * @example
+ * $: video("clip.mp4").sync()              // plays freely from cycle 0
+ * $: video("clip.mp4").sync(10)            // plays as if it started at cycle 10
+ * $: video("clip.mp4").sync(sine.range(0, 10)) // patterned origin
+ *
+ */
+export const sync = createMixParam("sync");
+PatternProto.sync = function (value?: any) {
+  if (value === undefined) value = 0;
+  return sync(value, this);
+};
+
+/**
  * Sets the start position within a video. Values are relative to duration by default (0–1).
  * Use .sec() or .ms() on the value pattern for absolute times.
  *

@@ -396,7 +396,7 @@ function renderScreen(screen: Screen, cyclePos: number, cycleNum: number, now: n
         }
       } else if (ev._type === "video") {
         const hap = events[ei];
-        const eventBegin = hap?.whole?.begin != null ? Number(hap.whole.begin) : t;
+        const eventBegin = ev.sync != null ? Number(ev.sync) : (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
         const videoResult = renderVideoFrame({
           ev,
           videoPool, poolKeyPrefix: `cell${evIndex}:`, canvas, ctx,
