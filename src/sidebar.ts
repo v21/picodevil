@@ -1,3 +1,5 @@
+import { setupReference } from "./reference";
+
 export function setupSidebar() {
   const toggle = document.getElementById("sidebar-toggle")!;
   const panel = document.getElementById("sidebar-panel")!;
@@ -5,6 +7,7 @@ export function setupSidebar() {
 
   toggle.addEventListener("click", () => {
     const open = panel.classList.toggle("open");
+    toggle.classList.toggle("open", open);
     toggle.textContent = open ? "›" : "‹";
   });
 
@@ -24,6 +27,10 @@ export function setupSidebar() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   });
+
+  // Populate reference tab
+  const refTab = document.getElementById("tab-reference");
+  if (refTab) setupReference(refTab);
 
   // Tabs
   const tabs = panel.querySelectorAll<HTMLButtonElement>(".tabs button");

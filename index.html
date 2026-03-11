@@ -71,6 +71,7 @@
       justify-content: center;
     }
     #sidebar-toggle:hover { color: #fff; background: hsla(50, 23%, 5%, 0.6); }
+    #sidebar-toggle.open { background: hsla(50, 23%, 5%, 0.92); }
     #sidebar-panel {
       position: fixed;
       top: 0; right: 24px;
@@ -78,9 +79,9 @@
       z-index: 29;
       display: flex;
       flex-direction: column;
-      background: hsla(50, 23%, 5%, 0.75);
+      background: hsla(50, 23%, 5%, 0.85);
       border-left: 1px solid #333;
-      width: 340px;
+      width: min(600px, 100vw);
       min-width: 200px;
       transform: translateX(100%);
       transition: transform 0.1s ease;

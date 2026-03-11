@@ -176,18 +176,6 @@ PatternProto.lerp = function (curve: any = "linear", direction: any = "inout") {
   });
 };
 
-/**
- * Catmull-Rom spline interpolation between discrete pattern values. Produces very smooth curves
- * that pass through each value.
- *
- * @param {number | Pattern} tension smoothness of the curve (0 = sharp corners, 0.5 = default, 1 = very smooth)
- * @returns {Pattern} continuous pattern with smooth spline interpolation
- * @example
- * $: video("clip.mp4").x("0 0.3 0.7 1".spline())        // smooth path
- * $: color("red").alpha("0 1 0.5 1".spline(0.8))         // high-tension smooth alpha
- *
- */
-
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number, tension: number): number {
   const t2 = t * t;
   const t3 = t2 * t;
@@ -199,6 +187,17 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number, t
        + (t3 - t2) * m2;
 }
 
+/**
+ * Catmull-Rom spline interpolation between discrete pattern values. Produces very smooth curves
+ * that pass through each value.
+ *
+ * @param {number | Pattern} tension smoothness of the curve (0 = sharp corners, 0.5 = default, 1 = very smooth)
+ * @returns {Pattern} continuous pattern with smooth spline interpolation
+ * @example
+ * $: video("clip.mp4").x("0 0.3 0.7 1".spline())        // smooth path
+ * $: color("red").alpha("0 1 0.5 1".spline(0.8))         // high-tension smooth alpha
+ *
+ */
 PatternProto.spline = function (tension: any = 0.5) {
   const src = this;
   const tensionPat = reify(tension);

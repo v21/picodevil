@@ -1,3 +1,7 @@
+function isIterable(a: any): boolean {
+  return a != null && typeof a[Symbol.iterator] === 'function' && typeof a.queryArc !== 'function' && !Array.isArray(a);
+}
+
 /**
  * Round-robins between arguments, cycling through each independently.
  * Arrays advance their own index; single values repeat forever.
@@ -6,10 +10,6 @@
  * cycle([video("a.mp4"), video("b.mp4")], video("c.mp4"))
  * // yields: a, c, b, c, a, c, ...
  */
-function isIterable(a: any): boolean {
-  return a != null && typeof a[Symbol.iterator] === 'function' && typeof a.queryArc !== 'function' && !Array.isArray(a);
-}
-
 export function cycle(...args: any[]): Iterable<any> {
   return {
     [Symbol.iterator]: function* () {
