@@ -16,9 +16,10 @@
       top: 0; left: 0;
       width: 100%; height: 100%;
       z-index: 10;
+      overflow: hidden;
     }
     .cm-editor { background: transparent !important; height: 100%; }
-    .cm-editor .cm-scroller { font-family: "Berkeley Mono", "Roboto Mono", monospace; font-size: 20px; }
+    .cm-editor .cm-scroller { font-family: "Berkeley Mono", "Roboto Mono", monospace; font-size: 20px; overflow-x: hidden; }
     .cm-editor .cm-gutters { background: none !important; border: none !important; }
     .cm-editor .cm-line {
       background: hsla(50, 23%, 5%, 0.6);
@@ -52,6 +53,75 @@
       white-space: pre-wrap;
       pointer-events: none;
     }
+    /* Sidebar */
+    #sidebar-toggle {
+      position: fixed;
+      top: 0; right: 0;
+      z-index: 30;
+      width: 24px; height: 100%;
+      background: hsla(50, 23%, 5%, 0.4);
+      color: #666;
+      border: none;
+      border-left: 1px solid #333;
+      font-family: "Berkeley Mono", "Roboto Mono", monospace;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #sidebar-toggle:hover { color: #fff; background: hsla(50, 23%, 5%, 0.6); }
+    #sidebar-panel {
+      position: fixed;
+      top: 0; right: 24px;
+      height: 100%;
+      z-index: 29;
+      display: flex;
+      flex-direction: column;
+      background: hsla(50, 23%, 5%, 0.75);
+      border-left: 1px solid #333;
+      width: 340px;
+      min-width: 200px;
+      transform: translateX(100%);
+      transition: transform 0.1s ease;
+      color: #ccc;
+      font-family: "Berkeley Mono", "Roboto Mono", monospace;
+      font-size: 14px;
+    }
+    #sidebar-panel.open { transform: translateX(0); }
+    #sidebar-panel .resize-handle {
+      position: absolute;
+      top: 0; left: 0;
+      width: 6px; height: 100%;
+      cursor: col-resize;
+    }
+    #sidebar-panel .resize-handle:hover { background: rgba(255,255,255,0.1); }
+    #sidebar-panel .tabs {
+      display: flex;
+      border-bottom: 1px solid #333;
+      flex-shrink: 0;
+    }
+    #sidebar-panel .tabs button {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #666;
+      padding: 10px 8px;
+      font-family: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+    }
+    #sidebar-panel .tabs button:hover { color: #ccc; }
+    #sidebar-panel .tabs button.active { color: #fff; border-bottom-color: #fff; }
+    #sidebar-panel .tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: none;
+    }
+    #sidebar-panel .tab-content.active { display: block; }
+
     .uzu-warning {
       display: none;
       position: fixed;
@@ -73,6 +143,20 @@
 <body>
   <canvas id="c"></canvas>
   <div id="editor-wrap"></div>
+  <button id="sidebar-toggle">‹</button>
+  <div id="sidebar-panel">
+    <div class="resize-handle"></div>
+    <div class="tabs">
+      <button class="active" data-tab="videos">videos</button>
+      <button data-tab="reference">reference</button>
+    </div>
+    <div id="tab-videos" class="tab-content active">
+      <p style="color:#666">video loading coming soon</p>
+    </div>
+    <div id="tab-reference" class="tab-content">
+      <p style="color:#666">reference coming soon</p>
+    </div>
+  </div>
   <script type="module" src="src/main.ts"></script>
 </body>
 </html>

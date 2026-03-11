@@ -28,6 +28,7 @@ import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
 import { transpile } from "./transpiler";
 import { warn, flushWarnings, clearWarnings } from "./warnings";
+import { setupSidebar } from "./sidebar";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -674,3 +675,4 @@ requestAnimationFrame(frame);
 
 // --- editor ---
 setupEditor(document.getElementById("editor-wrap")!);
+setupSidebar();
