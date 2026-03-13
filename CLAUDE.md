@@ -34,6 +34,7 @@ uzuvid/
     color-pattern.ts      — color() function: wraps mini pattern with {color} values
     video-pattern.ts      — video() function: wraps mini pattern with {src} values
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
+    screen-pattern.ts     — screen()/s() function: auto-detects type per token (registry → extension → color fallback)
     draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering, FitMode type
     video-playback.ts     — video frame rendering: playback update, seeking
     playback-rate.ts      — setPlaybackRate helper, native rate range constants
@@ -77,6 +78,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - `color(str)` — pattern of `{color}` objects
 - `video(str)` — pattern of `{src}` objects (video filenames from VIDEO_BASE)
 - `image(str)` — pattern of `{src, type:"image"}` objects (image filenames from IMAGE_BASE)
+- `screen(str)` / `s(str)` — auto-detecting source pattern: checks media registry first, then file extension, then falls back to CSS color
 - `gridStack(children[], cols, rows)` — distributes children across grid cells via `.gridModulo()`
 - `setCps(n)` — set cycles per second
 - `$: expr` — transpiled to `expr.p("$")`, registers pattern for rendering

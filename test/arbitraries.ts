@@ -118,7 +118,7 @@ const miniOp: fc.Arbitrary<string> = fc.oneof(
  * Build a mininotation arbitrary for a given atom pool.
  * Uses fc.letrec for safe recursion with depth control via maxDepth.
  */
-export function miniArb(pool: string[], maxDepth = 2): fc.Arbitrary<string> {
+export function miniArb(pool: string[], _maxDepth = 2): fc.Arbitrary<string> {
   const atom = fc.constantFrom(...pool);
 
   // Build recursive grammar
@@ -155,7 +155,7 @@ export function miniArb(pool: string[], maxDepth = 2): fc.Arbitrary<string> {
     ),
   }));
 
-  return expr.filter(s => s.length > 0 && s.length < 200);
+  return (expr as fc.Arbitrary<string>).filter(s => s.length > 0 && s.length < 200);
 }
 
 // ============================================================
@@ -352,6 +352,26 @@ export interface GeneratedExpr {
   code: string;
 }
 
+/**
+ * Mixed token pool for screen()/s(): registry names and colors.
+ * Used without urlBase — registry handles resolution.
+ */
+const SCREEN_TOKENS = [
+  ...COLORS.slice(0, 6),
+  ...VIDEO_REGISTRY_NAMES,
+  ...IMAGE_REGISTRY_NAMES,
+];
+
+/**
+ * Token pool for screen() with extension-based filenames.
+ * Must be paired with .urlBase('/test-assets/') in generated code.
+ */
+const SCREEN_EXT_TOKENS = [
+  ...COLORS.slice(0, 4),
+  "red.mp4", "blue.mp4",
+  "red.png", "blue.png", "photo1.jpg",
+];
+
 /** A single screen expression (color, video, or image) without .out(). */
 export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   // color
@@ -411,6 +431,54 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       videoChain,
     ).map(([pat, chain]) => ({
       code: `video("${pat}")${chain}`,
+    }))
+  },
+
+  // s() / screen() — auto-detecting, mixed token pool, shared methods
+  {
+    weight: 3, arbitrary: fc.tuple(
+      miniArb(SCREEN_TOKENS, 1),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 3 }),
+      fc.boolean(),
+    ).map(([pat, methods, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}("${pat}")${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // s() / screen() — with video methods (any method valid on any source)
+  {
+    weight: 1, arbitrary: fc.tuple(
+      miniArb(SCREEN_TOKENS, 1),
+      videoChain,
+      fc.boolean(),
+    ).map(([pat, chain, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}("${pat}")${chain}`,
+    }))
+  },
+
+  // s() / screen() — extension-based tokens, urlBase to reach test assets
+  {
+    weight: 2, arbitrary: fc.tuple(
+      miniArb(SCREEN_EXT_TOKENS, 1),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
+      fc.boolean(),
+    ).map(([pat, methods, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}("${pat}").urlBase('/test-assets/')${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // s() / screen() — wrapping an already-typed pattern
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.oneof(
+        miniArb(VIDEO_REGISTRY_NAMES, 1).map(p => `video("${p}")`),
+        miniArb(IMAGE_REGISTRY_NAMES, 1).map(p => `image("${p}")`),
+        miniArb(COLORS, 1).map(p => `color("${p}")`),
+      ),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
+      fc.boolean(),
+    ).map(([inner, methods, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}(${inner})${methods.map(m => m.code).join("")}`,
     }))
   },
 );

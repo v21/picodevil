@@ -53,39 +53,39 @@ function applyIndexNow(pats: any[], iLabel: string, countLabel: string): any {
 }
 
 /**
- * Stacks patterns and labels each hap with `i` (position in array) and `count` (total).
- * Can also be called as a method: stack(a, b).index()
+ * Stacks patterns and labels co-active haps at query time with `i` and `count`.
+ * `i` resets each query to reflect how many patterns are simultaneously active.
  *
  * @example
  * $: index(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
  */
 export function index(...args: PatOrArr[]): any {
-  return applyIndex(flattenPats(args), "i", "count");
+  return applyIndexNow(flattenPats(args), "i", "count");
 }
 
 /**
- * Stacks patterns and labels co-active haps at query time with `i` and `count`.
- * `i` resets each query to reflect how many patterns are simultaneously active.
+ * Stacks patterns and labels each hap with `i` (position in cycle order) and `count` (total).
+ * Can also be called as a method: stack(a, b).indexCycle()
  *
  * @example
- * $: indexNow(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
+ * $: indexCycle(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
  */
-export function indexNow(...args: PatOrArr[]): any {
-  return applyIndexNow(flattenPats(args), "i", "count");
+export function indexCycle(...args: PatOrArr[]): any {
+  return applyIndex(flattenPats(args), "i", "count");
 }
 
 /**
  * Like index() but with custom label names for i and count.
  */
 export function indexWith(iLabel: string, countLabel: string, ...args: PatOrArr[]): any {
-  return applyIndex(flattenPats(args), iLabel, countLabel);
+  return applyIndexNow(flattenPats(args), iLabel, countLabel);
 }
 
 /**
- * Like indexNow() but with custom label names for i and count.
+ * Like indexCycle() but with custom label names for i and count.
  */
-export function indexNowWith(iLabel: string, countLabel: string, ...args: PatOrArr[]): any {
-  return applyIndexNow(flattenPats(args), iLabel, countLabel);
+export function indexCycleWith(iLabel: string, countLabel: string, ...args: PatOrArr[]): any {
+  return applyIndex(flattenPats(args), iLabel, countLabel);
 }
 
 // ─── autoseed ─────────────────────────────────────────────────────────────────
