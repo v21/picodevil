@@ -93,6 +93,29 @@ describe("video()", () => {
     expect(evs[0].value.fit).toBe("contain");
   });
 
+  it("bakes _onset into each event value", () => {
+    // _onset must survive set.mix (appBoth) calls like .speed() so that
+    // eventBeginFromHap returns the original event onset rather than the
+    // clipped hap.whole.begin after the intersection.
+    const evs = video("a.mp4").queryArc(0, 0.001);
+    expect(evs[0].value._onset).toBe(0);
+
+    // video("a.mp4/5") spans 5 cycles — onset stays 0 across all cycles
+    const slow = video("a.mp4").slow(5);
+    expect(slow.queryArc(0, 0.001)[0].value._onset).toBe(0);
+    expect(slow.queryArc(1, 1.001)[0].value._onset).toBe(0);
+    expect(slow.queryArc(4, 4.001)[0].value._onset).toBe(0);
+  });
+
+  it("_onset survives .speed() (appBoth whole-clipping)", () => {
+    // .speed(2) uses appBoth which intersects whole spans, clipping to per-cycle.
+    // _onset in the value must still reflect the original event onset.
+    const slow = video("a.mp4").slow(5).speed(2);
+    // At cycle 1, appBoth would produce whole=[1,2], but _onset should still be 0
+    expect(slow.queryArc(1, 1.001)[0].value._onset).toBe(0);
+    expect(slow.queryArc(3, 3.001)[0].value._onset).toBe(0);
+  });
+
   it("chaining preserves all controls", () => {
     const evs = video("a.mp4").speed(2).start("5s").end("10s").alpha(0.5).queryArc(0, 1);
     const v = evs[0].value;

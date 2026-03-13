@@ -19,6 +19,7 @@ import { setupEditor } from "./editor";
 import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
+import { screen, s } from "./screen-pattern";
 import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexNow, indexWith, indexNowWith, autoseed } from "./index-patterns";
@@ -328,8 +329,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "gridStack", "stackN", "cycle", "index", "indexNow", "indexWith", "indexNowWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, gridStack, stackN, cycle, index, indexNow, indexWith, indexNowWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexNow", "indexWith", "indexNowWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexNow, indexWith, indexNowWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
@@ -405,9 +406,12 @@ function videoShareKey(ev: any, eventBegin: number): string {
   return `${base}${ev.src}|${speed}|${Number(ev.start)}|${Number(ev.end)}|${ev.endIsDuration ?? false}|${eventBegin}`;
 }
 
-/** Compute eventBegin from a hap, respecting sync. */
+/** Compute eventBegin from a hap, respecting sync and preserved onset. */
 function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  return ev.sync != null ? Number(ev.sync) : (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
+  if (ev.sync != null) return Number(ev.sync);
+  // _onset is baked into the value by video() before any set.mix clips whole.begin
+  if (ev._onset != null) return Number(ev._onset);
+  return hap?.whole?.begin != null ? Number(hap.whole.begin) : t;
 }
 
 interface FrameEvent {

@@ -66,4 +66,16 @@ describe("computeExpectedTime", () => {
   it("speed 0 stays at loopStart", () => {
     expect(computeExpectedTime({ ...defaults, currentCycle: 100, eventBegin: 0, speed: 0, loopStart: 3 })).toBeCloseTo(3);
   });
+
+  it("with short video matching cycle duration, wraps at cycle boundary", () => {
+    // video("clip/5") with 2s video at cps=0.5: event spans 5 cycles, eventBegin=0
+    // At cycle 1 (2s elapsed), 2s video → expected wraps to 0
+    // This is the scenario where loop-boundary drift logic matters: el.currentTime≈2
+    // but expected=0. The loop-adjusted drift should be 0 (2 mod 2 = 0), not 2.
+    const shortDefaults = { cps: 0.5, speed: 1, loopStart: 0, loopEnd: 2, duration: 2 };
+    expect(computeExpectedTime({ ...shortDefaults, currentCycle: 1, eventBegin: 0 })).toBeCloseTo(0);
+    expect(computeExpectedTime({ ...shortDefaults, currentCycle: 0.5, eventBegin: 0 })).toBeCloseTo(1);
+    expect(computeExpectedTime({ ...shortDefaults, currentCycle: 1.5, eventBegin: 0 })).toBeCloseTo(1);
+    expect(computeExpectedTime({ ...shortDefaults, currentCycle: 2, eventBegin: 0 })).toBeCloseTo(0);
+  });
 });

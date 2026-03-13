@@ -124,6 +124,7 @@ function updateVideoPlayback(
   const loopStart = resolveTime(start, dur);
   const resolvedEnd = resolveTime(endTV, dur);
   const loopEnd = endIsDuration ? loopStart + resolvedEnd : resolvedEnd;
+  const loopLen = Math.abs(loopEnd - loopStart);
 
   const expected = computeExpectedTime({
     currentCycle, eventBegin, cps: cps || 0.5,
@@ -144,7 +145,13 @@ function updateVideoPlayback(
     // Native rate: let browser play, correct drift
     if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
     if (el.playbackRate !== speed) setPlaybackRate(el, speed);
-    const drift = Math.abs(el.currentTime - expected);
+    // Use loop-adjusted drift: near loop boundaries, currentTime may be near
+    // loopEnd while expected has just wrapped to loopStart (or vice versa).
+    // Comparing modular distance avoids a false drift spike at every loop boundary.
+    const rawDrift = Math.abs(el.currentTime - expected);
+    const drift = loopLen > 0
+      ? Math.min(rawDrift, Math.abs(rawDrift - loopLen))
+      : rawDrift;
     if (isNewEvent || drift > DRIFT_THRESHOLD) {
       el.currentTime = expected;
     }
