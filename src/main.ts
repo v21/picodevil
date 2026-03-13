@@ -22,7 +22,7 @@ import { image } from "./image-pattern";
 import { screen, s } from "./screen-pattern";
 import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
-import { index, indexNow, indexWith, indexNowWith, autoseed } from "./index-patterns";
+import { index, indexCycle, indexWith, indexCycleWith, autoseed } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
@@ -329,8 +329,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexNow", "indexWith", "indexNowWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexNow, indexWith, indexNowWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexCycle", "indexWith", "indexCycleWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
+      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexCycle, indexWith, indexCycleWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();

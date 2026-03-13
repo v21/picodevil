@@ -3,7 +3,7 @@ import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { parseTimeValue, resolveTime, type TimeValue } from "./time-value";
 import { drawFit } from "./draw-fit";
 
-export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string; _lastEventBegin?: number };
+export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string; _lastEventBegin?: number; _seekStartTime?: number; _lastLogTime?: number };
 
 export interface VideoFrameContext {
   ev: any;
@@ -135,11 +135,28 @@ function updateVideoPlayback(
   const isNewEvent = el._lastEventBegin !== eventBegin;
   if (isNewEvent) el._lastEventBegin = eventBegin;
 
+  const src = el._srcUrl ?? el.src;
+  const now = Date.now();
+  const canLog = (now - (el._lastLogTime ?? 0)) > 300;
+
   if (speed < 0 || !isNativeRate(speed)) {
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
-    if (!el._seeking && Math.abs(el.currentTime - expected) > 0.01) {
-      el.currentTime = expected;
+    if (el._seeking) {
+      const seekAge = now - (el._seekStartTime ?? now);
+      if (seekAge > 200 && canLog) {
+        console.warn(`[uzuvid] ${src}: seeking is slow (${seekAge}ms pending) — playback will stutter [seeking mode, speed ${speed}x]`);
+        el._lastLogTime = now;
+      }
+    } else {
+      if (isNewEvent && canLog) {
+        console.log(`[uzuvid] ${src}: using manual seeking (speed ${speed}x) — won't play smoothly`);
+        el._lastLogTime = now;
+      }
+      if (Math.abs(el.currentTime - expected) > 0.01) {
+        el._seekStartTime = now;
+        el.currentTime = expected;
+      }
     }
   } else {
     // Native rate: let browser play, correct drift
@@ -153,6 +170,10 @@ function updateVideoPlayback(
       ? Math.min(rawDrift, Math.abs(rawDrift - loopLen))
       : rawDrift;
     if (isNewEvent || drift > DRIFT_THRESHOLD) {
+      if (!isNewEvent && drift > DRIFT_THRESHOLD && canLog) {
+        console.warn(`[uzuvid] ${src}: correcting drift of ${drift.toFixed(3)}s (expected ${expected.toFixed(3)}s, got ${el.currentTime.toFixed(3)}s) [native playback, speed ${speed}x]`);
+        el._lastLogTime = now;
+      }
       el.currentTime = expected;
     }
   }

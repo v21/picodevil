@@ -372,7 +372,7 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
  * @param {number | Pattern} rowsArg number of rows (optional)
  * @param {number | Pattern} colsArg number of columns (optional)
  * @example
- * $: stack(video("a.mp4"), video("b.mp4")).indexNow().rowscols(2).gridMod()
+ * $: stack(video("a.mp4"), video("b.mp4")).index().rowscols(2).gridMod()
  */
 PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
   const self = this;

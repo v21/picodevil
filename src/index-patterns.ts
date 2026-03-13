@@ -145,8 +145,8 @@ PatternProto.index = function () {
   return index(this);
 };
 
-PatternProto.indexNow = function () {
-  return indexNow(this);
+PatternProto.indexCycle = function () {
+  return indexCycle(this);
 };
 
 PatternProto.autoseed = function () {

@@ -3,7 +3,7 @@ import { stack } from "@strudel/core";
 import { mini } from "@strudel/mini";
 import { color } from "./color-pattern";
 import "./visual-controls";
-import { index, indexNow, indexWith, indexNowWith } from "./index-patterns";
+import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 
 function queryAll(pat: any, t: number) {
   return pat.queryArc(t, t + 0.001).map((e: any) => e.value);
@@ -57,11 +57,11 @@ describe(".rows() / .cols() / .rowscols()", () => {
   });
 });
 
-// ─── index ────────────────────────────────────────────────────────────────────
+// ─── indexCycle ───────────────────────────────────────────────────────────────
 
-describe("index()", () => {
+describe("indexCycle()", () => {
   it("labels haps in cycle order with i and count", () => {
-    const pat = index(color("red"), color("blue"));
+    const pat = indexCycle(color("red"), color("blue"));
     // query across whole cycle to see both
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     const red = evs.find((v: any) => v.color === "red");
@@ -72,8 +72,8 @@ describe("index()", () => {
     expect(blue.count).toBe(2);
   });
 
-  it("method form: stack(a, b).index()", () => {
-    const pat = stack(color("red"), color("blue")).index();
+  it("method form: stack(a, b).indexCycle()", () => {
+    const pat = stack(color("red"), color("blue")).indexCycle();
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     const red = evs.find((v: any) => v.color === "red");
     const blue = evs.find((v: any) => v.color === "blue");
@@ -83,7 +83,7 @@ describe("index()", () => {
   });
 
   it("flattens array args", () => {
-    const pat = index([color("red"), color("blue")], color("green"));
+    const pat = indexCycle([color("red"), color("blue")], color("green"));
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     expect(evs.find((v: any) => v.color === "green").i).toBe(2);
     expect(evs[0].count).toBe(3);
@@ -91,7 +91,7 @@ describe("index()", () => {
 
   it("labels haps in temporal order within a cycle", () => {
     // "a b" has two haps: a at 0-0.5, b at 0.5-1 — they get i:0, i:1
-    const pat = index(color("red blue"));
+    const pat = indexCycle(color("red blue"));
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     evs.sort((a: any, b: any) => a.i - b.i);
     expect(evs[0].color).toBe("red");
@@ -102,9 +102,9 @@ describe("index()", () => {
   });
 });
 
-describe("indexWith()", () => {
+describe("indexCycleWith()", () => {
   it("uses custom labels instead of i and count", () => {
-    const pat = indexWith("slot", "total", color("red"), color("blue"));
+    const pat = indexCycleWith("slot", "total", color("red"), color("blue"));
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     const red = evs.find((v: any) => v.color === "red");
     expect(red.slot).toBe(0);
@@ -113,12 +113,12 @@ describe("indexWith()", () => {
   });
 });
 
-// ─── indexNow ─────────────────────────────────────────────────────────────────
+// ─── index ────────────────────────────────────────────────────────────────────
 
-describe("indexNow()", () => {
+describe("index()", () => {
   it("labels co-active haps at query time", () => {
     // stack("a", "b") — both active simultaneously
-    const pat = indexNow(color("red"), color("blue"));
+    const pat = index(color("red"), color("blue"));
     const evs = queryAll(pat, 0.1);
     evs.sort((a: any, b: any) => a.i - b.i);
     expect(evs).toHaveLength(2);
@@ -129,7 +129,7 @@ describe("indexNow()", () => {
 
   it("i resets per query — sequential haps get i:0 when alone", () => {
     // "a b" — at t=0.1 only "a" is active, at t=0.6 only "b" is active
-    const pat = indexNow(color("red blue"));
+    const pat = index(color("red blue"));
     const early = queryAll(pat, 0.1);
     const late = queryAll(pat, 0.6);
     expect(early[0].i).toBe(0);
@@ -140,7 +140,7 @@ describe("indexNow()", () => {
 
   it("two stacked patterns: i stays stable across queries", () => {
     // stack("a b", "c") — a/c both active at 0.1, b/c both active at 0.6
-    const pat = indexNow(color("red blue"), color("green"));
+    const pat = index(color("red blue"), color("green"));
     const early = queryAll(pat, 0.1);
     const late = queryAll(pat, 0.6);
     expect(early).toHaveLength(2);
@@ -149,23 +149,23 @@ describe("indexNow()", () => {
     expect(late.map((v: any) => v.count)).toEqual([2, 2]);
   });
 
-  it("method form: stack(a,b).indexNow()", () => {
-    const pat = stack(color("red"), color("blue")).indexNow();
+  it("method form: stack(a,b).index()", () => {
+    const pat = stack(color("red"), color("blue")).index();
     const evs = queryAll(pat, 0.1);
     expect(evs.map((v: any) => v.i).sort()).toEqual([0, 1]);
   });
 
   it("flattens array args", () => {
-    const pat = indexNow([color("red"), color("blue")], color("green"));
+    const pat = index([color("red"), color("blue")], color("green"));
     const evs = queryAll(pat, 0.1);
     expect(evs).toHaveLength(3);
     expect(evs.map((v: any) => v.count)).toEqual([3, 3, 3]);
   });
 });
 
-describe("indexNowWith()", () => {
+describe("indexWith()", () => {
   it("uses custom labels", () => {
-    const pat = indexNowWith("slot", "total", color("red"), color("blue"));
+    const pat = indexWith("slot", "total", color("red"), color("blue"));
     const evs = queryAll(pat, 0.1);
     expect(evs.every((v: any) => v.slot !== undefined)).toBe(true);
     expect(evs.every((v: any) => v.i === undefined)).toBe(true);
@@ -246,9 +246,9 @@ describe(".gridMod()", () => {
     expect(evs).toHaveLength(0);
   });
 
-  it("full chain: stack.indexNow().rowscols().gridMod()", () => {
+  it("full chain: stack.index().rowscols().gridMod()", () => {
     const pat = stack(color("red"), color("blue"))
-      .indexNow()
+      .index()
       .rowscols(2)
       .gridMod();
     const evs = queryAll(pat, 0.1);

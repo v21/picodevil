@@ -217,23 +217,23 @@ or, simpler:
 if passed an array of patterns, it cycles through the patterns to make up to N
 
 
-`indexNow(...pats)` takes a pattern or a list of patterns
+`index(...pats)` takes a pattern or a list of patterns
 it stacks the patterns
 it adds `i` to each currently active pattern at the current query time
 and adds `count` to each (the numbers of patterns active)
 
-if we call it like this: `indexNow(["a b", "e f"], ["c d"])` it flattens the array structure - same as `indexNow("a b", "e f", "c d")`
+if we call it like this: `index(["a b", "e f"], ["c d"])` it flattens the array structure - same as `index("a b", "e f", "c d")`
 
 
-`index(...pats)` takes a pattern or a list of patterns
+`indexCycle(...pats)` takes a pattern or a list of patterns
 it labels haps in their natural order, iterating and adding i
 and adds `count` to each (the numbers of patterns)
 
-`indexNowWith(iLabel, countLabel,  ...pats)`
-does the same as `indexNow` but it uses label instead of `i`
-
-`indexWith(liLabel, countLabel, ...pats)`
+`indexWith(iLabel, countLabel,  ...pats)`
 does the same as `index` but it uses label instead of `i`
+
+`indexCycleWith(iLabel, countLabel, ...pats)`
+does the same as `indexCycle` but it uses label instead of `i`
 
 .count(n)
 sets count to n (can be a pattern, obv)

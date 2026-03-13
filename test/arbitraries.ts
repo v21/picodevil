@@ -553,7 +553,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const cpsCode = cps !== undefined ? `${cps}\n` : "";
       const childrenCode = children.map((c: any) => c.code).join(", ");
       return {
-        code: `${cpsCode}${label}: indexNow(${childrenCode}).rowscols(${cols}).gridMod()${chain}`,
+        code: `${cpsCode}${label}: index(${childrenCode}).rowscols(${cols}).gridMod()${chain}`,
       };
     })
   },

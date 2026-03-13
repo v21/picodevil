@@ -207,22 +207,22 @@ color("red").i(2).rows(2).cols(2)   // value will have i:2, rows:2, cols:2
 color("red").rowscols(3)            // rows:3, cols:3
 ```
 
-### `index(...patterns)` / `indexNow(...patterns)`
+### `index(...patterns)` / `indexCycle(...patterns)`
 
 Stack patterns and label each event with `i` (position) and `count` (total), so `.gridMod()` can place them automatically.
 
-- **`index`** — labels events by their temporal order within the current cycle. Events that appear earlier in the cycle get lower indices.
-- **`indexNow`** — labels events that are co-active at query time. `i` and `count` reflect only the patterns active at that moment.
+- **`index`** — labels events that are co-active at query time. `i` and `count` reflect only the patterns active at that moment.
+- **`indexCycle`** — labels events by their temporal order within the current cycle. Events that appear earlier in the cycle get lower indices.
 
 ```js
 $: index(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
-$: indexNow(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
+$: indexCycle(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
 
 // Method form (on an existing stack)
 $: stack(video("a.mp4"), video("b.mp4")).index().rowscols(2).gridMod()
 ```
 
-Use `indexWith` / `indexNowWith` to label with custom property names instead of `i` / `count`:
+Use `indexWith` / `indexCycleWith` to label with custom property names instead of `i` / `count`:
 
 ```js
 $: indexWith("slot", "total", video("a.mp4"), video("b.mp4"))

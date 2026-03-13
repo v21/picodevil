@@ -40,7 +40,7 @@ describe("stackN()", () => {
 
   it("variable n within a cycle produces the right total hap count", () => {
     // mini("1 2") → n=1 for [0,0.5), n=2 for [0.5,1): 1+2=3 haps over the cycle
-    const pat = color("red").stackN(mini("1 2")).index();
+    const pat = color("red").stackN(mini("1 2")).indexCycle();
     const evs = pat.queryArc(0, 1).map((e: any) => e.value);
     expect(evs).toHaveLength(3);
     const sorted = [...evs].sort((a: any, b: any) => a.i - b.i);
