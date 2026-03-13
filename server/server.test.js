@@ -31,6 +31,19 @@ function makeSpawn(exitCode, stderrData) {
   };
 }
 
+function makeExecFile(exitCode, errMsg) {
+  return (_cmd, args, _opts, cb) => {
+    process.nextTick(() => {
+      if (exitCode === 0) {
+        fs.writeFileSync(args[args.length - 1], 'transcoded data');
+        cb(null, '', '');
+      } else {
+        cb(new Error(errMsg || 'ffmpeg failed'), '', errMsg || '');
+      }
+    });
+  };
+}
+
 function startServer(opts) {
   const server = createServer({ port: 0, downloadDir: TEST_DIR, ...opts });
   return new Promise(resolve => {
@@ -72,7 +85,7 @@ describe('/download', () => {
       return makeSpawn(0)(cmd, args);
     };
 
-    const { server, baseURL } = await startServer({ spawnFn });
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn: makeExecFile(0) });
     const res = await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
     await stopServer(server);
 
@@ -80,6 +93,120 @@ describe('/download', () => {
     const data = res.json();
     assert.equal(data.url, `${baseURL}/videos/test123.mp4`);
     assert.equal(data.ready, true);
+  });
+
+  it('downloads to .orig.mp4 then transcodes to .mp4', async () => {
+    const videoURL = 'https://www.youtube.com/watch?v=transcode1';
+    let ytdlpOutPath, ffmpegInPath, ffmpegOutPath;
+
+    const spawnFn = (cmd, args) => {
+      const outIdx = args.indexOf('-o');
+      if (outIdx !== -1) {
+        ytdlpOutPath = args[outIdx + 1];
+        fs.writeFileSync(ytdlpOutPath, 'original data');
+      }
+      return makeSpawn(0)(cmd, args);
+    };
+
+    const execFileFn = (_cmd, args, _opts, cb) => {
+      ffmpegInPath = args[args.indexOf('-i') + 1];
+      ffmpegOutPath = args[args.length - 1];
+      fs.writeFileSync(ffmpegOutPath, 'transcoded data');
+      cb(null, '', '');
+    };
+
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn });
+    await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
+    await stopServer(server);
+
+    assert.ok(ytdlpOutPath?.endsWith('.orig.mp4'), 'yt-dlp should write to .orig.mp4');
+    assert.equal(ffmpegInPath, ytdlpOutPath, 'ffmpeg input should be the .orig.mp4');
+    assert.ok(ffmpegOutPath?.endsWith('transcode1.mp4'), 'ffmpeg output should be the final .mp4');
+  });
+
+  it('deletes .orig.mp4 after successful transcode', async () => {
+    const videoURL = 'https://www.youtube.com/watch?v=cleanup1';
+    let origPath;
+
+    const spawnFn = (cmd, args) => {
+      const outIdx = args.indexOf('-o');
+      if (outIdx !== -1) {
+        origPath = args[outIdx + 1];
+        fs.writeFileSync(origPath, 'original data');
+      }
+      return makeSpawn(0)(cmd, args);
+    };
+
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn: makeExecFile(0) });
+    await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
+    await stopServer(server);
+
+    assert.ok(origPath, 'should have captured orig path');
+    assert.equal(fs.existsSync(origPath), false, '.orig.mp4 should be deleted after transcode');
+  });
+
+  it('deletes .orig.mp4 when ffmpeg fails', async () => {
+    const videoURL = 'https://www.youtube.com/watch?v=cleanup2';
+    let origPath;
+
+    const spawnFn = (cmd, args) => {
+      const outIdx = args.indexOf('-o');
+      if (outIdx !== -1) {
+        origPath = args[outIdx + 1];
+        fs.writeFileSync(origPath, 'original data');
+      }
+      return makeSpawn(0)(cmd, args);
+    };
+
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn: makeExecFile(1, 'codec not found') });
+    const res = await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
+    await stopServer(server);
+
+    assert.equal(res.status, 500);
+    assert.ok(origPath, 'should have captured orig path');
+    assert.equal(fs.existsSync(origPath), false, '.orig.mp4 should be deleted even when ffmpeg fails');
+  });
+
+  it('returns 500 when ffmpeg transcoding fails', async () => {
+    const videoURL = 'https://www.youtube.com/watch?v=ffmpegfail' + Date.now();
+
+    const spawnFn = (cmd, args) => {
+      const outIdx = args.indexOf('-o');
+      if (outIdx !== -1) fs.writeFileSync(args[outIdx + 1], 'original data');
+      return makeSpawn(0)(cmd, args);
+    };
+
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn: makeExecFile(1, 'codec not found') });
+    const res = await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
+    await stopServer(server);
+
+    assert.equal(res.status, 500);
+    assert.match(res.json().error, /Transcode failed/);
+  });
+
+  it('passes I-frame-only flags to ffmpeg', async () => {
+    const videoURL = 'https://www.youtube.com/watch?v=iframecheck';
+    let ffmpegArgs;
+
+    const spawnFn = (cmd, args) => {
+      const outIdx = args.indexOf('-o');
+      if (outIdx !== -1) fs.writeFileSync(args[outIdx + 1], 'fake');
+      return makeSpawn(0)(cmd, args);
+    };
+
+    const execFileFn = (_cmd, args, _opts, cb) => {
+      ffmpegArgs = args;
+      fs.writeFileSync(args[args.length - 1], 'transcoded');
+      cb(null, '', '');
+    };
+
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn });
+    await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
+    await stopServer(server);
+
+    assert.ok(ffmpegArgs.includes('keyint=1:min-keyint=1:scenecut=0'), 'should pass I-frame-only x264opts');
+    assert.ok(ffmpegArgs.includes('1') && ffmpegArgs[ffmpegArgs.indexOf('-g') + 1] === '1', 'should set -g 1');
+    assert.ok(ffmpegArgs.includes('copy') && ffmpegArgs[ffmpegArgs.indexOf('-c:a') + 1] === 'copy', 'should copy audio');
   });
 
   it('returns cached file without re-downloading', async () => {
@@ -117,7 +244,7 @@ describe('/download', () => {
       return makeSpawn(0)(cmd, args);
     };
 
-    const { server, baseURL } = await startServer({ spawnFn });
+    const { server, baseURL } = await startServer({ spawnFn, execFileFn: makeExecFile(0) });
     const res = await fetch(`${baseURL}/download?v=${encodeURIComponent(videoURL)}`);
     await stopServer(server);
 

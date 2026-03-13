@@ -50,7 +50,7 @@ function handleGetURL(req, res, { port }) {
   });
 }
 
-function handleDownload(req, res, { port, downloadDir, spawnFn }) {
+function handleDownload(req, res, { port, downloadDir, spawnFn, execFileFn }) {
   const url = parseURL(req, port);
   const videoURL = url.searchParams.get('v');
   if (!videoURL) return json(res, 400, { error: 'Missing ?v= parameter' });
@@ -63,6 +63,7 @@ function handleDownload(req, res, { port, downloadDir, spawnFn }) {
     id = videoURL;
   }
   if (!id || !/^[\w-]+$/.test(id)) return json(res, 400, { error: 'Could not extract video ID' });
+  const origPath = path.join(downloadDir, `${id}.orig.mp4`);
   const outPath = path.join(downloadDir, `${id}.mp4`);
 
   const fileURL = `http://localhost:${port}/videos/${id}.mp4`;
@@ -75,7 +76,7 @@ function handleDownload(req, res, { port, downloadDir, spawnFn }) {
     '--ffmpeg-location', ffmpegPath,
     '-f', 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b',
     '--merge-output-format', 'mp4',
-    '-o', outPath,
+    '-o', origPath,
     '--no-warnings',
     videoURL,
   ]);
@@ -83,8 +84,26 @@ function handleDownload(req, res, { port, downloadDir, spawnFn }) {
   let stderr = '';
   proc.stderr.on('data', d => stderr += d);
   proc.on('close', code => {
-    if (code !== 0) return json(res, 500, { error: stderr || `yt-dlp exited with code ${code}` });
-    json(res, 200, { url: fileURL, ready: true });
+    if (code !== 0) {
+      fs.unlink(origPath, () => {});
+      return json(res, 500, { error: stderr || `yt-dlp exited with code ${code}` });
+    }
+    console.log(`Transcoding ${id} to I-frame-only...`);
+    execFileFn(ffmpegPath, [
+      '-i', origPath,
+      '-c:v', 'libx264',
+      '-x264opts', 'keyint=1:min-keyint=1:scenecut=0',
+      '-g', '1',
+      '-preset', 'ultrafast',
+      '-c:a', 'copy',
+      '-y',
+      outPath,
+    ], { timeout: 600000 }, (err) => {
+      fs.unlink(origPath, () => {});
+      if (err) return json(res, 500, { error: `Transcode failed: ${err.message}` });
+      console.log(`Transcoded ${id}`);
+      json(res, 200, { url: fileURL, ready: true });
+    });
   });
 }
 
@@ -126,10 +145,11 @@ function createServer(opts = {}) {
   const port = opts.port || DEFAULT_PORT;
   const downloadDir = opts.downloadDir || DOWNLOAD_DIR;
   const spawnFn = opts.spawnFn || spawn;
+  const execFileFn = opts.execFileFn || execFile;
 
   if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
 
-  const ctx = { port, downloadDir, spawnFn };
+  const ctx = { port, downloadDir, spawnFn, execFileFn };
 
   const server = http.createServer((req, res) => {
     if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); return res.end(); }
