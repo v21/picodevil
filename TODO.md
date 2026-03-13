@@ -326,3 +326,30 @@ does prewarm create elements when the pool already has some? does it prefer to s
 
 perform experiments to test what the correct scoring function is
 perform experiments to test what the correct look ahead function is
+
+
+autoseed doesn't work. can it work?? can we make a new RNG function, like precise is new?
+could we bundle this behaviour into stackN etc?
+
+
+video loader:
+it's a list of elements that maps onto a js dict
+it looks like [tiny thumbnail] | name | url | [delete button]
+you can edit the name and urls
+there's a box to add a url at the top
+when you add a URL the name is populated with the filename without an extension
+if there's a name collision, then add a postfix with a number to it
+if you paste a YT video url, we send it to the server and replace with the url the server gives us
+if you use a video name in video it checks against the video list to resolve the url - skipping urlBase entirely
+oh, also it should work for images, too
+also we want an export button and an import button - import adds to the list, export exports the whole list. i think it just copies JSON to the clipboard. oh, and a clear button, with a confirm step.
+
+
+.start(0.5).end(0.7).start(0.5) should leave start at 0.6 - if this is possible?
+
+
+
+currently working on:
+videos no longer reset at new events - fixed?
+add `screen` function - takes a loaded video url, or a colour, or an image
+fix up sidebar so it works nicer
