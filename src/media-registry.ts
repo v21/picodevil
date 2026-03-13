@@ -1,6 +1,8 @@
 const STORAGE_KEY = "uzuvid-media-registry";
 
 export type MediaEntry = {
+  /** Stable identity — survives renames, persisted to localStorage */
+  id: string;
   name: string;
   url: string;
   type: "video" | "image";
@@ -26,7 +28,10 @@ function load() {
     if (!raw) return;
     const arr: MediaEntry[] = JSON.parse(raw);
     registry.clear();
-    for (const entry of arr) registry.set(entry.name, entry);
+    for (const entry of arr) {
+      if (!entry.id) entry.id = crypto.randomUUID(); // backfill old entries
+      registry.set(entry.name, entry);
+    }
   } catch { /* ignore corrupt data */ }
 }
 
@@ -61,10 +66,15 @@ export function isYouTubeUrl(url: string): boolean {
   return YT_RE.test(url);
 }
 
+function getEntryById(id: string): MediaEntry | undefined {
+  for (const e of registry.values()) if (e.id === id) return e;
+  return undefined;
+}
+
 export function addMedia(url: string, name?: string): MediaEntry {
   const baseName = name ?? deriveNameFromUrl(url);
   const finalName = uniqueName(baseName);
-  const entry: MediaEntry = { name: finalName, url, type: guessType(url) };
+  const entry: MediaEntry = { id: crypto.randomUUID(), name: finalName, url, type: guessType(url) };
   registry.set(finalName, entry);
   save();
   if (!isYouTubeUrl(url)) generateThumbnail(entry);
@@ -107,7 +117,7 @@ export function updateEntry(name: string, updates: Partial<MediaEntry>) {
 
 export function resolveMedia(name: string): MediaEntry | undefined {
   let entry = registry.get(name);
-  if (!entry) {
+  if (!entry && registry.size === 0) {
     // Re-load from localStorage in case another module instance wrote to it (HMR)
     load();
     entry = registry.get(name);
@@ -132,7 +142,7 @@ export function importAll(json: string) {
   for (const entry of arr) {
     if (entry.name && entry.url) {
       const name = uniqueName(entry.name);
-      registry.set(name, { ...entry, name });
+      registry.set(name, { id: entry.id ?? crypto.randomUUID(), ...entry, name });
     }
   }
   save();
@@ -150,22 +160,34 @@ export function setOnChange(cb: (() => void) | null) {
 /** Try downloading a YouTube URL via the server. Updates entry in place. */
 export async function downloadYouTube(name: string, serverBase = "http://localhost:3456") {
   const entry = registry.get(name);
-  if (!entry) return;
+  if (!entry) {
+    console.warn(`[downloadYouTube] entry not found for name="${name}"`);
+    return;
+  }
+  const { id, url: ytUrl } = entry;
+  console.log(`[downloadYouTube] starting: name="${name}", id=${id}`);
   entry.downloading = true;
   entry.error = undefined;
   save();
   try {
-    const res = await fetch(`${serverBase}/download?v=${encodeURIComponent(entry.url)}`);
+    const res = await fetch(`${serverBase}/download?v=${encodeURIComponent(ytUrl)}`);
     if (!res.ok) throw new Error(`Server returned ${res.status}`);
     const data = await res.json();
-    entry.url = data.url;
-    entry.type = "video";
-    entry.downloading = false;
+    // Re-lookup by stable ID — entry may have been renamed or registry reloaded since the await
+    const current = getEntryById(id);
+    console.log(`[downloadYouTube] fetch complete: current entry name="${current?.name ?? "NOT FOUND"}"`);
+    if (!current) return; // entry was deleted while downloading
+    current.url = data.url;
+    current.type = "video";
+    current.downloading = false;
     save();
-    generateThumbnail(entry);
+    generateThumbnail(current);
   } catch (e: any) {
-    entry.downloading = false;
-    entry.error = e.message ?? "Download failed";
+    const current = getEntryById(id);
+    console.error(`[downloadYouTube] error for id=${id}:`, e);
+    if (!current) return;
+    current.downloading = false;
+    current.error = e.message ?? "Download failed";
     save();
   }
 }

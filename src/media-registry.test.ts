@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
-  exportAll, importAll, clearAll, isYouTubeUrl, updateUrl,
+  exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
 } from "./media-registry";
 
 beforeEach(() => {
@@ -108,6 +108,65 @@ describe("media registry", () => {
     });
     expect(resolveMedia("testimg")!.thumbnail).toBeDefined();
     expect(resolveMedia("testimg")!.thumbnail!.startsWith("data:image/jpeg")).toBe(true);
+  });
+
+  it("clears downloading flag after rename mid-download", async () => {
+    let resolveFetch!: (r: Response) => void;
+    const fetchPromise = new Promise<Response>(resolve => { resolveFetch = resolve; });
+    vi.stubGlobal("fetch", () => fetchPromise);
+
+    try {
+      const entry = addMedia("https://youtube.com/watch?v=renametest1");
+      const originalName = entry.name; // "renametest1"
+      const downloadPromise = downloadYouTube(originalName);
+
+      // Rename while fetch is in-flight
+      renameMedia(originalName, "snowballs");
+
+      resolveFetch(new Response(
+        JSON.stringify({ url: "http://localhost:3456/videos/renametest1.mp4", ready: true }),
+        { status: 200 },
+      ));
+      await downloadPromise;
+
+      const renamed = resolveMedia("snowballs");
+      expect(renamed, "entry should exist under new name").toBeDefined();
+      expect(renamed!.downloading, "downloading should be false after fetch completes").toBe(false);
+      expect(renamed!.url).toBe("http://localhost:3456/videos/renametest1.mp4");
+      expect(resolveMedia(originalName)).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("clears downloading flag even when registry objects are replaced mid-download", async () => {
+    let resolveFetch!: (r: Response) => void;
+    const fetchPromise = new Promise<Response>(resolve => { resolveFetch = resolve; });
+    vi.stubGlobal("fetch", () => fetchPromise);
+
+    try {
+      const entry = addMedia("https://youtube.com/watch?v=reloadtest1");
+      const downloadPromise = downloadYouTube(entry.name);
+
+      // Simulate what load() does: capture saved state, clear registry, repopulate with new objects
+      // (this happens when resolveMedia is called with an unknown name, e.g. after a page reload)
+      const savedJson = localStorage.getItem("uzuvid-media-registry")!; // has { downloading: true }
+      clearAll(); // empties registry; overwrites localStorage with []
+      importAll(savedJson); // repopulates from saved state with NEW objects (same IDs)
+
+      resolveFetch(new Response(
+        JSON.stringify({ url: "http://localhost:3456/videos/reloadtest1.mp4", ready: true }),
+        { status: 200 },
+      ));
+      await downloadPromise;
+
+      const updated = resolveMedia("reloadtest1");
+      expect(updated, "entry should still exist").toBeDefined();
+      expect(updated!.downloading, "downloading should be false after registry reload + fetch").toBe(false);
+      expect(updated!.url).toBe("http://localhost:3456/videos/reloadtest1.mp4");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("generates thumbnail for video", async () => {
