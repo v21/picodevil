@@ -3,7 +3,7 @@ import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { parseTimeValue, resolveTime, type TimeValue } from "./time-value";
 import { drawFit } from "./draw-fit";
 
-export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string; _lastEventBegin?: number; _seekStartTime?: number; _lastLogTime?: number };
+export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string; _lastEventBegin?: number; _seekStartTime?: number; _lastLogTime?: number; _lastExpected?: number; _lastExpectedWall?: number };
 
 export interface VideoFrameContext {
   ev: any;
@@ -63,6 +63,29 @@ export function computeExpectedTime(p: ExpectedTimeParams): number {
 
 /** Max allowed drift in seconds before we correct video position. */
 const DRIFT_THRESHOLD = 0.15;
+
+/** Rate mismatch threshold (s/s) above which we consider the playback window to be moving. */
+const RATE_MISMATCH_THRESHOLD = 0.2;
+
+/**
+ * Detect whether the expected playback position is advancing at a rate different from
+ * native playback speed — e.g. because .start() or .end() are dynamic patterns.
+ * Pure function; element state tracking is the caller's responsibility.
+ */
+export function detectWindowMoving(p: {
+  expected: number;
+  prevExpected: number | undefined;
+  wallDt: number;
+  speed: number;
+  loopLen: number;
+}): boolean {
+  if (p.prevExpected == null || p.wallDt < 0.005) return false;
+  const delta = p.expected - p.prevExpected;
+  // Ignore loop-boundary wraps — expected jumps by ~loopLen, which is not a real rate change
+  if (p.loopLen > 0 && Math.abs(delta) >= p.loopLen / 2) return false;
+  const effectiveRate = delta / p.wallDt;
+  return Math.abs(effectiveRate - p.speed) > RATE_MISMATCH_THRESHOLD;
+}
 
 export function renderVideoFrame(c: VideoFrameContext): VideoFrameResult {
   let lastVideoVal = c.lastVideoVal;
@@ -133,13 +156,23 @@ function updateVideoPlayback(
 
   // Detect event boundary: new event means force-seek to expected position
   const isNewEvent = el._lastEventBegin !== eventBegin;
-  if (isNewEvent) el._lastEventBegin = eventBegin;
+  if (isNewEvent) {
+    el._lastEventBegin = eventBegin;
+    // Reset rate tracking so a position jump from a new event doesn't look like a moving window
+    el._lastExpected = undefined;
+    el._lastExpectedWall = undefined;
+  }
 
   const src = el._srcUrl ?? el.src;
   const now = Date.now();
   const canLog = (now - (el._lastLogTime ?? 0)) > 300;
 
-  if (speed < 0 || !isNativeRate(speed)) {
+  const wallDt = el._lastExpectedWall != null ? (now - el._lastExpectedWall) / 1000 : 0;
+  const windowIsMoving = detectWindowMoving({ expected, prevExpected: el._lastExpected, wallDt, speed, loopLen });
+  el._lastExpected = expected;
+  el._lastExpectedWall = now;
+
+  if (speed < 0 || !isNativeRate(speed) || windowIsMoving) {
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
     if (el._seeking) {
@@ -171,7 +204,8 @@ function updateVideoPlayback(
       : rawDrift;
     if (isNewEvent || drift > DRIFT_THRESHOLD) {
       if (!isNewEvent && drift > DRIFT_THRESHOLD && canLog) {
-        console.warn(`[uzuvid] ${src}: correcting drift of ${drift.toFixed(3)}s (expected ${expected.toFixed(3)}s, got ${el.currentTime.toFixed(3)}s) [native playback, speed ${speed}x]`);
+        const filename = src.split("/").pop() ?? src;
+        console.warn(`[uzuvid] drift correction: ${filename} at ${el.currentTime.toFixed(3)}s / ${dur.toFixed(3)}s (expected ${expected.toFixed(3)}s, drift ${drift.toFixed(3)}s) [speed ${speed}x, window-stable native mode, src: ${src}]`);
         el._lastLogTime = now;
       }
       el.currentTime = expected;

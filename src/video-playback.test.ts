@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeExpectedTime } from "./video-playback";
+import { computeExpectedTime, detectWindowMoving } from "./video-playback";
 
 describe("computeExpectedTime", () => {
   const dur = 10; // 10s video
@@ -66,6 +66,38 @@ describe("computeExpectedTime", () => {
   it("speed 0 stays at loopStart", () => {
     expect(computeExpectedTime({ ...defaults, currentCycle: 100, eventBegin: 0, speed: 0, loopStart: 3 })).toBeCloseTo(3);
   });
+
+describe("detectWindowMoving", () => {
+  const dt = 1 / 60; // one frame at 60fps
+
+  it("returns false on first call (no previous expected)", () => {
+    expect(detectWindowMoving({ expected: 2, prevExpected: undefined, wallDt: dt, speed: 1, loopLen: 10 })).toBe(false);
+  });
+
+  it("returns false when expected advances at native speed", () => {
+    // speed=1, dt=1/60, expected advanced by exactly 1/60s → effective rate = 1
+    expect(detectWindowMoving({ expected: 1 + dt, prevExpected: 1, wallDt: dt, speed: 1, loopLen: 10 })).toBe(false);
+  });
+
+  it("returns false when expected advances at native speed 2x", () => {
+    expect(detectWindowMoving({ expected: 1 + 2 * dt, prevExpected: 1, wallDt: dt, speed: 2, loopLen: 10 })).toBe(false);
+  });
+
+  it("returns true when loopStart is sweeping (effective rate differs from speed)", () => {
+    // loopStart moves by 0.01s per frame (0.6s/s), speed=1 → effective rate ≈ 1.6
+    const loopStartDelta = 0.01;
+    expect(detectWindowMoving({ expected: 1 + dt + loopStartDelta, prevExpected: 1, wallDt: dt, speed: 1, loopLen: 10 })).toBe(true);
+  });
+
+  it("returns false for loop-boundary wrap (false spike suppression)", () => {
+    // loopLen=2, expected jumps from 1.99 to 0.01 — delta≈-1.98, which is >= loopLen/2
+    expect(detectWindowMoving({ expected: 0.01, prevExpected: 1.99, wallDt: dt, speed: 1, loopLen: 2 })).toBe(false);
+  });
+
+  it("returns false when wallDt is too small to be reliable", () => {
+    expect(detectWindowMoving({ expected: 1.5, prevExpected: 1, wallDt: 0.001, speed: 1, loopLen: 10 })).toBe(false);
+  });
+});
 
   it("with short video matching cycle duration, wraps at cycle boundary", () => {
     // video("clip/5") with 2s video at cps=0.5: event spans 5 cycles, eventBegin=0

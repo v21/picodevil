@@ -350,6 +350,33 @@ also we want an export button and an import button - import adds to the list, ex
 
 
 currently working on:
-videos no longer reset at new events - fixed?
-add `screen` function - takes a loaded video url, or a colour, or an image
+/ videos no longer reset at new events - fixed?
+/ add `screen` function - takes a loaded video url, or a colour, or an image
+
 fix up sidebar so it works nicer
+
+betetr way to sequence multiple clips which have their own properties set, so they play in order - add sequence to top level?
+
+better way to do the iframe transcoding for locally downloaded files via the media panel
+
+
+oh - we could use filtval on i to replace a grid square! rather than stacking a replacement i... oh. only if we'd done stackN. so not in the general case.
+
+
+what if gridMod etc implicity ran index(), except it didn't overwrite previously set index on elements?
+
+
+# randomness
+
+look at: 
+https://strudel.cc/learn/random-modifiers/
+and 
+https://strudel.cc/learn/signals/
+
+since we have a different default mode for combining patterns, many of these are no longer useful - for example, `note("c2 g2!2 d2 f1").s(choose("sine", "triangle", "bd:6"))` works in Strudel - each note gets a new sound assigned, but `$: screen("snowball/3,snowballs/4").alpha(choose(.2, .7))` doesn't make sense - each frame gets an new alpha assigned. but if we did `$: screen("snowball/3,snowballs/4").alpha(sine.range(.2, .7))` then that would be the desired behaviour. and similarly, `$: screen("snowball/3,snowballs/4").alpha(".1 .2 .3 .7)` would also do the right thing (step through opacities while showing the current videos). there's a thing here where the natural behaviour is a little bit of one and a little bit of the other - that's a good thing, that's what's interesting about this project!
+
+anyway - let's make a plan for replacing many of the random functions within Strudel. we want them to take a per-event value. while others evaluate per frame. in fact, as a first step: what functions are there that use randomness? which ones use signals? make a table and then i can indicate what behaviour i want for each.
+
+the other aspect to this is that uzuvid has a lot more simultaneous instances of the same pattern going on. in fact, there's both explict and implicit stacking - places where we deliberately duplicate a pattern (`stackN`) and places where we implicitly duplicate it (`gridMod`). we want to make these parallel copies show different things when a random function is applied to them - at the very least across `stackN`, and maybe also things like `gridMod`. i think ideally we drop the idea of `autoseed` all together and just change fundamentally how randomness is dealt with - replacing a bunch of the random functions with our own. but then the functions we do want to leave intact will also have to work with that...
+
+the larger context here is that i am fine with deviating from the known random functions in Strudel for ones which fit our way of working, if that's better. obviously, use what we can --

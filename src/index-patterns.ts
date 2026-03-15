@@ -9,7 +9,7 @@ function flattenPats(args: PatOrArr[]): any[] {
   return args.flatMap((a) => (Array.isArray(a) ? a : [a])).map(reify);
 }
 
-function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
+function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
   const stacked = stack(...pats);
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
@@ -35,7 +35,7 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
   });
 }
 
-function applyIndexNow(pats: any[], iLabel: string, countLabel: string): any {
+function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
   // At query time, find all co-active haps and label them by their order
   const stacked = stack(...pats);
   return new Pattern((state: any) => {
@@ -60,7 +60,7 @@ function applyIndexNow(pats: any[], iLabel: string, countLabel: string): any {
  * $: index(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
  */
 export function index(...args: PatOrArr[]): any {
-  return applyIndexNow(flattenPats(args), "i", "count");
+  return applyIndex(flattenPats(args), "i", "count");
 }
 
 /**
@@ -71,21 +71,21 @@ export function index(...args: PatOrArr[]): any {
  * $: indexCycle(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
  */
 export function indexCycle(...args: PatOrArr[]): any {
-  return applyIndex(flattenPats(args), "i", "count");
+  return applyIndexCycle(flattenPats(args), "i", "count");
 }
 
 /**
  * Like index() but with custom label names for i and count.
  */
 export function indexWith(iLabel: string, countLabel: string, ...args: PatOrArr[]): any {
-  return applyIndexNow(flattenPats(args), iLabel, countLabel);
+  return applyIndex(flattenPats(args), iLabel, countLabel);
 }
 
 /**
  * Like indexCycle() but with custom label names for i and count.
  */
 export function indexCycleWith(iLabel: string, countLabel: string, ...args: PatOrArr[]): any {
-  return applyIndex(flattenPats(args), iLabel, countLabel);
+  return applyIndexCycle(flattenPats(args), iLabel, countLabel);
 }
 
 // ─── autoseed ─────────────────────────────────────────────────────────────────
@@ -99,45 +99,54 @@ function hashStr(s: string): number {
   return h;
 }
 
-function computeSeed(value: any, index: number, cycle: number): number {
-  const valStr = (() => {
-    try { return JSON.stringify(value); } catch { return String(value); }
-  })();
-  return hashStr(`${valStr}:${index}:${cycle}`);
-}
-
-function applyAutoseed(pats: any[]): any {
-  const stacked = stack(...pats);
+function applyAutoseed(pat: any, saltPat: any): any {
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const cBegin = begin.floor ? begin.floor() : Math.floor(Number(begin));
-    const cEnd = Number(cBegin) + 1;
     const cycle = Math.round(Number(cBegin));
-    const cycleEvs = stacked.queryArc(Number(cBegin), cEnd);
+    const saltEvs = saltPat.query(state);
+    const saltVal = saltEvs.length > 0 ? saltEvs[0].value : 0;
+
+    // Full-cycle query to establish temporal ordering (same logic as applyIndexCycle)
+    const cycleEvs = pat.queryArc(Number(cBegin), Number(cBegin) + 1);
     cycleEvs.sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
-    return cycleEvs
-      .map((ev: any, i: number) =>
-        ev.withValue((v: any) => {
-          const val = Object(v) === v ? v : {};
-          return { ...val, seed: computeSeed(val, i, cycle) };
-        })
-      )
-      .filter((ev: any) =>
-        Number(ev.part.begin) < Number(end) && Number(ev.part.end) > Number(begin)
-      );
+
+    // Map each unique onset to its cycle-order index
+    const onsetToIndex = new Map<string, number>();
+    for (let i = 0; i < cycleEvs.length; i++) {
+      const key = String(Number(cycleEvs[i].part.begin));
+      if (!onsetToIndex.has(key)) onsetToIndex.set(key, i);
+    }
+
+    // Collect unique onsets active in the current arc
+    const activeOnsets = new Set<string>();
+    for (const ev of cycleEvs) {
+      if (Number(ev.part.begin) < Number(end) && Number(ev.part.end) > Number(begin))
+        activeOnsets.add(String(Number(ev.part.begin)));
+    }
+
+    // Re-query once per active onset with its own randSeed, collect only matching haps
+    const result: any[] = [];
+    for (const onset of activeOnsets) {
+      const seed = hashStr(`${saltVal}:${onsetToIndex.get(onset)}:${cycle}`);
+      for (const hap of pat.query(state.setControls({ randSeed: seed })))
+        if (String(Number(hap.part.begin)) === onset) result.push(hap);
+    }
+    return result;
   });
 }
 
 /**
- * Stacks patterns and labels each hap with a deterministic `seed` value.
- * The seed is a hash of the event's value, its temporal index in the cycle,
- * and the cycle number — so each pattern gets a unique, stable random stream.
+ * Injects a deterministic `randSeed` into the query state so that `rand` and other
+ * random signals are automatically scoped. Pass an optional salt (number, string, or
+ * Pattern) to differentiate multiple autoseed calls from one another.
  *
  * @example
- * $: autoseed(video("a.mp4").x(rand), video("b.mp4").x(rand)).rowscols(2).gridMod()
+ * $: video("a.mp4").x(rand).autoseed(1)
+ * $: video("b.mp4").x(rand).autoseed(2)
  */
-export function autoseed(...args: PatOrArr[]): any {
-  return applyAutoseed(flattenPats(args));
+export function autoseed(pat: any, salt?: any): any {
+  return applyAutoseed(reify(pat), reify(salt ?? 0));
 }
 
 // Method forms
@@ -149,6 +158,6 @@ PatternProto.indexCycle = function () {
   return indexCycle(this);
 };
 
-PatternProto.autoseed = function () {
-  return autoseed(this);
+PatternProto.autoseed = function (salt?: any) {
+  return applyAutoseed(this, reify(salt ?? 0));
 };

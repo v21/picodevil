@@ -228,6 +228,14 @@ Use `indexWith` / `indexCycleWith` to label with custom property names instead o
 $: indexWith("slot", "total", video("a.mp4"), video("b.mp4"))
 ```
 
+### `autoseed(...patterns)`
+
+Stacks patterns and labels each hap with a deterministic `seed` value — a hash of the event's value, position in the cycle, and cycle number. Useful for giving each cell a stable unique random stream.
+
+```js
+$: autoseed(video("a.mp4").x(rand), video("b.mp4").x(rand)).rowscols(2).gridMod()
+```
+
 ### `.grid(rows?, cols?, i?)`
 
 Position a pattern in a single grid cell. All arguments are optional — missing values fall back to the event's own `rows`, `cols`, and `i` properties (set by `.i()`, `.rows()`, `.cols()`, or `index()`).
@@ -302,6 +310,15 @@ $: index(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4"))
 $: video("clip.mp4").circle(0.3, 0.25, 6, 2)   // slot 2 of 6, rotated 90°
 ```
 
+### `.mapWithVal(fn)`
+
+For each hap, calls `fn(pattern, value)` where `pattern` is a pure pattern of that hap's value and `value` is the raw value object. Lets you apply controls whose arguments depend on the event's own properties.
+
+```js
+// Set each element's radius from its i value
+$: index(color("red"), color("blue")).circleCount(4).mapWithVal((p, v) => p.radius(v.i * 0.1 + 0.1)).circle()
+```
+
 ### `.circleMod(radius?, startOffset?, circleCount?)`
 
 Like `.gridMod()` but for circles. Distributes a pattern across multiple slots using `count` (from event value) as a stride. Appears at slots `i`, `i + count`, `i + 2*count`, etc. up to `circleCount`.
@@ -329,6 +346,16 @@ $: gridStack([color("red"), color("blue"), video("clip.mp4")], 2, 2)
 $: gridStack(video("clip.mp4"), 3)                          // 3×3 grid, same video in each cell
 $: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i + 1)), 2, 2)
 $: gridStack(cycle([video("a.mp4"), video("b.mp4")], color("red")), 2, 2)
+```
+
+### `stackN(n, ...patterns)`
+
+Stacks `n` copies of patterns, cycling through them to fill slots. `n` can be a pattern.
+
+```js
+$: stackN(4, color("red"))                          // 4 red layers (same position, stacked)
+$: stackN(4, color("red"), color("blue"))           // red, blue, red, blue
+$: stackN(sine.range(1, 4).slow(4), color("red"))  // dynamic count
 ```
 
 ### `cycle(...args)`

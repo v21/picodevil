@@ -254,15 +254,80 @@ PatternProto.w = PatternProto.width;
 export const height = createMixParam("height");
 PatternProto.h = PatternProto.height;
 
-createMixParam("i");
+/**
+ * Sets the cell index for grid/circle placement (0-based). Read by .grid(), .gridMod(), .circle(), .circleMod().
+ * Set automatically by index() and indexCycle().
+ *
+ * @param {number | string | Pattern} value cell index (0-based)
+ * @example
+ * $: video("clip.mp4").i(2).rows(2).cols(2).grid()
+ * $: index(color("red"), color("blue")).rowscols(2).gridMod()
+ */
+export const i = createMixParam("i");
 
+/**
+ * Sets the stride — number of patterns sharing the grid. Used by .gridMod() and .circleMod()
+ * to determine occupied cells: i, i+count, i+2*count, etc. Set automatically by index().
+ *
+ * @param {number | string | Pattern} value stride
+ * @example
+ * $: stack(color("red").i(0).count(2), color("blue").i(1).count(2)).rowscols(2).gridMod()
+ */
 export const count = createMixParam("count");
-export const rows = createMixParam("rows");
-export const cols = createMixParam("cols");
-createMixParam("radius");
-createMixParam("startOffset");
-createMixParam("circleCount");
 
+/**
+ * Sets the number of rows in the grid. Read by .grid() and .gridMod() when no rows arg is passed.
+ *
+ * @param {number | string | Pattern} value number of rows
+ * @example
+ * $: video("clip.mp4").i(0).rows(2).cols(2).grid()
+ */
+export const rows = createMixParam("rows");
+
+/**
+ * Sets the number of columns in the grid. Read by .grid() and .gridMod() when no cols arg is passed.
+ *
+ * @param {number | string | Pattern} value number of columns
+ * @example
+ * $: video("clip.mp4").i(1).rows(2).cols(2).grid()
+ */
+export const cols = createMixParam("cols");
+
+/**
+ * Sets the circle radius in screen coordinates (0–0.5). Read by .circle() and .circleMod().
+ *
+ * @param {number | string | Pattern} value radius (0–0.5)
+ * @example
+ * $: index(video("a.mp4"), video("b.mp4")).circleCount(4).radius(0.35).circle()
+ */
+export const radius = createMixParam("radius");
+
+/**
+ * Sets the circle rotation start offset in turns (0=top, 0.25=right, 0.5=bottom). Read by .circle() and .circleMod().
+ *
+ * @param {number | string | Pattern} value rotation offset (0–1 turns)
+ * @example
+ * $: video("clip.mp4").i(0).circleCount(4).startOffset(0.25).circle(0.35)
+ */
+export const startOffset = createMixParam("startOffset");
+
+/**
+ * Sets the total number of slots in the circle. Read by .circle() and .circleMod().
+ *
+ * @param {number | string | Pattern} value total slot count
+ * @example
+ * $: index(video("a.mp4"), video("b.mp4")).circleCount(4).circle(0.35)
+ */
+export const circleCount = createMixParam("circleCount");
+
+/**
+ * Sets both rows and cols to the same value. Shorthand for .rows(n).cols(n).
+ *
+ * @param {number | string | Pattern} value number of rows and columns
+ * @example
+ * $: index(color("red"), color("blue")).rowscols(2).gridMod()
+ * $: video("clip.mp4").i(0).rowscols("2 3").grid()
+ */
 PatternProto.rowscols = function (value: any) {
   return this.rows(value).cols(value);
 };
