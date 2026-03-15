@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-03-08.
+> This file is machine-authored for use by coding agents. Last updated 2026-03-13.
 
 ## What is this?
 
@@ -74,19 +74,31 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 ## User-facing API (available in the editor)
 
-- `mini(str)` — raw Strudel mininotation, returns a pattern
-- `color(str)` — pattern of `{color}` objects
-- `video(str)` — pattern of `{src}` objects (video filenames from VIDEO_BASE)
-- `image(str)` — pattern of `{src, type:"image"}` objects (image filenames from IMAGE_BASE)
-- `screen(str)` / `s(str)` — auto-detecting source pattern: checks media registry first, then file extension, then falls back to CSS color
-- `gridStack(children[], cols, rows)` — distributes children across grid cells via `.gridModulo()`
-- `setCps(n)` — set cycles per second
-- `$: expr` — transpiled to `expr.p("$")`, registers pattern for rendering
-- `name: expr` — transpiled to `expr.p("name")`, named pattern (last write wins)
+**Sources:** `mini(str)`, `color(str)`, `video(str)`, `image(str)`, `screen(str)` / `s(str)`
+
+**Layout:** `gridStack(children, cols, rows)`, `stackN(n, ...patterns)`, `cycle(...args)`
+
+**Indexing:** `index(...patterns)`, `indexCycle(...patterns)`, `indexWith(iLabel, countLabel, ...patterns)`, `indexCycleWith(iLabel, countLabel, ...patterns)`, `autoseed(...patterns)`
+
+**Global:** `setCps(n)`, `setCpm(n)`, `hush()`
+
+**Registration:** `$: expr` → `expr.p("$")` (stacking), `name: expr` → `expr.p("name")` (last write wins), `S` prefix = solo, `_` prefix/suffix = mute
+
+**Key method controls on Pattern.prototype** (via `createMixParam`):
+- Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
+- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.fit()`
+- Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.urlBase()`
+- Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
+- Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
+- Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
+- Circle placement: `.circle(radius?, startOffset?, circleCount?, i?)`, `.circleMod(radius?, startOffset?, circleCount?)`
+- Iteration: `.iteratorWith(fn)`, `.iterator()`
+- Misc: `.mapWithVal(fn)`, `.stackN(n)`
 
 Example: `$: video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").fit("contain")`
 Example: `$: gridStack([color("red"), video("clip.mp4")], 2, 2)`
-Example: `$: video("a.mp4").grid("0,1,2,3", 2, 2)` — same video in all 4 cells
+Example: `$: index(color("red"), color("blue")).rowscols(2).gridMod()`
+Example: `$: video("a.mp4").i("0 1 2 3").rowscols(2).grid()`
 
 ## Video playback speed
 
@@ -158,3 +170,4 @@ When working through a list of tasks, **stop and check in with the user after co
 - Strudel Fraction types produce repeating-decimal strings — always use `Number(v)` before arithmetic
 - The `videoPool` and `imagePool` Maps cache media elements by full URL to avoid re-creation
 - Config constants live in `src/config.ts` — timing values are in milliseconds
+- **`_onset` must be baked into video event values** — `set.mix` (appBoth) intersects `whole` spans, clipping `whole.begin` to each cycle boundary. Without `_onset`, `eventBeginFromHap` reads the clipped boundary and the video restarts every cycle. Any function that produces video events (`video()`, `screen()`) must wrap in `new PatternClass((state) => ...)` and set `_onset: Number(hap.whole.begin)` on the value so it survives downstream `set.mix` calls (e.g. `.alpha()`, `.speed()`)
