@@ -4,15 +4,21 @@ import {
   saw, saw2, isaw, isaw2,
   tri, tri2, itri, itri2,
   square, square2,
-  rand, rand2, irand, brand, brandBy,
   perlin,
   time, mouseX, mouseY,
-  run, choose, chooseIn, chooseCycles,
+  run, chooseIn, chooseCycles,
   signal, steady,
   stack, cat, slowcat, fastcat,
   silence, gap, nothing,
   pure, reify,
 } from "@strudel/core";
+import {
+  rand, rand2, irand, brand, brandBy,
+  choose, wchoose, scramble,
+  degradeBy, degrade, undegradeBy, undegrade,
+  sometimesBy, sometimes, someCyclesBy, someCycles,
+  often, rarely, almostNever, almostAlways, always, never,
+} from "./event-random";
 import "./pattern-extensions";
 import "./visual-controls";
 import { setupEditor } from "./editor";
@@ -22,7 +28,7 @@ import { image } from "./image-pattern";
 import { screen, s } from "./screen-pattern";
 import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
-import { index, indexCycle, indexWith, indexCycleWith, autoseed } from "./index-patterns";
+import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
@@ -322,15 +328,21 @@ window.uzuEval = (code: string): string | null => {
       rand, rand2, irand, brand, brandBy,
       perlin,
       time, mouseX, mouseY,
-      run, choose, chooseIn, chooseCycles,
+      run, choose, wchoose, scramble, chooseIn, chooseCycles,
       signal, steady,
     };
+    const structuralModifiers = {
+      degradeBy, degrade, undegradeBy, undegrade,
+      sometimesBy, sometimes, someCyclesBy, someCycles,
+      often, rarely, almostNever, almostAlways, always, never,
+    };
     const sigNames = Object.keys(signals);
+    const modNames = Object.keys(structuralModifiers);
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexCycle", "indexWith", "indexCycleWith", "autoseed", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...combNames, transpiled)(
-      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexCycle, indexWith, indexCycleWith, autoseed, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...modNames, ...combNames, transpiled)(
+      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();

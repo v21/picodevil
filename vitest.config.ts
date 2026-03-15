@@ -5,6 +5,7 @@ import referencePlugin from "./vite-plugin-reference";
 export default defineConfig({
   plugins: [referencePlugin()],
   test: {
+    setupFiles: ["src/test-setup.ts"],
     exclude: ["server/**", "test/**", "node_modules/**"],
     browser: {
       enabled: true,

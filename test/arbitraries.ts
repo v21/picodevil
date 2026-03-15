@@ -342,6 +342,13 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
     fc.integer({ min: 0, max: 8 }),
   ).map(([r, c, i]) => ({ code: `.grid(${r}, ${c}, ${i})` })),
   strudelMethod.map(code => ({ code })),
+  // Structural modifiers (per-hap probability filters)
+  fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(p => ({ code: `.degradeBy(${p.toFixed(2)})` })),
+  fc.constant({ code: `.degrade()` }),
+  fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(p => ({ code: `.sometimesBy(${p.toFixed(2)}, x => x.fast(2))` })),
+  fc.constant({ code: `.sometimes(x => x.fast(2))` }),
+  fc.constant({ code: `.often(x => x.fast(2))` }),
+  fc.constant({ code: `.rarely(x => x.fast(2))` }),
 );
 
 // ============================================================
@@ -585,6 +592,23 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const cpsCode = cps !== undefined ? `${cps}\n` : "";
       return {
         code: `${cpsCode}${label}: ${screen.code}`,
+      };
+    })
+  },
+
+  // stackN expression — n copies of a single pattern, each decorrelated
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      screenExpr,
+      fc.integer({ min: 2, max: 4 }),
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, child, n, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      return {
+        code: `${cpsCode}${label}: stackN(${n}, ${child.code}).rowscols(${cols}).gridMod()${chain}`,
       };
     })
   },
