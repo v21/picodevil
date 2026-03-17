@@ -7,6 +7,9 @@
  */
 import { reify, Pattern } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
+import { resolveMedia } from "./media-registry";
+import { getRuntimeCps } from "./config";
+import { warn } from "./warnings";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -130,7 +133,6 @@ export const scaleY = createMixParam("scaleY");
  *
  */
 export const objectfit = createMixParam("objectfit");
-PatternProto.fit = PatternProto.objectfit;
 
 /**
  * Sets the CSS blend mode for compositing this pattern onto the canvas.
@@ -289,6 +291,80 @@ PatternProto.scrub = function (value: any) {
     });
   });
 };
+
+/**
+ * Adjusts speed so the video (or the begin..end slice) fills exactly the event's duration.
+ * Good for rhythmical loops — the video plays once per event, regardless of event length.
+ *
+ * Requires video duration to be known (stored in media registry after first load).
+ * If duration is unknown, plays at speed 1.
+ *
+ * @returns {Pattern} pattern with speed adjusted to fill event duration
+ * @example
+ * $: s("clip.mp4").fit()                         // video fills one cycle
+ * $: s("clip.mp4").slow(4).fit()                 // video fills 4 cycles
+ * $: s("clip.mp4").begin(0.25).end(0.75).fit()   // middle 50% fills the event
+ *
+ */
+PatternProto.fit = function (...args: any[]) {
+  if (args.length > 0) {
+    warn('fit() no longer sets object-fit mode — use .objectfit("contain") instead. fit() with no args adjusts speed to fill the event duration (like Strudel).');
+  }
+  const pat = this;
+  return new Pattern((state: any) => {
+    return pat.queryArc(state.span.begin, state.span.end).map((hap: any) => {
+      if (!hap.value || !hap.whole) return hap;
+      const v = hap.value;
+      const src = v.src;
+      if (!src) return hap;
+      const entry = resolveMedia(src);
+      const dur = entry?.duration;
+      if (!dur) return hap;
+      const cps = getRuntimeCps();
+      const hapDur = Number(hap.whole.end) - Number(hap.whole.begin);
+      if (hapDur <= 0) return hap;
+      const sliceDur = (v.end ?? 1) - (v.begin ?? 0);
+      const speed = sliceDur * dur * cps / hapDur;
+      return hap.withValue((val: any) => ({ ...val, speed }));
+    });
+  });
+};
+
+/**
+ * Makes a video fit into the given number of cycles by adjusting speed and slowing the pattern.
+ * The video plays once over `n` cycles.
+ *
+ * Requires video duration to be known (stored in media registry after first load).
+ * If duration is unknown, still slows the pattern but leaves speed at 1.
+ *
+ * @param {number | string | Pattern} n number of cycles the video should span
+ * @returns {Pattern} pattern slowed by n with speed adjusted
+ * @example
+ * $: s("clip.mp4").loopAt(4)                     // video spans 4 cycles
+ * $: s("clip.mp4 clip2.mp4").loopAt(2)           // each video spans 2 cycles
+ * $: s("clip.mp4").begin(0.5).end(1).loopAt(4)   // second half spans 4 cycles
+ *
+ */
+PatternProto.loopAt = function (n: any) {
+  const pat = this;
+  return new Pattern((state: any) => {
+    const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin + 0.001)[0]?.value ?? 1);
+    return pat.slow(nVal).queryArc(state.span.begin, state.span.end).map((hap: any) => {
+      if (!hap.value || !hap.whole) return hap;
+      const v = hap.value;
+      const src = v.src;
+      if (!src) return hap;
+      const entry = resolveMedia(src);
+      const dur = entry?.duration;
+      if (!dur) return hap;
+      const cps = getRuntimeCps();
+      const sliceDur = (v.end ?? 1) - (v.begin ?? 0);
+      const speed = sliceDur * dur * cps / nVal;
+      return hap.withValue((val: any) => ({ ...val, speed }));
+    });
+  });
+};
+PatternProto.loopat = PatternProto.loopAt;
 
 /**
  * Sets the base URL for loading video/image files. Use single quotes to avoid mininotation parsing.

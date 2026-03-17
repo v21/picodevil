@@ -29,7 +29,7 @@ import { screen, s } from "./screen-pattern";
 import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
-import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
+import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
@@ -729,6 +729,7 @@ function frame() {
     if (haps.length > 0) cps = Math.max(0, Number(haps[0].value)) || 0;
   }
   accumulatedCycle += deltaSec * cps;
+  setRuntimeCps(cps);
 
   const cycle = (cpsPattern || cyclesPerSecond === 0) ? accumulatedCycle : nowSec * cyclesPerSecond;
   const cyclePos = cycle % 1;

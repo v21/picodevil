@@ -17,15 +17,32 @@ interface RefCategory {
 export function setupReference(container: HTMLElement) {
   const categories = data as RefCategory[];
 
+  // Outer layout: search bar on top, two-column content below
+  const outer = document.createElement("div");
+  outer.style.cssText = "display:flex;flex-direction:column;height:100%;";
+
+  // Search box
+  const searchBox = document.createElement("input");
+  searchBox.type = "text";
+  searchBox.placeholder = "search…";
+  searchBox.style.cssText = "background:#1a1a1a;color:#ccc;border:1px solid #333;border-radius:3px;padding:5px 8px;margin:8px 8px 4px;font-size:12px;outline:none;flex-shrink:0;";
+
+  outer.appendChild(searchBox);
+
   // Two-column layout: nav (left) + detail (right)
   const wrap = document.createElement("div");
-  wrap.style.cssText = "display:flex;height:100%;";
+  wrap.style.cssText = "display:flex;flex:1;overflow:hidden;";
 
   const nav = document.createElement("div");
   nav.style.cssText = "width:110px;flex-shrink:0;overflow-y:auto;border-right:1px solid #333;padding:8px 0;font-size:12px;";
 
   const detail = document.createElement("div");
   detail.style.cssText = "flex:1;overflow-y:auto;padding:8px 12px;";
+
+  // Track all elements for filtering
+  const filterItems: { query: string; navHead: HTMLElement; navLink: HTMLElement; detailHead: HTMLElement; detailEntry: HTMLElement; cat: string }[] = [];
+  const catNavHeads = new Map<string, HTMLElement>();
+  const catDetailHeads = new Map<string, HTMLElement>();
 
   // Build nav + detail
   for (const cat of categories) {
@@ -34,6 +51,7 @@ export function setupReference(container: HTMLElement) {
     navHead.textContent = cat.name;
     navHead.style.cssText = "color:#888;font-size:11px;padding:6px 8px 2px;text-transform:uppercase;";
     nav.appendChild(navHead);
+    catNavHeads.set(cat.name, navHead);
 
     // Detail heading
     const detailHead = document.createElement("h3");
@@ -41,6 +59,7 @@ export function setupReference(container: HTMLElement) {
     detailHead.id = `ref-cat-${cat.name.replace(/\W/g, "")}`;
     detailHead.style.cssText = "color:#fff;font-size:13px;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid #333;";
     detail.appendChild(detailHead);
+    catDetailHeads.set(cat.name, detailHead);
 
     for (const entry of cat.entries) {
       const entryId = `ref-${entry.name}`;
@@ -96,11 +115,37 @@ export function setupReference(container: HTMLElement) {
       }
 
       detail.appendChild(entryEl);
+
+      // Searchable text: name, aliases, description
+      const queryText = [entry.name, ...entry.aliases, entry.description].join(" ").toLowerCase();
+      filterItems.push({ query: queryText, navLink, navHead, detailHead, detailEntry: entryEl, cat: cat.name });
     }
   }
 
+  // Filter logic
+  searchBox.addEventListener("input", () => {
+    const term = searchBox.value.toLowerCase().trim();
+    const visibleCats = new Set<string>();
+
+    for (const item of filterItems) {
+      const match = !term || item.query.includes(term);
+      item.navLink.style.display = match ? "block" : "none";
+      item.detailEntry.style.display = match ? "" : "none";
+      if (match) visibleCats.add(item.cat);
+    }
+
+    // Show/hide category headings based on whether any entry in them is visible
+    for (const [catName, el] of catNavHeads) {
+      el.style.display = visibleCats.has(catName) ? "" : "none";
+    }
+    for (const [catName, el] of catDetailHeads) {
+      el.style.display = visibleCats.has(catName) ? "" : "none";
+    }
+  });
+
   wrap.appendChild(nav);
   wrap.appendChild(detail);
+  outer.appendChild(wrap);
   container.innerHTML = "";
-  container.appendChild(wrap);
+  container.appendChild(outer);
 }

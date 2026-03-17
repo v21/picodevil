@@ -1,9 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { mini } from "@strudel/mini";
 import { sine } from "@strudel/core";
 import { video } from "./video-pattern";
 import "./visual-controls";
 import "./pattern-extensions";
+import { addMedia, updateEntry, clearAll } from "./media-registry";
+import { setRuntimeCps } from "./config";
 
 describe("video()", () => {
   it("returns src events with _type", () => {
@@ -111,6 +113,13 @@ describe("video()", () => {
   it("objectfit() merges into events", () => {
     const evs = video("a.mp4").objectfit("contain").queryArc(0, 1);
     expect(evs[0].value.objectfit).toBe("contain");
+  });
+
+  it("fit() with args warns about objectfit", () => {
+    // fit("contain") should warn, not silently set objectfit
+    const evs = video("a.mp4").fit("contain").queryArc(0, 1);
+    expect(evs[0].value.objectfit).toBeUndefined();
+    expect(evs[0].value._type).toBe("video");
   });
 
   it("bakes _onset into each event value", () => {
@@ -298,6 +307,27 @@ describe("splice integration", () => {
 
 });
 
+describe("revv integration", () => {
+  it("revv() is available on Pattern.prototype", () => {
+    const pat = video("a.mp4");
+    expect(typeof pat.revv).toBe("function");
+  });
+
+  it("revv() reverses global order of chop slices", () => {
+    // chop(4) produces 4 sub-events with begin 0, 0.25, 0.5, 0.75
+    // revv() reverses which content plays at which time
+    const normal = video("a.mp4").chop(4).queryArc(0, 1);
+    const reversed = video("a.mp4").chop(4).revv().queryArc(0, 1);
+    // Sort both by temporal position (whole.begin)
+    const normalByTime = [...normal].sort((a: any, b: any) => Number(a.whole.begin) - Number(b.whole.begin));
+    const reversedByTime = [...reversed].sort((a: any, b: any) => Number(a.whole.begin) - Number(b.whole.begin));
+    // The content (begin values) should be in reversed order relative to normal
+    const normalContent = normalByTime.map((e: any) => e.value.begin);
+    const reversedContent = reversedByTime.map((e: any) => e.value.begin);
+    expect(reversedContent).toEqual([...normalContent].reverse());
+  });
+});
+
 describe("striate integration", () => {
   it("striate(4) stamps _chopOnset on video-typed events", () => {
     const evs = video("a.mp4").striate(4).queryArc(0, 1);
@@ -308,5 +338,93 @@ describe("striate integration", () => {
       expect(ev.value.begin).toBeDefined();
       expect(ev.value.end).toBeDefined();
     }
+  });
+});
+
+describe("fit()", () => {
+  beforeEach(() => {
+    clearAll();
+    // Register a 10-second video
+    addMedia("test.mp4", "test.mp4");
+    updateEntry("test.mp4", { duration: 10, type: "video" });
+    setRuntimeCps(0.5);
+  });
+
+  it("adjusts speed so video fills one cycle", () => {
+    // 1 cycle at 0.5 cps = 2 seconds. 10s video needs speed = 10 * 0.5 / 1 = 5
+    const evs = video("test.mp4").fit().queryArc(0, 1);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeCloseTo(5);
+  });
+
+  it("adjusts speed for slowed pattern", () => {
+    // .slow(2): event spans 2 cycles = 4 seconds. speed = 10 * 0.5 / 2 = 2.5
+    const evs = video("test.mp4").slow(2).fit().queryArc(0, 2);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeCloseTo(2.5);
+  });
+
+  it("accounts for begin/end slice", () => {
+    // begin=0.2, end=0.8 → sliceDur=0.6. speed = 0.6 * 10 * 0.5 / 1 = 3
+    const evs = video("test.mp4").begin(0.2).end(0.8).fit().queryArc(0, 1);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeCloseTo(3);
+  });
+
+  it("is a no-op when duration is unknown", () => {
+    clearAll();
+    addMedia("unknown.mp4", "unknown.mp4");
+    // No duration set
+    const evs = video("unknown.mp4").fit().queryArc(0, 1);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeUndefined();
+  });
+
+  it("responds to cps changes", () => {
+    setRuntimeCps(1);
+    // 1 cycle at 1 cps = 1 second. speed = 10 * 1 / 1 = 10
+    const evs = video("test.mp4").fit().queryArc(0, 1);
+    expect(evs[0].value.speed).toBeCloseTo(10);
+  });
+});
+
+describe("loopAt()", () => {
+  beforeEach(() => {
+    clearAll();
+    addMedia("test.mp4", "test.mp4");
+    updateEntry("test.mp4", { duration: 10, type: "video" });
+    setRuntimeCps(0.5);
+  });
+
+  it("slows pattern and adjusts speed for n cycles", () => {
+    // loopAt(4): slowed by 4, speed = 10 * 0.5 / 4 = 1.25
+    const evs = video("test.mp4").loopAt(4).queryArc(0, 4);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeCloseTo(1.25);
+    // Event should span 4 cycles
+    expect(Number(evs[0].whole.end) - Number(evs[0].whole.begin)).toBeCloseTo(4);
+  });
+
+  it("accounts for begin/end slice", () => {
+    // begin=0.5, end=1 → sliceDur=0.5. speed = 0.5 * 10 * 0.5 / 2 = 1.25
+    const evs = video("test.mp4").begin(0.5).end(1).loopAt(2).queryArc(0, 2);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeCloseTo(1.25);
+  });
+
+  it("is a no-op for speed when duration is unknown", () => {
+    clearAll();
+    addMedia("unknown.mp4", "unknown.mp4");
+    const evs = video("unknown.mp4").loopAt(2).queryArc(0, 2);
+    expect(evs).toHaveLength(1);
+    // Still slowed (event spans 2 cycles) but no speed adjustment
+    expect(Number(evs[0].whole.end) - Number(evs[0].whole.begin)).toBeCloseTo(2);
+    expect(evs[0].value.speed).toBeUndefined();
+  });
+
+  it("loopat is an alias for loopAt", () => {
+    const evs = video("test.mp4").loopat(4).queryArc(0, 4);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.speed).toBeCloseTo(1.25);
   });
 });
