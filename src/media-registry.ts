@@ -5,12 +5,16 @@ export type MediaEntry = {
   id: string;
   name: string;
   url: string;
-  type: "video" | "image";
+  type: "video" | "image" | "stream";
   thumbnail?: string;
   /** Set while a YouTube download is in progress */
   downloading?: boolean;
   /** Error message from last download attempt */
   error?: string;
+  /** For stream entries: "webcam" or "screen" */
+  streamKind?: "webcam" | "screen";
+  /** For webcam streams: saved device ID for re-acquisition */
+  deviceId?: string;
 };
 
 const registry = new Map<string, MediaEntry>();
@@ -78,6 +82,18 @@ export function addMedia(url: string, name?: string): MediaEntry {
   registry.set(finalName, entry);
   save();
   if (!isYouTubeUrl(url)) generateThumbnail(entry);
+  return entry;
+}
+
+export function addStream(kind: "webcam" | "screen", name?: string, deviceId?: string): MediaEntry {
+  const baseName = name ?? kind;
+  const finalName = uniqueName(baseName);
+  const entry: MediaEntry = {
+    id: crypto.randomUUID(), name: finalName, url: "", type: "stream",
+    streamKind: kind, deviceId,
+  };
+  registry.set(finalName, entry);
+  save();
   return entry;
 }
 

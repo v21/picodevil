@@ -3,12 +3,17 @@ import {
   isYouTubeUrl, downloadYouTube, exportAll, importAll, clearAll, setOnChange,
   type MediaEntry,
 } from "./media-registry";
+import {
+  startWebcam, startScreenCapture, stopStream, removeStream,
+  isStreamActive, setStreamOnChange,
+} from "./stream-manager";
 
 let container: HTMLElement;
 
 export function setupMediaLoader(el: HTMLElement) {
   container = el;
   setOnChange(render);
+  setStreamOnChange(render);
   render();
 
   // Paste JSON to import
@@ -85,8 +90,34 @@ function render() {
     if (e.key === "Enter") addBtn.click();
   });
 
+  const camBtn = document.createElement("button");
+  camBtn.textContent = "Webcam";
+  camBtn.style.cssText = "background:#333;color:#ccc;border:1px solid #555;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:16px;";
+  camBtn.addEventListener("click", async () => {
+    try {
+      await startWebcam();
+      render();
+    } catch (e: any) {
+      showToast(e.message ?? "Webcam failed");
+    }
+  });
+
+  const screenBtn = document.createElement("button");
+  screenBtn.textContent = "Screen";
+  screenBtn.style.cssText = "background:#333;color:#ccc;border:1px solid #555;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:16px;";
+  screenBtn.addEventListener("click", async () => {
+    try {
+      await startScreenCapture();
+      render();
+    } catch (e: any) {
+      showToast(e.message ?? "Screen capture failed");
+    }
+  });
+
   addBar.appendChild(input);
   addBar.appendChild(addBtn);
+  addBar.appendChild(camBtn);
+  addBar.appendChild(screenBtn);
   container.appendChild(addBar);
 
   // List
@@ -150,10 +181,18 @@ function makeRow(entry: MediaEntry): HTMLElement {
   const row = document.createElement("div");
   row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:16px;";
 
-  // Thumbnail
+  const isStream = entry.type === "stream";
+
+  // Thumbnail / stream status dot
   const thumb = document.createElement("div");
-  thumb.style.cssText = "width:40px;height:30px;flex-shrink:0;background:#222;border-radius:2px;overflow:hidden;";
-  if (entry.thumbnail) {
+  thumb.style.cssText = "width:40px;height:30px;flex-shrink:0;background:#222;border-radius:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;";
+  if (isStream) {
+    const active = isStreamActive(entry.name);
+    const dot = document.createElement("span");
+    dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${active ? "#4c4" : "#666"};`;
+    dot.title = active ? "Active" : "Disconnected";
+    thumb.appendChild(dot);
+  } else if (entry.thumbnail) {
     const img = document.createElement("img");
     img.src = entry.thumbnail;
     img.style.cssText = "width:100%;height:100%;object-fit:cover;";
@@ -176,37 +215,71 @@ function makeRow(entry: MediaEntry): HTMLElement {
   });
   row.appendChild(nameInput);
 
-  // URL input
-  const urlInput = document.createElement("input");
-  urlInput.value = entry.url;
-  urlInput.style.cssText = "flex:1;min-width:0;background:transparent;color:#888;border:1px solid transparent;padding:2px 4px;border-radius:2px;font-size:14px;";
-  urlInput.addEventListener("focus", () => { urlInput.style.borderColor = "#555"; });
-  urlInput.addEventListener("blur", () => {
-    urlInput.style.borderColor = "transparent";
-    const newUrl = urlInput.value.trim();
-    if (newUrl && newUrl !== entry.url) {
-      updateUrl(entry.name, newUrl);
-      if (isYouTubeUrl(newUrl)) downloadYouTube(entry.name);
-    }
-  });
-  row.appendChild(urlInput);
+  if (isStream) {
+    // Stream type label + reconnect/stop
+    const label = document.createElement("span");
+    label.textContent = entry.streamKind ?? "stream";
+    label.style.cssText = "flex:1;color:#888;font-size:14px;";
+    row.appendChild(label);
 
-  // Status indicators
-  if (entry.downloading) {
-    const spinner = document.createElement("span");
-    spinner.textContent = "⏳";
-    spinner.style.cssText = "flex-shrink:0;font-size:16px;";
-    row.appendChild(spinner);
-  } else if (entry.error) {
-    const retryBtn = document.createElement("button");
-    retryBtn.textContent = "↻";
-    retryBtn.title = entry.error;
-    retryBtn.style.cssText = "background:none;border:none;color:#f88;cursor:pointer;font-size:18px;flex-shrink:0;padding:0 2px;";
-    retryBtn.addEventListener("click", () => {
-      updateEntry(entry.name, { error: undefined });
-      downloadYouTube(entry.name);
+    const active = isStreamActive(entry.name);
+    if (active) {
+      const stopBtn = document.createElement("button");
+      stopBtn.textContent = "Stop";
+      stopBtn.style.cssText = "background:none;border:1px solid #555;color:#f88;cursor:pointer;font-size:14px;padding:2px 8px;border-radius:3px;flex-shrink:0;";
+      stopBtn.addEventListener("click", () => { stopStream(entry.name); render(); });
+      row.appendChild(stopBtn);
+    } else {
+      const reconnBtn = document.createElement("button");
+      reconnBtn.textContent = "Reconnect";
+      reconnBtn.style.cssText = "background:none;border:1px solid #555;color:#8c8;cursor:pointer;font-size:14px;padding:2px 8px;border-radius:3px;flex-shrink:0;";
+      reconnBtn.addEventListener("click", async () => {
+        try {
+          if (entry.streamKind === "webcam") {
+            await startWebcam(entry.name, entry.deviceId);
+          } else {
+            await startScreenCapture(entry.name);
+          }
+          render();
+        } catch (e: any) {
+          showToast(e.message ?? "Reconnect failed");
+        }
+      });
+      row.appendChild(reconnBtn);
+    }
+  } else {
+    // URL input
+    const urlInput = document.createElement("input");
+    urlInput.value = entry.url;
+    urlInput.style.cssText = "flex:1;min-width:0;background:transparent;color:#888;border:1px solid transparent;padding:2px 4px;border-radius:2px;font-size:14px;";
+    urlInput.addEventListener("focus", () => { urlInput.style.borderColor = "#555"; });
+    urlInput.addEventListener("blur", () => {
+      urlInput.style.borderColor = "transparent";
+      const newUrl = urlInput.value.trim();
+      if (newUrl && newUrl !== entry.url) {
+        updateUrl(entry.name, newUrl);
+        if (isYouTubeUrl(newUrl)) downloadYouTube(entry.name);
+      }
     });
-    row.appendChild(retryBtn);
+    row.appendChild(urlInput);
+
+    // Status indicators
+    if (entry.downloading) {
+      const spinner = document.createElement("span");
+      spinner.textContent = "⏳";
+      spinner.style.cssText = "flex-shrink:0;font-size:16px;";
+      row.appendChild(spinner);
+    } else if (entry.error) {
+      const retryBtn = document.createElement("button");
+      retryBtn.textContent = "↻";
+      retryBtn.title = entry.error;
+      retryBtn.style.cssText = "background:none;border:none;color:#f88;cursor:pointer;font-size:18px;flex-shrink:0;padding:0 2px;";
+      retryBtn.addEventListener("click", () => {
+        updateEntry(entry.name, { error: undefined });
+        downloadYouTube(entry.name);
+      });
+      row.appendChild(retryBtn);
+    }
   }
 
   // Delete button
@@ -215,7 +288,10 @@ function makeRow(entry: MediaEntry): HTMLElement {
   delBtn.style.cssText = "background:none;border:none;color:#666;cursor:pointer;font-size:20px;flex-shrink:0;padding:0 2px;";
   delBtn.addEventListener("mouseenter", () => { delBtn.style.color = "#f66"; });
   delBtn.addEventListener("mouseleave", () => { delBtn.style.color = "#666"; });
-  delBtn.addEventListener("click", () => removeMedia(entry.name));
+  delBtn.addEventListener("click", () => {
+    if (isStream) removeStream(entry.name);
+    else removeMedia(entry.name);
+  });
   row.appendChild(delBtn);
 
   return row;

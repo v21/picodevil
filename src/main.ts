@@ -37,6 +37,7 @@ import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
 import { transpile } from "./transpiler";
 import { warn, flushWarnings, clearWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
+import { getStreamVideoEl } from "./stream-manager";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -415,7 +416,7 @@ const framePoolKeys = new Set<string>();
 function videoShareKey(ev: any, eventBegin: number): string {
   const base = ev.urlBase ?? VIDEO_BASE;
   const speed = ev.speed != null ? Number(ev.speed) : 1;
-  return `${base}${ev.src}|${speed}|${Number(ev.start)}|${Number(ev.end)}|${ev.endIsDuration ?? false}|${eventBegin}`;
+  return `${base}${ev.src}|${speed}|${Number(ev.begin ?? 0)}|${Number(ev.end ?? 1)}|${eventBegin}`;
 }
 
 /** Compute eventBegin from a hap, respecting sync and preserved onset. */
@@ -550,6 +551,12 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
       }
     }
 
+    // resolve blend mode from event
+    const hasBlend = ev.blend !== undefined;
+    if (hasBlend) {
+      ctx.globalCompositeOperation = String(ev.blend) as GlobalCompositeOperation;
+    }
+
     // resolve scale from event
     const sx = ev.scaleX !== undefined ? Number(ev.scaleX) : 1;
     const sy = ev.scaleY !== undefined ? Number(ev.scaleY) : 1;
@@ -558,6 +565,33 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.scale(sx, sy);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
+
+    // resolve rotation from event
+    const TAU = Math.PI * 2;
+    let rz = ev.rotateZ !== undefined ? Number(ev.rotateZ) : 0;
+    let rxScale = 1; // X-axis rotation → Y scale
+    let ryScale = 1; // Y-axis rotation → X scale
+    if (ev.rotateX !== undefined) rxScale = Math.cos(Number(ev.rotateX) * TAU);
+    if (ev.rotateY !== undefined) ryScale = Math.cos(Number(ev.rotateY) * TAU);
+    if (ev.rotate !== undefined && ev.rotateAxis !== undefined) {
+      const turns = Number(ev.rotate);
+      const axisAngle = Number(ev.rotateAxis) * TAU;
+      // Project rotation onto X and Y axes based on axis direction
+      const cosAxis = Math.cos(axisAngle);
+      const sinAxis = Math.sin(axisAngle);
+      const cosTurns = Math.cos(turns * TAU);
+      // Scale perpendicular to the axis: decompose into X and Y components
+      rxScale *= 1 - cosAxis * cosAxis * (1 - cosTurns);
+      ryScale *= 1 - sinAxis * sinAxis * (1 - cosTurns);
+    }
+    const hasRotation = rz !== 0 || rxScale !== 1 || ryScale !== 1;
+    if (hasRotation) {
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      if (rxScale !== 1 || ryScale !== 1) ctx.scale(ryScale, rxScale);
+      if (rz !== 0) ctx.rotate(rz * TAU);
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
     }
 
@@ -597,6 +631,12 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
           }
         }
         lastScreenVals[evIndex] = ev.src;
+      } else if (ev._type === "stream") {
+        const streamEl = getStreamVideoEl(ev.src);
+        if (streamEl && streamEl.videoWidth > 0) {
+          const fitMode = ev.fit ?? "cover";
+          drawFit(ctx, streamEl, streamEl.videoWidth, streamEl.videoHeight, canvas.width, canvas.height, fitMode);
+        }
       } else {
         warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);
       }
@@ -604,8 +644,10 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
       warn(`screen ${screenIndex} event ${eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
     }
 
+    if (hasRotation) ctx.restore();
     if (hasScale) ctx.restore();
     ctx.globalAlpha = 1;
+    if (hasBlend) ctx.globalCompositeOperation = "source-over";
     if (hasPosition) ctx.restore();
   }
 }

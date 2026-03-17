@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, s } from "./screen-pattern";
-import { addMedia, clearAll } from "./media-registry";
+import { addMedia, addStream, clearAll } from "./media-registry";
 import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
@@ -29,6 +29,20 @@ describe("screen()", () => {
       const evs = screen("myphoto").queryArc(0, 1);
       expect(evs[0].value._type).toBe("image");
       expect(evs[0].value.src).toBe("myphoto");
+    });
+
+    it("resolves a registry stream entry", () => {
+      addStream("webcam", "mycam");
+      const evs = screen("mycam").queryArc(0, 1);
+      expect(evs).toHaveLength(1);
+      expect(evs[0].value._type).toBe("stream");
+      expect(evs[0].value.src).toBe("mycam");
+    });
+
+    it("stream entries do not get _onset baked in", () => {
+      addStream("screen", "myscreen");
+      const evs = screen("myscreen").queryArc(0, 1);
+      expect(evs[0].value._onset).toBeUndefined();
     });
 
     it("registry takes priority over extension detection", () => {
