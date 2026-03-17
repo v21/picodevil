@@ -380,3 +380,9 @@ anyway - let's make a plan for replacing many of the random functions within Str
 the other aspect to this is that uzuvid has a lot more simultaneous instances of the same pattern going on. in fact, there's both explict and implicit stacking - places where we deliberately duplicate a pattern (`stackN`) and places where we implicitly duplicate it (`gridMod`). we want to make these parallel copies show different things when a random function is applied to them - at the very least across `stackN`, and maybe also things like `gridMod`. i think ideally we drop the idea of `autoseed` all together and just change fundamentally how randomness is dealt with - replacing a bunch of the random functions with our own. but then the functions we do want to leave intact will also have to work with that...
 
 the larger context here is that i am fine with deviating from the known random functions in Strudel for ones which fit our way of working, if that's better. obviously, use what we can --
+
+
+
+## grid stacking context
+
+scale after grid mod should scale the grid? no, actually scale doesn't operate on that, it's on videos
