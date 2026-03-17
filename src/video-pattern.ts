@@ -28,7 +28,7 @@ import { warn } from "./warnings";
  * @example
  * $: video("clip1.mp4")                        // single video, fullscreen
  * $: video("clip1.mp4 clip2.mp4")              // alternates each cycle
- * $: video("clip.mp4").speed(-1).fit("contain")
+ * $: video("clip.mp4").speed(-1).objectfit("contain")
  * $: video("clip.mp4").slow(5).speed(2)        // plays 5 cycles at 2× speed
  * $: video("clip.mp4").sync(0)                 // plays freely from cycle 0
  *

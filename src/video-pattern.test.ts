@@ -108,9 +108,9 @@ describe("video()", () => {
     expect(evs[0].value.alpha).toBe(0.5);
   });
 
-  it("fit() merges into events", () => {
-    const evs = video("a.mp4").fit("contain").queryArc(0, 1);
-    expect(evs[0].value.fit).toBe("contain");
+  it("objectfit() merges into events", () => {
+    const evs = video("a.mp4").objectfit("contain").queryArc(0, 1);
+    expect(evs[0].value.objectfit).toBe("contain");
   });
 
   it("bakes _onset into each event value", () => {

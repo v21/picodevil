@@ -39,9 +39,9 @@ describe("image()", () => {
     expect(evs[0].value.alpha).toBe(0.5);
   });
 
-  it("fit() merges into events", () => {
-    const evs = image("a.png").fit("contain").queryArc(0, 1);
-    expect(evs[0].value.fit).toBe("contain");
+  it("objectfit() merges into events", () => {
+    const evs = image("a.png").objectfit("contain").queryArc(0, 1);
+    expect(evs[0].value.objectfit).toBe("contain");
   });
 
   it("scale() sets both scaleX and scaleY", () => {

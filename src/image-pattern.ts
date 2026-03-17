@@ -10,7 +10,7 @@ import { warn } from "./warnings";
  * @example
  * $: image("photo.jpg")
  * $: image("a.png b.jpg")                 // alternates each cycle
- * $: image("photo.jpg").fit("contain").alpha(0.5)
+ * $: image("photo.jpg").objectfit("contain").alpha(0.5)
  *
  */
 export function image(pat: string | Pattern): Pattern {

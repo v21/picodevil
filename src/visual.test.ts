@@ -84,7 +84,7 @@ function renderEvent(
     const base = ev.urlBase ?? TEST_BASE;
     const imgEl = (opts.imagePool ?? imagePool).get(base + ev.src);
     if (imgEl && imgEl.naturalWidth > 0) {
-      const fitMode = ev.fit ?? "cover";
+      const fitMode = ev.objectfit ?? "cover";
       drawFit(ctx, imgEl, imgEl.naturalWidth, imgEl.naturalHeight, canvas.width, canvas.height, fitMode);
     }
   } else if (ev._type === "video") {
@@ -96,7 +96,7 @@ function renderEvent(
         renderVideoFrame({ ev, el, currentCycle: 0, eventBegin: 0, cps: 0.5 });
       }
       if (el.videoWidth > 0) {
-        const fitMode = ev.fit ?? "cover";
+        const fitMode = ev.objectfit ?? "cover";
         drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode);
       }
     }

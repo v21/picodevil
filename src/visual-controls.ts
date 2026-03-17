@@ -125,11 +125,12 @@ export const scaleY = createMixParam("scaleY");
  *   "fill" stretches to fill (may distort), "none" draws at native resolution
  * @returns {Pattern} pattern with fit mode applied
  * @example
- * $: video("clip.mp4").fit("contain")
- * $: video("clip.mp4").fit("cover contain")  // alternates per cycle
+ * $: video("clip.mp4").objectfit("contain")
+ * $: video("clip.mp4").objectfit("cover contain")  // alternates per cycle
  *
  */
-export const fit = createMixParam("fit");
+export const objectfit = createMixParam("objectfit");
+PatternProto.fit = PatternProto.objectfit;
 
 /**
  * Sets the CSS blend mode for compositing this pattern onto the canvas.

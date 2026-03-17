@@ -605,7 +605,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
         const base = ev.urlBase ?? IMAGE_BASE;
         const el = imagePool.get(resolveMediaUrl(ev.src, base));
         if (el && el.naturalWidth > 0) {
-          const fitMode = ev.fit ?? "cover";
+          const fitMode = ev.objectfit ?? "cover";
           drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
         }
       } else if (ev._type === "video") {
@@ -619,14 +619,14 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
           }
           // Draw
           if (el.videoWidth > 0) {
-            const fitMode = ev.fit ?? "cover";
+            const fitMode = ev.objectfit ?? "cover";
             drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode);
           }
         }
       } else if (ev._type === "stream") {
         const streamEl = getStreamVideoEl(ev.src);
         if (streamEl && streamEl.videoWidth > 0) {
-          const fitMode = ev.fit ?? "cover";
+          const fitMode = ev.objectfit ?? "cover";
           drawFit(ctx, streamEl, streamEl.videoWidth, streamEl.videoHeight, canvas.width, canvas.height, fitMode);
         }
       } else {
