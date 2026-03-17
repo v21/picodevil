@@ -17,24 +17,22 @@ interface RefCategory {
 export function setupReference(container: HTMLElement) {
   const categories = data as RefCategory[];
 
-  // Outer layout: search bar on top, two-column content below
-  const outer = document.createElement("div");
-  outer.style.cssText = "display:flex;flex-direction:column;height:100%;";
+  // Two-column layout: nav (left) + detail (right)
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;height:100%;";
 
-  // Search box
+  const navCol = document.createElement("div");
+  navCol.style.cssText = "width:110px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid #333;";
+
+  // Search box at top of nav column
   const searchBox = document.createElement("input");
   searchBox.type = "text";
   searchBox.placeholder = "search…";
-  searchBox.style.cssText = "background:#1a1a1a;color:#ccc;border:1px solid #333;border-radius:3px;padding:5px 8px;margin:8px 8px 4px;font-size:12px;outline:none;flex-shrink:0;";
-
-  outer.appendChild(searchBox);
-
-  // Two-column layout: nav (left) + detail (right)
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "display:flex;flex:1;overflow:hidden;";
+  searchBox.style.cssText = "background:#1a1a1a;color:#ccc;border:1px solid #fff;border-radius:3px;padding:5px 8px;margin:0;font-size:12px;outline:none;flex-shrink:0;";
+  navCol.appendChild(searchBox);
 
   const nav = document.createElement("div");
-  nav.style.cssText = "width:110px;flex-shrink:0;overflow-y:auto;border-right:1px solid #333;padding:8px 0;font-size:12px;";
+  nav.style.cssText = "flex:1;overflow-y:auto;padding:8px 0;font-size:12px;";
 
   const detail = document.createElement("div");
   detail.style.cssText = "flex:1;overflow-y:auto;padding:8px 12px;";
@@ -143,9 +141,9 @@ export function setupReference(container: HTMLElement) {
     }
   });
 
-  wrap.appendChild(nav);
+  navCol.appendChild(nav);
+  wrap.appendChild(navCol);
   wrap.appendChild(detail);
-  outer.appendChild(wrap);
   container.innerHTML = "";
-  container.appendChild(outer);
+  container.appendChild(wrap);
 }
