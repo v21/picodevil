@@ -30,7 +30,7 @@ import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS } from "./config";
-import { resolveMedia, addMedia, clearAll as clearMediaRegistry } from "./media-registry";
+import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
@@ -172,6 +172,7 @@ function makeVideoEl(name: string): VideoEl {
   el.addEventListener("loadedmetadata", () => {
     if (el._srcUrl && isFinite(el.duration) && el.duration > 0) {
       videoDurations.set(el._srcUrl, el.duration);
+      setDurationByUrl(el._srcUrl, el.duration);
     }
   });
   el.addEventListener("seeking", () => { el._seeking = true; });
@@ -179,10 +180,8 @@ function makeVideoEl(name: string): VideoEl {
   return el;
 }
 
-function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string = "", targetTime?: number): HTMLVideoElement {
+function getVideoEl(name: string, base: string, poolKey: string, targetTime?: number): HTMLVideoElement {
   const srcUrl = resolveMediaUrl(name, base);
-  const key = keyPrefix + srcUrl;
-  if (videoPool.has(key)) return videoPool.get(key)!;
 
   // Reuse an idle element with the same src, preferring one nearest the target time
   const freeList = freeVideoPool.get(srcUrl);
@@ -206,7 +205,7 @@ function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string =
     el._srcUrl = srcUrl;
     el.playbackRate = 1;
     el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
-    videoPool.set(key, el);
+    videoPool.set(poolKey, el);
     return el;
   }
 
@@ -217,7 +216,7 @@ function getVideoEl(name: string, base: string = VIDEO_BASE, keyPrefix: string =
   el.src = blobUrl ?? srcUrl;
   if (!blobUrl) fetchVideoBlob(srcUrl); // cache for future elements
   el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
-  videoPool.set(key, el);
+  videoPool.set(poolKey, el);
   return el;
 }
 
@@ -315,7 +314,6 @@ window.uzuEval = (code: string): string | null => {
   clearWarnings();
   if (typeof window !== "undefined") (window as any).uzuWarnings = [];
   screens = [];
-  lastScreenVals = [];
   pPatterns = {};
   anonymousIndex = 0;
   cpsPattern = null;
@@ -404,13 +402,8 @@ const uzuMetrics = {
 
 // --- render loop ---
 let startTime = performance.now();
-let lastFrameTime = startTime;
-let lastScreenVals: (string | null)[] = [];
-
 /** Per-frame video element assignments, keyed by share key. */
 const frameAssignments = new Map<string, VideoEl>();
-/** Pool keys used this frame (for freeing unused active entries). */
-const framePoolKeys = new Set<string>();
 
 /** Compute share key for a video event — identical keys share one element. */
 function videoShareKey(ev: any, eventBegin: number): string {
@@ -419,23 +412,28 @@ function videoShareKey(ev: any, eventBegin: number): string {
   return `${base}${ev.src}|${speed}|${Number(ev.begin ?? 0)}|${Number(ev.end ?? 1)}|${eventBegin}`;
 }
 
-/** Compute eventBegin from a hap, respecting sync, chop onset, and preserved onset.
+/** Compute eventBegin from a hap — the cycle position used to compute elapsed playback time.
  *
- * Priority:
- * - _chopOnset: per-sub-event onset from chop/striate/slice/splice wrappers.
- *   When sync is also set, the chop offset relative to _onset is preserved
- *   but rebased to the sync value.
- * - sync: user-specified reference cycle for video playback timing.
- * - _onset: original event onset baked by video()/screen() before set.mix clips whole.begin.
- * - hap.whole.begin: fallback from the hap's span.
+ * For chopped/sliced events (_chopOnset present): use hap.whole.begin, which is the
+ * sub-event's actual temporal position. This is correct even after .rev() — rev changes
+ * hap.whole but not _chopOnset, so _chopOnset would give the pre-rev position.
+ * The content position (which part of the video to show) is encoded in begin/end,
+ * not eventBegin.
+ *
+ * For non-chopped events: use sync > _onset > hap.whole.begin. _onset survives
+ * set.mix (appBoth) whole-clipping for multi-cycle events like video("a.mp4").slow(5).
  */
 function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  const baseOnset = ev.sync ?? ev._onset ?? (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
   if (ev._chopOnset != null) {
-    const originalOnset = ev._onset ?? (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
-    return Number(baseOnset) + (Number(ev._chopOnset) - Number(originalOnset));
+    // Chopped sub-event: use the hap's actual temporal position.
+    // sync overrides if present (rebased: sync + sub-event offset from original onset).
+    if (ev.sync != null) {
+      const originalOnset = ev._onset ?? 0;
+      return Number(ev.sync) + (Number(hap?.whole?.begin ?? t) - Number(originalOnset));
+    }
+    return hap?.whole?.begin != null ? Number(hap.whole.begin) : t;
   }
-  return Number(baseOnset);
+  return Number(ev.sync ?? ev._onset ?? (hap?.whole?.begin != null ? Number(hap.whole.begin) : t));
 }
 
 interface FrameEvent {
@@ -479,7 +477,6 @@ function collectFrameEvents(t: number): FrameEvent[] {
 /** Phase 2: Assign video elements for all video events. */
 function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) {
   frameAssignments.clear();
-  framePoolKeys.clear();
 
   for (const fe of frameEvents) {
     if (fe.ev._type !== "video") continue;
@@ -489,36 +486,29 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
     const shareKey = videoShareKey(ev, eventBegin);
 
     // Already assigned this frame (sharing)?
-    if (frameAssignments.has(shareKey)) {
-      framePoolKeys.add(shareKey); // mark as used
-      continue;
-    }
+    if (frameAssignments.has(shareKey)) continue;
 
     const base = ev.urlBase ?? VIDEO_BASE;
     const srcUrl = resolveMediaUrl(ev.src, base);
-    const evIndex = fe.screenIndex * 1000 + fe.eventIndex;
-    const poolKey = `cell${evIndex}:` + srcUrl;
 
     // Compute accurate expected time using cached duration
     const cachedDur = videoDurations.get(srcUrl);
     const expectedTime = computeExpectedFromEvent(ev, t, eventBegin, cps, cachedDur);
 
     // Try active pool first (element from previous frame)
-    if (videoPool.has(poolKey)) {
-      frameAssignments.set(shareKey, videoPool.get(poolKey)!);
-      framePoolKeys.add(poolKey);
+    if (videoPool.has(shareKey)) {
+      frameAssignments.set(shareKey, videoPool.get(shareKey)!);
       continue;
     }
 
     // Try free pool, scored by proximity to expected time
-    const el = getVideoEl(ev.src, base, `cell${evIndex}:`, expectedTime ?? undefined);
+    const el = getVideoEl(ev.src, base, shareKey, expectedTime ?? undefined);
     frameAssignments.set(shareKey, el as VideoEl);
-    framePoolKeys.add(`cell${evIndex}:` + srcUrl);
   }
 
   // Free active pool entries not used this frame
   for (const [key, el] of videoPool) {
-    if (!framePoolKeys.has(key)) {
+    if (!frameAssignments.has(key)) {
       freeVideoEl(el);
       videoPool.delete(key);
     }
@@ -526,10 +516,9 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
 }
 
 /** Phase 3: Draw all events. */
-function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: number, cps: number) {
+function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
   for (const fe of frameEvents) {
     const { screenIndex, eventIndex, ev, hap } = fe;
-    const evIndex = screenIndex * 1000 + eventIndex;
 
     // resolve position params
     const px = ev.x !== undefined ? Number(ev.x) : 0;
@@ -626,15 +615,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
         if (el) {
           // Update playback (uses real el.duration for precision)
           if (isFinite(el.duration) && el.duration > 0) {
-            renderVideoFrame({
-              ev,
-              videoPool, poolKeyPrefix: `cell${evIndex}:`, canvas, ctx,
-              now, dt,
-              currentCycle: t, eventBegin, cps,
-              lastVideoVal: lastScreenVals[evIndex] ?? null,
-              getOrCreateVideoEl: (_n, _b, _k) => el, // element already assigned
-              frameShareMap: frameAssignments,
-            });
+            renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps });
           }
           // Draw
           if (el.videoWidth > 0) {
@@ -642,7 +623,6 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
             drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode);
           }
         }
-        lastScreenVals[evIndex] = ev.src;
       } else if (ev._type === "stream") {
         const streamEl = getStreamVideoEl(ev.src);
         if (streamEl && streamEl.videoWidth > 0) {
@@ -764,7 +744,7 @@ function frame() {
   assignVideoElements(frameEvents, t, cps);
 
   // Phase 3: Draw
-  drawFrameEvents(frameEvents, t, now, now - lastFrameTime, cps);
+  drawFrameEvents(frameEvents, t, cps);
 
   // Phase 4: Prewarm
   if (cps > 0) prewarmVideos(cycle, cps);
@@ -781,7 +761,6 @@ function frame() {
   uzuMetrics.freePoolSize = freeCount;
 
   flushWarnings();
-  lastFrameTime = now;
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
