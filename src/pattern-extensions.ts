@@ -1,26 +1,131 @@
 import {
-  Hap, Pattern as CorePattern, reify,
+  Hap, Pattern as CorePattern, reify, TimeSpan,
 } from "@strudel/core";
+import { warn } from "./warnings";
 
 const PatternProto = CorePattern.prototype as any;
 
+// ─── chop/striate/slice/splice wrappers ────────────────────────────────────────
+// Strudel's chop/striate/slice/splice set begin/end on event values for sample
+// slicing. For video events, we also need _chopOnset (the sub-event's whole.begin)
+// so that the video playback engine resets elapsed time per sub-event.
+// Without this, all chopped sub-events share the original _onset and play from
+// the same continuous position.
+
+function isVideoTyped(v: any): boolean {
+  return v != null && typeof v === "object" && v._type === "video";
+}
+
 /**
- * Tags pattern values as seconds, so .start() / .end() / .duration() interpret them as absolute time.
+ * Wrap a pattern to stamp _chopOnset on video-typed event values.
+ * _chopOnset = Number(hap.whole.begin) for each sub-event.
+ */
+function bakeChopOnset(pat: any): any {
+  return new CorePattern((state: any) => {
+    return pat.queryArc(state.span.begin, state.span.end).map((hap: any) => {
+      if (hap.value && isVideoTyped(hap.value) && hap.whole) {
+        return hap.withValue((v: any) => ({
+          ...v,
+          _chopOnset: Number(hap.whole.begin),
+        }));
+      }
+      return hap;
+    });
+  });
+}
+
+/**
+ * Check if a pattern produces signal events (no whole span). Chop/striate/slice
+ * need whole spans to subdivide — signal controls (e.g. scrub(sine), speed(sine))
+ * before chop erase the whole span via set.mix (appBoth), producing zero events.
+ */
+function warnIfSignal(pat: any, method: string) {
+  const evs = pat.queryArc(0, 1);
+  if (evs.length > 0 && evs.every((e: any) => !e.whole)) {
+    warn(`${method}() received a signal pattern (no event boundaries). Signal controls like .scrub(sine) or .speed(sine) must come after ${method}(), not before — e.g. .${method}(n).scrub(sine)`);
+  }
+}
+
+// Save originals and wrap
+const _origChop = PatternProto.chop;
+if (_origChop) {
+  PatternProto.chop = function (...args: any[]) {
+    warnIfSignal(this, "chop");
+    return bakeChopOnset(_origChop.apply(this, args));
+  };
+}
+
+const _origStriate = PatternProto.striate;
+if (_origStriate) {
+  PatternProto.striate = function (...args: any[]) {
+    warnIfSignal(this, "striate");
+    return bakeChopOnset(_origStriate.apply(this, args));
+  };
+}
+
+// ─── slice/splice reimplementation ──────────────────────────────────────────
+// Strudel's slice does `pure({ begin, end, ...o })` with `...o` LAST,
+// so pre-existing begin/end on the value overwrites the computed slice values.
+// We reimplement with the same merge logic chop uses: if the value already has
+// begin/end, scale the slice within that range.
+
+function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }): any {
+  let b = sliceBeginEnd;
+  if ('begin' in original && 'end' in original &&
+      original.begin !== undefined && original.end !== undefined) {
+    const d = original.end - original.begin;
+    b = { begin: original.begin + b.begin * d, end: original.begin + b.end * d };
+  }
+  return Object.assign({}, original, b);
+}
+
+PatternProto.slice = function (n: any, ipat: any) {
+  const pat = this;
+  const nPat = reify(n);
+  const idxPat = reify(ipat);
+  const func = (o: any) => {
+    return nPat.innerBind((nVal: number) =>
+      idxPat.fmap((i: number) => {
+        const begin = Array.isArray(nVal) ? nVal[i] : i / nVal;
+        const end = Array.isArray(nVal) ? nVal[i + 1] : (i + 1) / nVal;
+        return mergeSlice(o, { begin, end });
+      })
+    );
+  };
+  return bakeChopOnset(pat.squeezeBind(func));
+};
+
+PatternProto.splice = function (n: any, ipat: any) {
+  const sliced = this.slice(n, ipat);
+  return new CorePattern((state: any) => {
+    return sliced.queryArc(state.span.begin, state.span.end).map((hap: any) => {
+      if (!hap.whole || !hap.value || typeof hap.value !== 'object') return hap;
+      const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin + 0.001)[0]?.value ?? n);
+      const wholeDur = Number(hap.whole.end) - Number(hap.whole.begin);
+      const speedAdj = wholeDur > 0 ? 1 / (nVal * wholeDur) : 1;
+      return hap.withValue((v: any) => ({
+        ...v,
+        speed: speedAdj * (v.speed || 1),
+      }));
+    });
+  });
+};
+
+/**
+ * Tags pattern values as seconds. Currently unused — .begin()/.end() use 0-1 normalized values.
+ * Retained for potential future absolute-time support.
  *
  * @returns {Pattern} pattern with values tagged as seconds
- * @example
- * $: video("clip.mp4").start(mini("5").sec())   // start at 5 seconds
- *
+ * @deprecated begin/end now use 0-1 normalized values; absolute time support is planned for a future version
  */
 PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
 
 /**
- * Tags pattern values as milliseconds, so .start() / .end() / .duration() interpret them as absolute time.
+ * Tags pattern values as milliseconds. Currently unused — .begin()/.end() use 0-1 normalized values.
+ * Retained for potential future absolute-time support.
  *
  * @returns {Pattern} pattern with values tagged as milliseconds
- * @example
- * $: video("clip.mp4").duration(mini("500").ms()) // play 500ms
- *
+ * @deprecated begin/end now use 0-1 normalized values; absolute time support is planned for a future version
  */
 PatternProto.ms = function () { return this.fmap((v: number) => v + "ms"); };
 

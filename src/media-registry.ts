@@ -7,6 +7,8 @@ export type MediaEntry = {
   url: string;
   type: "video" | "image" | "stream";
   thumbnail?: string;
+  /** Video duration in seconds, populated when metadata loads */
+  duration?: number;
   /** Set while a YouTube download is in progress */
   downloading?: boolean;
   /** Error message from last download attempt */
@@ -129,6 +131,25 @@ export function updateEntry(name: string, updates: Partial<MediaEntry>) {
   if (!entry) return;
   Object.assign(entry, updates);
   save();
+}
+
+/** Look up cached duration by media URL. Returns undefined if not yet known. */
+export function getDurationByUrl(url: string): number | undefined {
+  for (const e of registry.values()) {
+    if (e.url === url && e.duration != null) return e.duration;
+  }
+  return undefined;
+}
+
+/** Update duration for an entry by URL (called when video metadata loads in the pool). */
+export function setDurationByUrl(url: string, duration: number) {
+  for (const e of registry.values()) {
+    if (e.url === url && !e.duration) {
+      e.duration = duration;
+      save();
+      return;
+    }
+  }
 }
 
 export function resolveMedia(name: string): MediaEntry | undefined {
@@ -254,6 +275,10 @@ function processThumbQueue() {
     const timeout = setTimeout(cleanup, 5000);
 
     vid.addEventListener("loadeddata", () => {
+      if (isFinite(vid.duration) && vid.duration > 0 && !entry.duration) {
+        entry.duration = vid.duration;
+        save();
+      }
       vid.currentTime = Math.min(1, vid.duration * 0.1);
     });
     vid.addEventListener("seeked", () => {

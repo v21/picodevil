@@ -53,31 +53,17 @@ describe("computeExpectedFromEvent", () => {
     expect(t).toBeCloseTo(2);
   });
 
-  it("respects start/end loop region", () => {
-    // loopStart=2s, loopEnd=6s → 4s range
+  it("respects begin/end loop region", () => {
+    // begin=0.2 → 2s, end=0.6 → 6s on a 10s video → 4s range
     // 5 cycles at 0.5cps = 10s → 10 % 4 = 2 → 2 + 2 = 4
-    const ev = { start: "2s", end: "6s" };
+    const ev = { begin: 0.2, end: 0.6 };
     const t = computeExpectedFromEvent(ev, 5, 0, cps, dur);
     expect(t).toBeCloseTo(4);
-  });
-
-  it("respects endIsDuration", () => {
-    // start=2s, end=4s with endIsDuration → loopEnd = 2 + 4 = 6
-    const ev = { start: "2s", end: "4s", endIsDuration: true };
-    const t = computeExpectedFromEvent(ev, 5, 0, cps, dur);
-    expect(t).toBeCloseTo(4); // same as above
   });
 
   it("respects speed", () => {
     const ev = { speed: 2 };
     const t = computeExpectedFromEvent(ev, 1, 0, cps, dur);
     expect(t).toBeCloseTo(4); // 2s * speed 2 = 4s
-  });
-
-  it("handles relative start/end (0-1 range)", () => {
-    // start=0.2 → 2s, end=0.6 → 6s on a 10s video
-    const ev = { start: 0.2, end: 0.6 };
-    const t = computeExpectedFromEvent(ev, 5, 0, cps, dur);
-    expect(t).toBeCloseTo(4);
   });
 });

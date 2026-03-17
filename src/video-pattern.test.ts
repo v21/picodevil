@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
+import { sine } from "@strudel/core";
 import { video } from "./video-pattern";
 import "./visual-controls";
+import "./pattern-extensions";
 
 describe("video()", () => {
   it("returns src events with _type", () => {
@@ -39,34 +41,52 @@ describe("video()", () => {
     expect(p2.queryArc(0, 1)[0].value.speed).toBe(3);
   });
 
-  it("start() merges into events", () => {
-    const evs = video("a.mp4").start("5s").queryArc(0, 1);
-    expect(evs[0].value.start).toBe("5s");
+  it("begin() merges into events", () => {
+    const evs = video("a.mp4").begin(0.5).queryArc(0, 1);
+    expect(evs[0].value.begin).toBe(0.5);
   });
 
   it("end() merges into events", () => {
-    const evs = video("a.mp4").end("10s").queryArc(0, 1);
-    expect(evs[0].value.end).toBe("10s");
+    const evs = video("a.mp4").end(0.8).queryArc(0, 1);
+    expect(evs[0].value.end).toBe(0.8);
   });
 
-  it("duration() sets end and endIsDuration flag", () => {
-    const evs = video("a.mp4").duration("10s").queryArc(0, 1);
-    expect(evs[0].value.end).toBe("10s");
-    expect(evs[0].value.endIsDuration).toBe(true);
+  it("duration() computes end from begin + value", () => {
+    const evs = video("a.mp4").begin(0.2).duration(0.3).queryArc(0, 1);
+    expect(evs[0].value.begin).toBe(0.2);
+    expect(evs[0].value.end).toBeCloseTo(0.5);
   });
 
-  it("end() after duration() clears endIsDuration", () => {
-    const evs = video("a.mp4").duration("10s").end("20s").queryArc(0, 1);
-    expect(evs[0].value.end).toBe("20s");
-    expect(evs[0].value.endIsDuration).toBe(false);
+  it("end() after duration() overrides computed end", () => {
+    const evs = video("a.mp4").duration(0.3).end(0.8).queryArc(0, 1);
+    expect(evs[0].value.end).toBe(0.8);
   });
 
-  it("scrub() sets start and duration(0)", () => {
-    const evs = video("a.mp4").scrub("5s").queryArc(0, 1);
-    expect(evs[0].value.start).toBe("5s");
-    expect(evs[0].value.end).toBe(0);
-    expect(evs[0].value.endIsDuration).toBe(true);
+  it("scrub() freezes at position within default 0-1 range", () => {
+    const evs = video("a.mp4").scrub(0.5).queryArc(0, 1);
+    expect(evs[0].value.begin).toBeCloseTo(0.5);
+    expect(evs[0].value.end).toBeCloseTo(0.5);
   });
+
+  it("scrub() interpolates within existing begin/end range", () => {
+    const evs = video("a.mp4").begin(0.2).end(0.8).scrub(0.5).queryArc(0, 1);
+    // 0.5 of the 0.2–0.8 range = 0.2 + 0.5 * 0.6 = 0.5
+    expect(evs[0].value.begin).toBeCloseTo(0.5);
+    expect(evs[0].value.end).toBeCloseTo(0.5);
+  });
+
+  it("scrub(0) within begin/end goes to begin", () => {
+    const evs = video("a.mp4").begin(0.2).end(0.8).scrub(0).queryArc(0, 1);
+    expect(evs[0].value.begin).toBeCloseTo(0.2);
+    expect(evs[0].value.end).toBeCloseTo(0.2);
+  });
+
+  it("scrub(1) within begin/end goes to end", () => {
+    const evs = video("a.mp4").begin(0.2).end(0.8).scrub(1).queryArc(0, 1);
+    expect(evs[0].value.begin).toBeCloseTo(0.8);
+    expect(evs[0].value.end).toBeCloseTo(0.8);
+  });
+
 
   it("sync() defaults to 0", () => {
     const evs = video("a.mp4").sync().queryArc(0, 1);
@@ -117,13 +137,176 @@ describe("video()", () => {
   });
 
   it("chaining preserves all controls", () => {
-    const evs = video("a.mp4").speed(2).start("5s").end("10s").alpha(0.5).queryArc(0, 1);
+    const evs = video("a.mp4").speed(2).begin(0.2).end(0.8).alpha(0.5).queryArc(0, 1);
     const v = evs[0].value;
     expect(v._type).toBe("video");
     expect(v.src).toBe("a.mp4");
     expect(v.speed).toBe(2);
-    expect(v.start).toBe("5s");
-    expect(v.end).toBe("10s");
+    expect(v.begin).toBe(0.2);
+    expect(v.end).toBe(0.8);
     expect(v.alpha).toBe(0.5);
+  });
+});
+
+describe("chop integration", () => {
+  it("chop(4) produces 4 sub-events with correct begin/end", () => {
+    const evs = video("a.mp4").chop(4).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    // Each slice should have begin and end spanning 1/4 of the video
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    expect(sorted[0].value.begin).toBeCloseTo(0);
+    expect(sorted[0].value.end).toBeCloseTo(0.25);
+    expect(sorted[1].value.begin).toBeCloseTo(0.25);
+    expect(sorted[1].value.end).toBeCloseTo(0.5);
+    expect(sorted[2].value.begin).toBeCloseTo(0.5);
+    expect(sorted[2].value.end).toBeCloseTo(0.75);
+    expect(sorted[3].value.begin).toBeCloseTo(0.75);
+    expect(sorted[3].value.end).toBeCloseTo(1);
+  });
+
+  it("chop(4) stamps _chopOnset on each sub-event", () => {
+    const evs = video("a.mp4").chop(4).queryArc(0, 1);
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    // Each sub-event should have a unique _chopOnset matching its whole.begin
+    expect(sorted[0].value._chopOnset).toBeCloseTo(0);
+    expect(sorted[1].value._chopOnset).toBeCloseTo(0.25);
+    expect(sorted[2].value._chopOnset).toBeCloseTo(0.5);
+    expect(sorted[3].value._chopOnset).toBeCloseTo(0.75);
+  });
+
+  it("chop(8).rev() reverses temporal order but preserves begin/end", () => {
+    const evs = video("a.mp4").chop(8).rev().queryArc(0, 1);
+    expect(evs).toHaveLength(8);
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    // First temporal event (0-1/8 of cycle) should have the LAST slice's begin/end
+    expect(sorted[0].value.begin).toBeCloseTo(0.875);
+    expect(sorted[0].value.end).toBeCloseTo(1.0);
+    // Last temporal event should have the first slice's begin/end
+    expect(sorted[7].value.begin).toBeCloseTo(0);
+    expect(sorted[7].value.end).toBeCloseTo(0.125);
+  });
+
+
+  it("begin(0.2).end(0.8).chop(4) composes correctly", () => {
+    const evs = video("a.mp4").begin(0.2).end(0.8).chop(4).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    // Slices should be within the 0.2-0.8 range
+    expect(sorted[0].value.begin).toBeCloseTo(0.2);
+    expect(sorted[0].value.end).toBeCloseTo(0.35);
+    expect(sorted[1].value.begin).toBeCloseTo(0.35);
+    expect(sorted[1].value.end).toBeCloseTo(0.5);
+    expect(sorted[2].value.begin).toBeCloseTo(0.5);
+    expect(sorted[2].value.end).toBeCloseTo(0.65);
+    expect(sorted[3].value.begin).toBeCloseTo(0.65);
+    expect(sorted[3].value.end).toBeCloseTo(0.8);
+  });
+
+  it("chop(4).chop(2) is equivalent to chop(8)", () => {
+    const double = video("a.mp4").chop(4).chop(2).queryArc(0, 1);
+    const single = video("a.mp4").chop(8).queryArc(0, 1);
+    expect(double).toHaveLength(8);
+    const dSorted = [...double].sort((a: any, b: any) => a.value.begin - b.value.begin);
+    const sSorted = [...single].sort((a: any, b: any) => a.value.begin - b.value.begin);
+    for (let i = 0; i < 8; i++) {
+      expect(dSorted[i].value.begin).toBeCloseTo(sSorted[i].value.begin, 5);
+      expect(dSorted[i].value.end).toBeCloseTo(sSorted[i].value.end, 5);
+    }
+  });
+
+  it("chop preserves _type and src on sub-events", () => {
+    const evs = video("a.mp4").chop(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value._type).toBe("video");
+      expect(ev.value.src).toBe("a.mp4");
+    }
+  });
+
+  it("chop + controls: _chopOnset survives .alpha() (set.mix)", () => {
+    const evs = video("a.mp4").chop(4).alpha(0.5).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    for (const ev of evs) {
+      expect(ev.value._chopOnset).toBeDefined();
+      expect(ev.value.alpha).toBe(0.5);
+    }
+  });
+});
+
+describe("slice integration", () => {
+  it("slice(8, pat) produces events with correct begin/end", () => {
+    const evs = video("a.mp4").slice(8, mini("0 3 5 7")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    expect(sorted[0].value.begin).toBeCloseTo(0);       // slice 0
+    expect(sorted[0].value.end).toBeCloseTo(0.125);
+    expect(sorted[1].value.begin).toBeCloseTo(3 / 8);   // slice 3
+    expect(sorted[1].value.end).toBeCloseTo(4 / 8);
+    expect(sorted[2].value.begin).toBeCloseTo(5 / 8);   // slice 5
+    expect(sorted[2].value.end).toBeCloseTo(6 / 8);
+    expect(sorted[3].value.begin).toBeCloseTo(7 / 8);   // slice 7
+    expect(sorted[3].value.end).toBeCloseTo(1);
+  });
+
+  it("slice stamps _chopOnset on video-typed events", () => {
+    const evs = video("a.mp4").slice(4, mini("0 1 2 3")).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value._chopOnset).toBeDefined();
+      expect(ev.value._type).toBe("video");
+    }
+  });
+
+  it("slice accepts raw number and string args (reify)", () => {
+    // This is the exact call pattern that caused "t.innerBind is not a function"
+    const evs = video("a.mp4").slice(8, mini("0 3 5 7")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    expect(evs[0].value.begin).toBeDefined();
+  });
+
+  it("begin(0.2).end(0.8).slice(4, ...) composes within region", () => {
+    const evs = video("a.mp4").begin(0.2).end(0.8).slice(4, mini("0 1 2 3")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
+    // 4 slices within 0.2-0.8 range (d=0.6, each slice = 0.15)
+    expect(sorted[0].value.begin).toBeCloseTo(0.2);
+    expect(sorted[0].value.end).toBeCloseTo(0.35);
+    expect(sorted[1].value.begin).toBeCloseTo(0.35);
+    expect(sorted[1].value.end).toBeCloseTo(0.5);
+    expect(sorted[2].value.begin).toBeCloseTo(0.5);
+    expect(sorted[2].value.end).toBeCloseTo(0.65);
+    expect(sorted[3].value.begin).toBeCloseTo(0.65);
+    expect(sorted[3].value.end).toBeCloseTo(0.8);
+  });
+});
+
+describe("splice integration", () => {
+  it("splice(8, pat) produces events with begin/end", () => {
+    const evs = video("a.mp4").splice(8, mini("0 3 5 7")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    for (const ev of evs) {
+      expect(ev.value.begin).toBeDefined();
+      expect(ev.value.end).toBeDefined();
+    }
+  });
+
+  it("splice stamps _chopOnset on video-typed events", () => {
+    const evs = video("a.mp4").splice(4, mini("0 1 2 3")).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value._chopOnset).toBeDefined();
+      expect(ev.value._type).toBe("video");
+    }
+  });
+
+});
+
+describe("striate integration", () => {
+  it("striate(4) stamps _chopOnset on video-typed events", () => {
+    const evs = video("a.mp4").striate(4).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    for (const ev of evs) {
+      expect(ev.value._chopOnset).toBeDefined();
+      expect(ev.value._type).toBe("video");
+      expect(ev.value.begin).toBeDefined();
+      expect(ev.value.end).toBeDefined();
+    }
   });
 });

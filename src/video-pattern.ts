@@ -50,6 +50,8 @@ export function video(pat: string | Pattern): Pattern {
         _type: "video",
         src: hap.value,
         _onset: Number(hap.whole.begin),
+        begin: 0,
+        end: 1,
       }));
     });
   });

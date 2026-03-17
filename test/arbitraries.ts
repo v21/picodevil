@@ -205,16 +205,6 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
   ),
 ).map(([sig, mod, easing]) => sig + mod + easing);
 
-/** Continuous signal with optional time conversion — returns TimeValue strings. */
-const continuousTimeSignal: fc.Arbitrary<string> = fc.tuple(
-  continuousSignal,
-  fc.oneof(
-    { weight: 7, arbitrary: fc.constant("") },
-    { weight: 1, arbitrary: fc.constant(".sec()") },
-    { weight: 1, arbitrary: fc.constant(".ms()") },
-  ),
-).map(([sig, time]) => sig + time);
-
 const numericSignalFunction: fc.Arbitrary<string> = fc.oneof(
   fc.integer({ min: 2, max: 10 }).map(n => `irand(${n})`),
   fc.array(fc.constantFrom(...SPEED_LITERALS.filter(s => s !== "0")), { minLength: 2, maxLength: 5 })
@@ -227,36 +217,12 @@ const numericSignalFunction: fc.Arbitrary<string> = fc.oneof(
   fc.double({ min: 0, max: 1, noNaN: true }).map(n => `steady(${n.toFixed(2)})`),
 );
 
-/** Numeric signal expression with optional time conversion — for time args. */
-const numericSignalExpr: fc.Arbitrary<string> = fc.oneof(
-  { weight: 6, arbitrary: continuousTimeSignal },
-  { weight: 2, arbitrary: fc.constantFrom(...DISCRETE_NUMERIC_SIGNALS) },
-  { weight: 2, arbitrary: numericSignalFunction },
-);
-
 /** Any signal expression (may include booleans — use for speed). */
 const anySignalExpr: fc.Arbitrary<string> = fc.oneof(
   { weight: 6, arbitrary: continuousSignal },
   { weight: 1, arbitrary: fc.constantFrom(...DISCRETE_NUMERIC_SIGNALS, ...DISCRETE_BOOLEAN_SIGNALS) },
   { weight: 2, arbitrary: numericSignalFunction },
   { weight: 1, arbitrary: fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(n => `brandBy(${n.toFixed(2)})`) },
-);
-
-/** Time value: relative, seconds, milliseconds */
-const timeValue: fc.Arbitrary<string> = fc.oneof(
-  fc.double({ min: 0, max: 0.9, noNaN: true }).map(n => n.toFixed(2)),
-  fc.double({ min: 0, max: 10, noNaN: true }).map(n => `${n.toFixed(1)}s`),
-  fc.double({ min: 0, max: 10, noNaN: true }).map(n => `${n.toFixed(1)}sec`),
-  fc.integer({ min: 100, max: 5000 }).map(n => `${n}ms`),
-  fc.integer({ min: 100, max: 5000 }).map(n => `${n}millis`),
-);
-
-const timeMiniPool: fc.Arbitrary<string[]> = fc.array(timeValue, { minLength: 3, maxLength: 6 });
-
-/** Time argument: either a signal or quoted mininotation of time values. */
-const timeArg: fc.Arbitrary<string> = fc.oneof(
-  { weight: 3, arbitrary: numericSignalExpr },
-  { weight: 7, arbitrary: timeMiniPool.chain(pool => miniArb(pool, 1).map(m => `"${m}"`)) },
 );
 
 /** Speed argument: signal or quoted mininotation of speed literals. */

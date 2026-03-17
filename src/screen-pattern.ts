@@ -52,7 +52,7 @@ export function screen(pat: string | Pattern): Pattern {
         if (typeof v === "object" && v !== null && "_type" in v) {
           const typed = v as any;
           if (typed._type === "video" && typed._onset == null) {
-            return { ...typed, _onset: Number(hap.whole.begin) };
+            return { begin: 0, end: 1, ...typed, _onset: Number(hap.whole.begin) };
           }
           return v;
         }
@@ -63,7 +63,7 @@ export function screen(pat: string | Pattern): Pattern {
         const classified = classifyToken(v);
         // Bake _onset for video events so it survives subsequent set.mix calls
         if ((classified as any)._type === "video") {
-          return { ...classified, _onset: Number(hap.whole.begin) };
+          return { begin: 0, end: 1, ...classified, _onset: Number(hap.whole.begin) };
         }
         return classified;
       });

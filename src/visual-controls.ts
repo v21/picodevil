@@ -251,17 +251,42 @@ PatternProto.duration = function (value: any) {
 PatternProto.dur = PatternProto.duration;
 
 /**
- * Freezes the video at a given position. Equivalent to .begin(value).duration(0).
+ * Freezes the video at a given position within the existing begin/end range.
+ * With no prior begin/end, scrub(0.5) freezes at the midpoint of the full video.
+ * After .begin(0.2).end(0.8), scrub(0.5) freezes at the midpoint of that region (0.5).
+ * After .chop(8), scrub(sine) scans within each slice's region.
  *
- * @param {number | string | Pattern} value position to freeze at (0–1)
- * @returns {Pattern} pattern frozen at the given position
+ * **Ordering with chop:** `.scrub(signal).chop(n)` will produce a black screen
+ * because signal controls (sine, saw, etc.) erase the event's whole span via
+ * set.mix, and chop needs whole spans to subdivide. Put chop before scrub:
+ * `.chop(n).scrub(signal)`.
+ *
+ * @param {number | string | Pattern} value position within current range (0–1)
+ * @returns {Pattern} pattern frozen at the interpolated position
  * @example
- * $: video("clip.mp4").scrub(0.5)          // freeze at halfway
- * $: video("clip.mp4").scrub(sine)         // slowly scan through the video
+ * $: video("clip.mp4").scrub(0.5)                    // freeze at halfway
+ * $: video("clip.mp4").scrub(sine)                   // slowly scan through
+ * $: video("clip.mp4").begin(0.2).end(0.8).scrub(0.5) // freeze at 0.5 (midpoint of region)
+ * $: video("clip.mp4").chop(8).scrub(sine)           // scan within each slice
  *
  */
 PatternProto.scrub = function (value: any) {
-  return this.begin(value).duration(0);
+  const p = reify(value).withValue((v: any) => ({ _scrub: v }));
+  const merged = this.set.mix(p);
+  return new Pattern((state: any) => {
+    return merged.queryArc(state.span.begin, state.span.end).map((hap: any) => {
+      return hap.withValue((v: any) => {
+        if (v._scrub != null) {
+          const b = v.begin ?? 0;
+          const e = v.end ?? 1;
+          const pos = b + Number(v._scrub) * (e - b);
+          const { _scrub, ...rest } = v;
+          return { ...rest, begin: pos, end: pos };
+        }
+        return v;
+      });
+    });
+  });
 };
 
 /**
