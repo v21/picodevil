@@ -504,7 +504,9 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
         const score = dur > 0 ? scoreFreeElement(el.currentTime, expectedTime, dur) : Infinity;
         if (score < SHARE_TIME_THRESHOLD) {
           frameAssignments.set(drawPos, el);
-          videoPool.set(drawPos, el);
+          // Don't persist in videoPool — sharing is per-frame only.
+          // As playback diverges the check will fail and this position
+          // gets its own element from the free pool.
           shared = true;
           break;
         }
