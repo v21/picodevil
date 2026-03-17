@@ -5,41 +5,10 @@
  * at the original query state (frame time), so continuous signals like sine
  * get sampled at the exact frame time rather than the event's onset.
  */
-import { reify, Pattern, TimeSpan } from "@strudel/core";
+import { reify, Pattern } from "@strudel/core";
+import { createMixParam } from "./create-mix-param";
 
 const PatternProto = Pattern.prototype as any;
-
-function createMixParam(name: string) {
-  const withVal = (v: any) => ({ [name]: v });
-
-  const func = function (value: any, pat?: any) {
-    if (!pat) return reify(value).withValue(withVal);
-    if (value === undefined) return pat.fmap(withVal);
-    const valPat = reify(value);
-    if ((valPat as any)._perEvent) {
-      // Per-event mode: query the control at each hap's onset time, not the current frame time.
-      // This makes random signals stable for the duration of a hap instead of flickering.
-      // We use state.setSpan (not queryArc) so that state.controls (e.g. randSeed injected by
-      // indexCycle/index) is preserved through to the rand signal evaluation.
-      return new Pattern((state: any) => {
-        return pat.query(state).map((hap: any) => {
-          const onset = Number(hap.whole?.begin ?? hap.part.begin);
-          const onsetState = state.setSpan(new TimeSpan(onset, onset + 1e-4));
-          const ctrlHaps = valPat.query(onsetState);
-          if (!ctrlHaps.length) return hap;
-          return hap.withValue((v: any) => ({ ...v, [name]: ctrlHaps[0].value }));
-        });
-      });
-    }
-    return pat.set.mix(valPat.withValue(withVal));
-  };
-
-  PatternProto[name] = function (value: any) {
-    return func(value, this);
-  };
-
-  return func;
-}
 
 /**
  * Sets the transparency of the pattern. 0 = fully transparent, 1 = fully opaque.
@@ -64,6 +33,67 @@ export const alpha = createMixParam("alpha");
  *
  */
 export const opacity = createMixParam("opacity");
+
+/**
+ * Rotates the pattern around the Z axis (standard 2D rotation). Value is in turns (0–1).
+ *
+ * @param {number | string | Pattern} value rotation in turns (0.25 = 90°, 0.5 = 180°)
+ * @returns {Pattern} pattern with Z rotation applied
+ * @example
+ * $: video("clip.mp4").rotateZ(0.25)          // 90° clockwise
+ * $: video("clip.mp4").rotateZ(sine)          // continuous rotation
+ *
+ */
+export const rotateZ = createMixParam("rotateZ");
+
+/**
+ * Rotates the pattern around the X axis (horizontal axis — tilts forward/back).
+ * Value is in turns (0–1). Rendered as orthographic projection (Y-axis scaling).
+ *
+ * @param {number | string | Pattern} value rotation in turns
+ * @returns {Pattern} pattern with X rotation applied
+ * @example
+ * $: video("clip.mp4").rotateX(0.25)          // flipped vertically
+ * $: color("red").rotateX(sine)               // pulsing tilt
+ *
+ */
+export const rotateX = createMixParam("rotateX");
+
+/**
+ * Rotates the pattern around the Y axis (vertical axis — tilts left/right).
+ * Value is in turns (0–1). Rendered as orthographic projection (X-axis scaling).
+ *
+ * @param {number | string | Pattern} value rotation in turns
+ * @returns {Pattern} pattern with Y rotation applied
+ * @example
+ * $: video("clip.mp4").rotateY(0.25)          // flipped horizontally
+ *
+ */
+export const rotateY = createMixParam("rotateY");
+
+const rotateParam = createMixParam("rotate");
+const rotateAxisParam = createMixParam("rotateAxis");
+
+/**
+ * Rotates the pattern. Without axis: standard 2D rotation (same as .rotateZ()).
+ * With axis: rotates around an axis in the 2D plane, specified in turns
+ * (0 = horizontal/X axis, 0.25 = vertical/Y axis).
+ *
+ * @param {number | string | Pattern} turns rotation amount in turns
+ * @param {number | string | Pattern} [axis] axis angle in turns (omit for Z rotation)
+ * @returns {Pattern} pattern with rotation applied
+ * @example
+ * $: video("clip.mp4").rotate(0.25)           // 90° 2D rotation
+ * $: video("clip.mp4").rotate(0.25, 0)        // rotate around horizontal axis
+ * $: video("clip.mp4").rotate(sine, 0.25)     // rotate around vertical axis
+ *
+ */
+PatternProto.rotate = function (turns: any, axis?: any) {
+  if (axis === undefined) {
+    return this.rotateZ(turns);
+  }
+  return rotateAxisParam(axis, rotateParam(turns, this));
+};
 
 /**
  * Scales the pattern horizontally. 1 = normal, 2 = double width, 0.5 = half width.
@@ -100,6 +130,21 @@ export const scaleY = createMixParam("scaleY");
  *
  */
 export const fit = createMixParam("fit");
+
+/**
+ * Sets the CSS blend mode for compositing this pattern onto the canvas.
+ * Uses canvas globalCompositeOperation values (same as CSS mix-blend-mode).
+ *
+ * @param {string | Pattern} value blend mode: "multiply", "screen", "overlay", "darken", "lighten",
+ *   "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion",
+ *   "hue", "saturation", "color", "luminosity", "source-over" (default)
+ * @returns {Pattern} pattern with blend mode applied
+ * @example
+ * $: video("clip.mp4").blend("multiply")
+ * $: color("red").blend("screen difference")  // alternates per cycle
+ *
+ */
+export const blend = createMixParam("blend");
 
 /**
  * Scales the pattern uniformly on both axes. Shorthand for .scaleX(v).scaleY(v).
@@ -151,54 +196,64 @@ PatternProto.sync = function (value?: any) {
 };
 
 /**
- * Sets the start position within a video. Values are relative to duration by default (0–1).
- * Use .sec() or .ms() on the value pattern for absolute times.
+ * Sets the start position within a video (0–1, where 0 = beginning, 1 = end).
+ * Uses Strudel's `begin` property, so it composes with .chop(), .slice(), etc.
  *
- * @param {number | string | Pattern} value start position (0–1 relative, or with .sec()/.ms())
- * @returns {Pattern} pattern with start position applied
+ * @param {number | string | Pattern} value start position (0–1)
+ * @returns {Pattern} pattern with begin position applied
  * @example
- * $: video("clip.mp4").start(0.5)          // start halfway through
- * $: video("clip.mp4").start(mini("5").sec()) // start at 5 seconds
+ * $: video("clip.mp4").begin(0.5)          // start halfway through
+ * $: video("clip.mp4").begin(0.2).end(0.8).chop(4)  // chop middle 60% into 4 slices
  *
  */
-export const start = createMixParam("start");
+// Override Strudel's registerControl version with createMixParam for consistency
+createMixParam("begin");
 
 /**
- * Sets the end position within a video (absolute, not relative to start).
- * Values are relative to duration by default (0–1). Use .sec() or .ms() for absolute times.
+ * Sets the end position within a video (0–1, where 1 = end of video).
+ * Uses Strudel's `end` property, so it composes with .chop(), .slice(), etc.
  *
- * @param {number | string | Pattern} value end position
+ * @param {number | string | Pattern} value end position (0–1)
  * @returns {Pattern} pattern with end position applied
  * @example
- * $: video("clip.mp4").start(0.25).end(0.75) // play middle 50%
+ * $: video("clip.mp4").begin(0.25).end(0.75) // play middle 50%
  *
  */
-PatternProto.end = function (value: any) {
-  const p = reify(value).withValue((v: any) => ({ end: v, endIsDuration: false }));
-  return this.set.mix(p);
-};
+createMixParam("end");
 
 /**
- * Sets the duration of video playback (relative to start, not an absolute end point).
- * Values are relative to video duration by default (0–1). Alias: .dur()
+ * Sets the duration of video playback relative to begin position (0–1).
+ * Computes end = begin + value. Alias: .dur()
  *
  * @param {number | string | Pattern} value duration as fraction of video length
- * @returns {Pattern} pattern with duration applied
+ * @returns {Pattern} pattern with end computed from begin + duration
  * @example
- * $: video("clip.mp4").start(0).duration(0.25)  // play first quarter
+ * $: video("clip.mp4").begin(0).duration(0.25)  // play first quarter
  * $: video("clip.mp4").dur(0.1)                 // short snippet
  *
  */
 PatternProto.duration = function (value: any) {
-  const p = reify(value).withValue((v: any) => ({ end: v, endIsDuration: true }));
-  return this.set.mix(p);
+  const p = reify(value).withValue((v: any) => ({ _dur: v }));
+  const merged = this.set.mix(p);
+  return new Pattern((state: any) => {
+    return merged.queryArc(state.span.begin, state.span.end).map((hap: any) => {
+      return hap.withValue((v: any) => {
+        if (v._dur != null) {
+          const b = v.begin ?? 0;
+          const { _dur, ...rest } = v;
+          return { ...rest, end: b + Number(_dur) };
+        }
+        return v;
+      });
+    });
+  });
 };
 PatternProto.dur = PatternProto.duration;
 
 /**
- * Freezes the video at a given position. Equivalent to .start(value).duration(0).
+ * Freezes the video at a given position. Equivalent to .begin(value).duration(0).
  *
- * @param {number | string | Pattern} value position to freeze at (0–1 relative, or with .sec()/.ms())
+ * @param {number | string | Pattern} value position to freeze at (0–1)
  * @returns {Pattern} pattern frozen at the given position
  * @example
  * $: video("clip.mp4").scrub(0.5)          // freeze at halfway
@@ -206,7 +261,7 @@ PatternProto.dur = PatternProto.duration;
  *
  */
 PatternProto.scrub = function (value: any) {
-  return this.start(value).duration(0);
+  return this.begin(value).duration(0);
 };
 
 /**

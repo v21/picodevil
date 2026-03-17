@@ -61,6 +61,19 @@ describe("visual controls via createMixParam", () => {
       const pat = src("x").speed(mini("1")).speed(mini("2"));
       expect(query(pat, 0).speed).toBe(2);
     });
+
+    it(".blend() merges blend mode", () => {
+      const pat = src("x").blend(mini("multiply"));
+      const v = query(pat, 0);
+      expect(v.src).toBe("x");
+      expect(v.blend).toBe("multiply");
+    });
+
+    it(".blend() alternates blend modes", () => {
+      const pat = src("x").blend(mini("multiply screen"));
+      expect(query(pat, 0.1).blend).toBe("multiply");
+      expect(query(pat, 0.6).blend).toBe("screen");
+    });
   });
 
   describe("frame-time sampling with continuous signals", () => {
@@ -288,6 +301,56 @@ describe("visual controls via createMixParam", () => {
       const v0 = query(pat, 0.0);
       const v25 = query(pat, 0.25);
       expect(v0.x).not.toBeCloseTo(v25.x, 1);
+    });
+  });
+
+  describe("rotation controls", () => {
+    it(".rotateZ() merges rotateZ value", () => {
+      expect(query(src("x").rotateZ(0.25), 0).rotateZ).toBe(0.25);
+    });
+
+    it(".rotateX() merges rotateX value", () => {
+      expect(query(src("x").rotateX(0.5), 0).rotateX).toBe(0.5);
+    });
+
+    it(".rotateY() merges rotateY value", () => {
+      expect(query(src("x").rotateY(0.1), 0).rotateY).toBe(0.1);
+    });
+
+    it(".rotateZ() is patternable with mini", () => {
+      const pat = src("x").rotateZ(mini("0.25 0.5"));
+      expect(query(pat, 0.1).rotateZ).toBe(0.25);
+      expect(query(pat, 0.6).rotateZ).toBe(0.5);
+    });
+
+    it(".rotateX() is patternable with signal", () => {
+      const pat = src("x").rotateX(sine);
+      const v0 = query(pat, 0.0);
+      const v25 = query(pat, 0.25);
+      expect(v0.rotateX).not.toBeCloseTo(v25.rotateX, 1);
+    });
+
+    it(".rotate(turns) without axis sets rotateZ", () => {
+      const v = query(src("x").rotate(0.25), 0);
+      expect(v.rotateZ).toBe(0.25);
+    });
+
+    it(".rotate(turns, axis) sets rotate and rotateAxis", () => {
+      const v = query(src("x").rotate(0.25, 0.5), 0);
+      expect(v.rotate).toBe(0.25);
+      expect(v.rotateAxis).toBe(0.5);
+    });
+
+    it(".rotate() with patterned axis", () => {
+      const pat = src("x").rotate(0.25, mini("0 0.5"));
+      expect(query(pat, 0.1).rotateAxis).toBe(0);
+      expect(query(pat, 0.6).rotateAxis).toBe(0.5);
+    });
+
+    it("rotation composes with other controls", () => {
+      const v = query(src("x").rotateZ(0.25).alpha(0.5), 0);
+      expect(v.rotateZ).toBe(0.25);
+      expect(v.alpha).toBe(0.5);
     });
   });
 

@@ -84,6 +84,13 @@ const DISCRETE_BOOLEAN_SIGNALS = ["brand"];
 
 const FIT_MODES = ["cover", "contain", "fill", "none"];
 
+const BLEND_MODES = [
+  "source-over", "multiply", "screen", "overlay",
+  "darken", "lighten", "color-dodge", "color-burn",
+  "hard-light", "soft-light", "difference", "exclusion",
+  "hue", "saturation", "color", "luminosity",
+];
+
 const EASING_CURVES = [
   "linear", "sine", "quad", "cubic", "quart", "quint",
   "expo", "circ", "elastic", "bounce", "back",
@@ -264,6 +271,12 @@ const alphaArg: fc.Arbitrary<string> = fc.oneof(
   { weight: 6, arbitrary: miniArb(["0", "0.25", "0.5", "0.75", "1"], 1).map(m => `"${m}"`) },
 );
 
+/** Rotation argument (in turns). */
+const rotArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 4, arbitrary: continuousSignal },
+  { weight: 6, arbitrary: miniArb(["0", "0.25", "0.5", "0.75", "1", "-0.25"], 1).map(m => `"${m}"`) },
+);
+
 /** Scale argument. */
 const scaleArg: fc.Arbitrary<string> = fc.oneof(
   { weight: 4, arbitrary: continuousSignal },
@@ -291,6 +304,8 @@ const strudelMethod: fc.Arbitrary<string> = fc.oneof(
   fc.integer({ min: 2, max: 8 }).map(n => `.slow(${n})`),
   fc.integer({ min: 2, max: 8 }).map(n => `.fast(${n})`),
   fc.constant(".rev()"),
+  fc.integer({ min: 2, max: 8 }).map(n => `.chop(${n})`),
+  fc.integer({ min: 2, max: 8 }).map(n => `.chop(${n}).rev()`),
   fc.integer({ min: 2, max: 5 }).map(n => `.every(${n}, x => x.fast(2))`),
   fc.integer({ min: 2, max: 5 }).map(n => `.every(${n}, x => x.rev())`),
 );
@@ -303,19 +318,26 @@ interface MethodCall { code: string }
 
 const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   speedArg.map(a => ({ code: `.speed(${a})` })),
-  timeArg.map(a => ({ code: `.start(${a})` })),
-  timeArg.map(a => ({ code: `.end(${a})` })),
-  timeArg.map(a => ({ code: `.duration(${a})` })),
-  timeArg.map(a => ({ code: `.dur(${a})` })),
-  timeArg.map(a => ({ code: `.scrub(${a})` })),
+  posArg.map(a => ({ code: `.begin(${a})` })),
+  posArg.map(a => ({ code: `.end(${a})` })),
+  posArg.map(a => ({ code: `.duration(${a})` })),
+  posArg.map(a => ({ code: `.dur(${a})` })),
+  posArg.map(a => ({ code: `.scrub(${a})` })),
   fc.constant({ code: `.speed(0)` }),
   fc.constantFrom(...SPEED_LITERALS).map(n => ({ code: `.speed(${n})` })),
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
   alphaArg.map(a => ({ code: `.opacity(${a})` })),
   fc.constantFrom(...FIT_MODES).map(m => ({ code: `.fit("${m}")` })),
+  fc.constantFrom(...BLEND_MODES).map(m => ({ code: `.blend("${m}")` })),
+  miniArb(BLEND_MODES, 1).map(m => ({ code: `.blend("${m}")` })),
   scaleArg.map(a => ({ code: `.scaleX(${a})` })),
   scaleArg.map(a => ({ code: `.scaleY(${a})` })),
   scaleArg.map(a => ({ code: `.scale(${a})` })),
+  rotArg.map(a => ({ code: `.rotateX(${a})` })),
+  rotArg.map(a => ({ code: `.rotateY(${a})` })),
+  rotArg.map(a => ({ code: `.rotateZ(${a})` })),
+  rotArg.map(a => ({ code: `.rotate(${a})` })),
+  fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
 );
 
 const videoChain: fc.Arbitrary<string> = fc.array(videoMethod, { minLength: 0, maxLength: 5 })
@@ -325,9 +347,16 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
   alphaArg.map(a => ({ code: `.opacity(${a})` })),
   fc.constantFrom(...FIT_MODES).map(m => ({ code: `.fit("${m}")` })),
+  fc.constantFrom(...BLEND_MODES).map(m => ({ code: `.blend("${m}")` })),
+  miniArb(BLEND_MODES, 1).map(m => ({ code: `.blend("${m}")` })),
   scaleArg.map(a => ({ code: `.scaleX(${a})` })),
   scaleArg.map(a => ({ code: `.scaleY(${a})` })),
   scaleArg.map(a => ({ code: `.scale(${a})` })),
+  rotArg.map(a => ({ code: `.rotateX(${a})` })),
+  rotArg.map(a => ({ code: `.rotateY(${a})` })),
+  rotArg.map(a => ({ code: `.rotateZ(${a})` })),
+  rotArg.map(a => ({ code: `.rotate(${a})` })),
+  fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   posArg.map(a => ({ code: `.x(${a})` })),
   posArg.map(a => ({ code: `.y(${a})` })),
   posArg.map(a => ({ code: `.left(${a})` })),

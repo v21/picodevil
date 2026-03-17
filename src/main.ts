@@ -419,12 +419,23 @@ function videoShareKey(ev: any, eventBegin: number): string {
   return `${base}${ev.src}|${speed}|${Number(ev.begin ?? 0)}|${Number(ev.end ?? 1)}|${eventBegin}`;
 }
 
-/** Compute eventBegin from a hap, respecting sync and preserved onset. */
+/** Compute eventBegin from a hap, respecting sync, chop onset, and preserved onset.
+ *
+ * Priority:
+ * - _chopOnset: per-sub-event onset from chop/striate/slice/splice wrappers.
+ *   When sync is also set, the chop offset relative to _onset is preserved
+ *   but rebased to the sync value.
+ * - sync: user-specified reference cycle for video playback timing.
+ * - _onset: original event onset baked by video()/screen() before set.mix clips whole.begin.
+ * - hap.whole.begin: fallback from the hap's span.
+ */
 function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  if (ev.sync != null) return Number(ev.sync);
-  // _onset is baked into the value by video() before any set.mix clips whole.begin
-  if (ev._onset != null) return Number(ev._onset);
-  return hap?.whole?.begin != null ? Number(hap.whole.begin) : t;
+  const baseOnset = ev.sync ?? ev._onset ?? (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
+  if (ev._chopOnset != null) {
+    const originalOnset = ev._onset ?? (hap?.whole?.begin != null ? Number(hap.whole.begin) : t);
+    return Number(baseOnset) + (Number(ev._chopOnset) - Number(originalOnset));
+  }
+  return Number(baseOnset);
 }
 
 interface FrameEvent {
@@ -532,6 +543,34 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
 
     const hasPosition = px !== 0 || py !== 0 || pw !== 1 || ph !== 1;
 
+    // resolve rotation from event — applied before position so the whole cell rotates
+    const TAU = Math.PI * 2;
+    let rz = ev.rotateZ !== undefined ? Number(ev.rotateZ) : 0;
+    let rxScale = 1; // X-axis rotation → Y scale
+    let ryScale = 1; // Y-axis rotation → X scale
+    if (ev.rotateX !== undefined) rxScale = Math.cos(Number(ev.rotateX) * TAU);
+    if (ev.rotateY !== undefined) ryScale = Math.cos(Number(ev.rotateY) * TAU);
+    if (ev.rotate !== undefined && ev.rotateAxis !== undefined) {
+      const turns = Number(ev.rotate);
+      const axisAngle = Number(ev.rotateAxis) * TAU;
+      const cosAxis = Math.cos(axisAngle);
+      const sinAxis = Math.sin(axisAngle);
+      const cosTurns = Math.cos(turns * TAU);
+      rxScale *= 1 - cosAxis * cosAxis * (1 - cosTurns);
+      ryScale *= 1 - sinAxis * sinAxis * (1 - cosTurns);
+    }
+    const hasRotation = rz !== 0 || rxScale !== 1 || ryScale !== 1;
+    if (hasRotation) {
+      // Rotate around cell center so the whole screen (clip + content) spins
+      const cx = (px + pw / 2) * canvas.width;
+      const cy = (py + ph / 2) * canvas.height;
+      ctx.save();
+      ctx.translate(cx, cy);
+      if (rxScale !== 1 || ryScale !== 1) ctx.scale(ryScale, rxScale);
+      if (rz !== 0) ctx.rotate(rz * TAU);
+      ctx.translate(-cx, -cy);
+    }
+
     if (hasPosition) {
       ctx.save();
       ctx.beginPath();
@@ -565,33 +604,6 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
       ctx.save();
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.scale(sx, sy);
-      ctx.translate(-canvas.width / 2, -canvas.height / 2);
-    }
-
-    // resolve rotation from event
-    const TAU = Math.PI * 2;
-    let rz = ev.rotateZ !== undefined ? Number(ev.rotateZ) : 0;
-    let rxScale = 1; // X-axis rotation → Y scale
-    let ryScale = 1; // Y-axis rotation → X scale
-    if (ev.rotateX !== undefined) rxScale = Math.cos(Number(ev.rotateX) * TAU);
-    if (ev.rotateY !== undefined) ryScale = Math.cos(Number(ev.rotateY) * TAU);
-    if (ev.rotate !== undefined && ev.rotateAxis !== undefined) {
-      const turns = Number(ev.rotate);
-      const axisAngle = Number(ev.rotateAxis) * TAU;
-      // Project rotation onto X and Y axes based on axis direction
-      const cosAxis = Math.cos(axisAngle);
-      const sinAxis = Math.sin(axisAngle);
-      const cosTurns = Math.cos(turns * TAU);
-      // Scale perpendicular to the axis: decompose into X and Y components
-      rxScale *= 1 - cosAxis * cosAxis * (1 - cosTurns);
-      ryScale *= 1 - sinAxis * sinAxis * (1 - cosTurns);
-    }
-    const hasRotation = rz !== 0 || rxScale !== 1 || ryScale !== 1;
-    if (hasRotation) {
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      if (rxScale !== 1 || ryScale !== 1) ctx.scale(ryScale, rxScale);
-      if (rz !== 0) ctx.rotate(rz * TAU);
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
     }
 
@@ -644,11 +656,11 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, now: number, dt: 
       warn(`screen ${screenIndex} event ${eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
     }
 
-    if (hasRotation) ctx.restore();
     if (hasScale) ctx.restore();
     ctx.globalAlpha = 1;
     if (hasBlend) ctx.globalCompositeOperation = "source-over";
     if (hasPosition) ctx.restore();
+    if (hasRotation) ctx.restore();
   }
 }
 
