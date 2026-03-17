@@ -180,7 +180,7 @@ function makeVideoEl(name: string): VideoEl {
   return el;
 }
 
-function getVideoEl(name: string, base: string, poolKey: string, targetTime?: number): HTMLVideoElement {
+function getVideoEl(name: string, base: string, poolKey: string, targetTime?: number, autoPlay: boolean = true): HTMLVideoElement {
   const srcUrl = resolveMediaUrl(name, base);
 
   // Reuse an idle element with the same src, preferring one nearest the target time
@@ -204,7 +204,7 @@ function getVideoEl(name: string, base: string, poolKey: string, targetTime?: nu
     el._seeking = false;
     el._srcUrl = srcUrl;
     el.playbackRate = 1;
-    el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
+    if (autoPlay) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
     videoPool.set(poolKey, el);
     return el;
   }
@@ -215,7 +215,7 @@ function getVideoEl(name: string, base: string, poolKey: string, targetTime?: nu
   const blobUrl = videoBlobUrls.get(srcUrl);
   el.src = blobUrl ?? srcUrl;
   if (!blobUrl) fetchVideoBlob(srcUrl); // cache for future elements
-  el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
+  if (autoPlay) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
   videoPool.set(poolKey, el);
   return el;
 }
@@ -402,15 +402,11 @@ const uzuMetrics = {
 
 // --- render loop ---
 let startTime = performance.now();
-/** Per-frame video element assignments, keyed by share key. */
+/** Per-frame video element assignments, keyed by draw position (screenIndex:eventIndex). */
 const frameAssignments = new Map<string, VideoEl>();
 
-/** Compute share key for a video event — identical keys share one element. */
-function videoShareKey(ev: any, eventBegin: number): string {
-  const base = ev.urlBase ?? VIDEO_BASE;
-  const speed = ev.speed != null ? Number(ev.speed) : 1;
-  return `${base}${ev.src}|${speed}|${Number(ev.begin ?? 0)}|${Number(ev.end ?? 1)}|${eventBegin}`;
-}
+/** Threshold for sharing: two events showing the same src within this many seconds share an element. */
+const SHARE_TIME_THRESHOLD = 0.04;
 
 /** Compute eventBegin from a hap — the cycle position used to compute elapsed playback time.
  *
@@ -474,36 +470,54 @@ function collectFrameEvents(t: number): FrameEvent[] {
   return result;
 }
 
-/** Phase 2: Assign video elements for all video events. */
+/** Phase 2: Assign video elements for all video events.
+ * Reuse by draw position (screenIndex:eventIndex) for frame-to-frame stability.
+ * Share by content: same src + similar expectedTime → reuse the same element.
+ */
 function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) {
   frameAssignments.clear();
 
   for (const fe of frameEvents) {
     if (fe.ev._type !== "video") continue;
 
+    const drawPos = `${fe.screenIndex}:${fe.eventIndex}`;
     const ev = fe.ev;
-    const eventBegin = eventBeginFromHap(ev, fe.hap, t);
-    const shareKey = videoShareKey(ev, eventBegin);
-
-    // Already assigned this frame (sharing)?
-    if (frameAssignments.has(shareKey)) continue;
-
     const base = ev.urlBase ?? VIDEO_BASE;
     const srcUrl = resolveMediaUrl(ev.src, base);
-
-    // Compute accurate expected time using cached duration
+    const eventBegin = eventBeginFromHap(ev, fe.hap, t);
     const cachedDur = videoDurations.get(srcUrl);
     const expectedTime = computeExpectedFromEvent(ev, t, eventBegin, cps, cachedDur);
 
-    // Try active pool first (element from previous frame)
-    if (videoPool.has(shareKey)) {
-      frameAssignments.set(shareKey, videoPool.get(shareKey)!);
+    // 1. Reuse: same draw position, same src → keep same element
+    const prev = videoPool.get(drawPos);
+    if (prev && prev._srcUrl === srcUrl) {
+      frameAssignments.set(drawPos, prev);
       continue;
     }
 
-    // Try free pool, scored by proximity to expected time
-    const el = getVideoEl(ev.src, base, shareKey, expectedTime ?? undefined);
-    frameAssignments.set(shareKey, el as VideoEl);
+    // 2. Share: another event already assigned this frame with same src at similar position
+    let shared = false;
+    if (expectedTime != null) {
+      for (const [, el] of frameAssignments) {
+        if (el._srcUrl !== srcUrl) continue;
+        const dur = isFinite(el.duration) ? el.duration : 0;
+        const score = dur > 0 ? scoreFreeElement(el.currentTime, expectedTime, dur) : Infinity;
+        if (score < SHARE_TIME_THRESHOLD) {
+          frameAssignments.set(drawPos, el);
+          videoPool.set(drawPos, el);
+          shared = true;
+          break;
+        }
+      }
+    }
+    if (shared) continue;
+
+    // 3. Allocate from free pool, scored by proximity to expected time
+    // Scrubbed events (begin===end) will be paused+seeked by renderVideoFrame,
+    // so skip autoPlay to avoid a play→pause flash
+    const isScrubbed = Number(ev.begin ?? 0) === Number(ev.end ?? 1);
+    const el = getVideoEl(ev.src, base, drawPos, expectedTime ?? undefined, !isScrubbed);
+    frameAssignments.set(drawPos, el as VideoEl);
   }
 
   // Free active pool entries not used this frame
@@ -609,9 +623,9 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
           drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode);
         }
       } else if (ev._type === "video") {
+        const drawPos = `${screenIndex}:${eventIndex}`;
         const eventBegin = eventBeginFromHap(ev, hap, t);
-        const shareKey = videoShareKey(ev, eventBegin);
-        const el = frameAssignments.get(shareKey);
+        const el = frameAssignments.get(drawPos);
         if (el) {
           // Update playback (uses real el.duration for precision)
           if (isFinite(el.duration) && el.duration > 0) {

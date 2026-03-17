@@ -80,6 +80,31 @@ const CASES: StressCase[] = [
       video("red.mp4").urlBase('/test-assets/').speed(0.5),
     ], 1, 2)`,
   },
+  {
+    name: "chop + scrub (pool reuse)",
+    code: `$: video("red.mp4").urlBase('/test-assets/').chop(8).scrub(sine)`,
+  },
+  {
+    name: "chop + scrub + revv",
+    code: `$: video("red.mp4").urlBase('/test-assets/').chop(8).scrub(sine).revv()`,
+  },
+  {
+    name: "dynamic begin (continuous)",
+    code: `$: video("red.mp4").urlBase('/test-assets/').begin(sine.slow(2)).end(0.8)`,
+  },
+  {
+    name: "dynamic speed (continuous)",
+    code: `$: video("red.mp4").urlBase('/test-assets/').chop(4).speed(sine.range(0.5, 2))`,
+  },
+  {
+    name: "scrub grid (sharing + reuse)",
+    code: `$: gridStack([
+      video("red.mp4").urlBase('/test-assets/').chop(4).scrub(sine),
+      video("red.mp4").urlBase('/test-assets/').chop(4).scrub(sine),
+      video("blue.mp4").urlBase('/test-assets/').chop(4).scrub(saw),
+      video("blue.mp4").urlBase('/test-assets/').chop(4).scrub(saw),
+    ], 2, 2)`,
+  },
 ];
 
 interface CaseResult {
