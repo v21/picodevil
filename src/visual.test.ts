@@ -90,25 +90,16 @@ function renderEvent(
   } else if (ev._type === "video") {
     const pool = (opts.videoPool ?? new Map()) as Map<string, any>;
     const base = ev.urlBase ?? TEST_BASE;
-    const getOrCreate = (name: string, _base: string, _prefix: string) => {
-      const key = _prefix + _base + name;
-      return pool.get(key) ?? pool.get(base + name);
-    };
-    renderVideoFrame({
-      ev,
-      videoPool: pool,
-      poolKeyPrefix: "",
-      canvas,
-      ctx,
-      now: 0,
-      dt: 16,
-      currentCycle: 0,
-      eventBegin: 0,
-      cps: 0.5,
-      lastVideoVal: null,
-      getOrCreateVideoEl: getOrCreate as any,
-      frameShareMap: new Map(),
-    });
+    const el = pool.get(base + ev.src);
+    if (el) {
+      if (isFinite(el.duration) && el.duration > 0) {
+        renderVideoFrame({ ev, el, currentCycle: 0, eventBegin: 0, cps: 0.5 });
+      }
+      if (el.videoWidth > 0) {
+        const fitMode = ev.fit ?? "cover";
+        drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode);
+      }
+    }
   }
 }
 
