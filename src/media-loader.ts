@@ -5,7 +5,7 @@ import {
 } from "./media-registry";
 import {
   startWebcam, startScreenCapture, stopStream, removeStream,
-  isStreamActive, setStreamOnChange,
+  isStreamActive, setStreamOnChange, reconnectStreams,
 } from "./stream-manager";
 
 let container: HTMLElement;
@@ -15,6 +15,9 @@ export function setupMediaLoader(el: HTMLElement) {
   setOnChange(render);
   setStreamOnChange(render);
   render();
+
+  // Reconnect persisted webcam streams (screen captures need manual reconnect)
+  reconnectStreams().then(render);
 
   // Paste JSON to import
   el.addEventListener("paste", (e) => {

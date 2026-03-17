@@ -1,4 +1,4 @@
-import { addStream, removeMedia, updateEntry, resolveMedia, setOnChange } from "./media-registry";
+import { addStream, removeMedia, updateEntry, resolveMedia, getAllEntries, setOnChange } from "./media-registry";
 
 export type StreamState = {
   name: string;
@@ -134,4 +134,23 @@ export function getStreamState(name: string): StreamState | undefined {
 
 export function getAllStreamStates(): StreamState[] {
   return Array.from(streams.values());
+}
+
+/**
+ * Reconnect all persisted webcam streams on page load.
+ * Screen captures cannot auto-reconnect (getDisplayMedia requires user gesture).
+ * Webcams can reconnect if permission was previously granted, using the saved deviceId.
+ * Failures are silently ignored — the entry stays disconnected in the sidebar.
+ */
+export async function reconnectStreams() {
+  const entries = getAllEntries();
+  for (const entry of entries) {
+    if (entry.type !== "stream" || entry.streamKind !== "webcam") continue;
+    if (streams.has(entry.name)) continue; // already active
+    try {
+      await startWebcam(entry.name, entry.deviceId);
+    } catch {
+      // Permission denied or device unavailable — leave as disconnected
+    }
+  }
 }
