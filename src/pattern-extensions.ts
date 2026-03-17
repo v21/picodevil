@@ -2,6 +2,8 @@ import {
   Hap, Pattern as CorePattern, reify, TimeSpan,
 } from "@strudel/core";
 import { warn } from "./warnings";
+import { resolveMedia } from "./media-registry";
+import { getRuntimeCps } from "./config";
 
 const PatternProto = CorePattern.prototype as any;
 
@@ -100,12 +102,28 @@ PatternProto.splice = function (n: any, ipat: any) {
   return new CorePattern((state: any) => {
     return sliced.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       if (!hap.whole || !hap.value || typeof hap.value !== 'object') return hap;
-      const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin + 0.001)[0]?.value ?? n);
+      const v = hap.value;
       const wholeDur = Number(hap.whole.end) - Number(hap.whole.begin);
-      const speedAdj = wholeDur > 0 ? 1 / (nVal * wholeDur) : 1;
-      return hap.withValue((v: any) => ({
-        ...v,
-        speed: speedAdj * (v.speed || 1),
+      if (wholeDur <= 0) return hap;
+
+      // For video events, use real duration from the media registry (fit-style)
+      if (isVideoTyped(v) && v.src) {
+        const entry = resolveMedia(v.src);
+        const dur = entry?.duration;
+        if (dur) {
+          const cps = getRuntimeCps();
+          const sliceDur = (v.end ?? 1) - (v.begin ?? 0);
+          const speed = sliceDur * dur * cps / wholeDur;
+          return hap.withValue((val: any) => ({ ...val, speed }));
+        }
+      }
+
+      // Fallback: Strudel's formula (works for non-video or unknown duration)
+      const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin + 0.001)[0]?.value ?? n);
+      const speedAdj = 1 / (nVal * wholeDur);
+      return hap.withValue((val: any) => ({
+        ...val,
+        speed: speedAdj * (val.speed || 1),
       }));
     });
   });

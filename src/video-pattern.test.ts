@@ -305,6 +305,30 @@ describe("splice integration", () => {
     }
   });
 
+  it("splice uses video duration for speed when known", () => {
+    clearAll();
+    addMedia("test.mp4", "test.mp4");
+    updateEntry("test.mp4", { duration: 10, type: "video" });
+    setRuntimeCps(0.5);
+    // splice(4, "0 1 2 3"): 4 events each 0.25 cycles, each slice = 1/4 of video
+    // speed = sliceDur * videoDur * cps / wholeDur = 0.25 * 10 * 0.5 / 0.25 = 5
+    const evs = video("test.mp4").splice(4, mini("0 1 2 3")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    for (const ev of evs) {
+      expect(ev.value.speed).toBeCloseTo(5);
+    }
+  });
+
+  it("splice falls back to Strudel formula when duration unknown", () => {
+    clearAll();
+    const evs = video("unknown.mp4").splice(4, mini("0 1 2 3")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    // Strudel formula: 1 / (4 * 0.25) = 1
+    for (const ev of evs) {
+      expect(ev.value.speed).toBeCloseTo(1);
+    }
+  });
+
 });
 
 describe("revv integration", () => {
