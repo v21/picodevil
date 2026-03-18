@@ -382,7 +382,65 @@ the other aspect to this is that uzuvid has a lot more simultaneous instances of
 the larger context here is that i am fine with deviating from the known random functions in Strudel for ones which fit our way of working, if that's better. obviously, use what we can --
 
 
+wait, can we use the existing random seed also as an input to the random seed? that should mean a nested pattern of grids-within-grids shouldn't sync up...
+
 
 ## grid stacking context
 
 scale after grid mod should scale the grid? no, actually scale doesn't operate on that, it's on videos
+
+
+add rotateX, rotateY, rotateZ
+operates on turns
+
+
+
+## Strudel methods don't use setMixParam - this might be surprising?
+
+
+/support chop
+/chunk
+
+/need to rename fit, so we can support fit
+/also loopAt etc
+
+/check - how does strudel handle the begin:0, end:1 stuff?
+/.scrub(v).chop(8) - why does this return black?
+
+adding streams:
+- add live thumbnail
+- can we seek in them at all? no
+
+
+
+if we hit an error, keep running the old code!
+
+
+/ why do we have both poolkey and sharekey?
+
+play audio
+
+
+change sync to set offset in fractions of the video (or absolute times)
+
+/allow searching the reference, and make the text bigger!
+
+
+change examples to use stuff from the library
+add a function to load a video to the library from code
+then add to examples, to make them self contained
+
+
+move webcam & screen buttons
+
+
+
+/ a bunch of errors to do with set.mix clipping stuff to a single cycle rather than allowing it to be more than one cycle long. can we change this behaviour fundamentally?
+
+
+instead of querying a small span, can we query at a single instant?
+
+
+change tests to not download from YT - should run faster? or i guess they're hitting the media server cache, so this shouldn't actually be an issue
+
+can we remove _onset entirely?

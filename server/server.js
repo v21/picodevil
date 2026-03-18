@@ -37,10 +37,14 @@ function handleGetURL(req, res, { port }) {
     '--ffmpeg-location', ffmpegPath,
     '-f', 'bv*[ext=mp4]+ba[ext=m4a]/bv*+ba/b',
     '--get-url',
-    '--no-warnings',
+    '--js-runtimes', 'node',
     videoURL,
   ], { timeout: 30000 }, (err, stdout, stderr) => {
-    if (err) return json(res, 500, { error: stderr || err.message });
+    if (stderr) console.warn(`[yt-dlp /url] ${stderr.trim()}`);
+    if (err) {
+      console.error(`[500] /url failed for ${videoURL}: ${stderr || err.message}`);
+      return json(res, 500, { error: stderr || err.message });
+    }
     const urls = stdout.trim().split('\n').filter(Boolean);
     json(res, 200, {
       video: urls[0],
@@ -77,15 +81,17 @@ function handleDownload(req, res, { port, downloadDir, spawnFn, execFileFn }) {
     '-f', 'bv*[ext=mp4][height<=1080]+ba[ext=m4a]/bv*[height<=1080]+ba/b',
     '--merge-output-format', 'mp4',
     '-o', origPath,
-    '--no-warnings',
+    '--js-runtimes', 'node',
     videoURL,
   ]);
 
   let stderr = '';
   proc.stderr.on('data', d => stderr += d);
   proc.on('close', code => {
+    if (stderr) console.warn(`[yt-dlp /download] ${stderr.trim()}`);
     if (code !== 0) {
       fs.unlink(origPath, () => {});
+      console.error(`[500] /download yt-dlp failed for ${videoURL}: ${stderr || `exit code ${code}`}`);
       return json(res, 500, { error: stderr || `yt-dlp exited with code ${code}` });
     }
     console.log(`Transcoding ${id} to I-frame-only...`);
@@ -100,7 +106,10 @@ function handleDownload(req, res, { port, downloadDir, spawnFn, execFileFn }) {
       outPath,
     ], { timeout: 600000 }, (err) => {
       fs.unlink(origPath, () => {});
-      if (err) return json(res, 500, { error: `Transcode failed: ${err.message}` });
+      if (err) {
+        console.error(`[500] /download transcode failed for ${id}: ${err.message}`);
+        return json(res, 500, { error: `Transcode failed: ${err.message}` });
+      }
       console.log(`Transcoded ${id}`);
       json(res, 200, { url: fileURL, ready: true });
     });
@@ -177,6 +186,12 @@ async function main() {
 
   console.log(`Using yt-dlp: ${YTDLP_PATH}`);
   console.log(`Using ffmpeg: ${ffmpegPath}`);
+
+  // Log yt-dlp version and environment diagnostics at startup
+  execFile(YTDLP_PATH, ['--version'], (err, stdout) => {
+    if (err) console.warn(`Could not get yt-dlp version: ${err.message}`);
+    else console.log(`yt-dlp version: ${stdout.trim()}`);
+  });
 
   const server = createServer();
   server.listen(DEFAULT_PORT, () => {

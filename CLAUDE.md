@@ -14,6 +14,7 @@ uzuvid is a live-coding visual performance tool. Users write JavaScript in a bro
 - **One code path** — avoid branching on "is this a number or a pattern?". The same logic should handle both.
 - **Prefer simplicity and deletion** — remove code rather than add special cases. Three similar lines are better than a premature abstraction.
 - **Patterns all the way down** — everything is a Strudel Pattern with object values. Controls are methods on Pattern.prototype via `createMixParam`. No class hierarchy.
+- **Prefer testing to reasoning** - if you have a choice between creating a test case and tracing through the logic that way, or trying to trace through the logic manually - prefer making a test case.
 
 ## Project structure
 
@@ -57,15 +58,15 @@ uzuvid/
 3. The render loop runs at requestAnimationFrame rate. Each frame it:
    - Computes cycle position from elapsed time and `cyclesPerSecond`
    - Queries each screen pattern with `queryArc(t, t + 0.001)`
-   - Draws each event: resolves position (x/y/width/height), alpha, scale, fit, then renders color/video/image
+   - Draws each event: resolves position (x/y/width/height), alpha, blend mode, scale, fit, then renders color/video/image
 4. `window.uzuEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
 
 ## Pattern architecture
 
-There is no class hierarchy. Everything is a Strudel `Pattern` with object-valued events. Controls are added to `Pattern.prototype` via `createMixParam` (in `visual-controls.ts`), which uses Strudel's `set.mix` (appBoth) combinator to merge properties at query time.
+There is no class hierarchy. Everything is a Strudel `Pattern` with object-valued events. Controls are added to `Pattern.prototype` via `createMixParam` (in `create-mix-param.ts`), which uses a custom combiner that queries both patterns at frame time (like appBoth) but preserves the source pattern's whole span (like appLeft). See `docs/combinators.md` for details.
 
 Key controls (all on Pattern.prototype):
-- `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.fit()`
+- `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
 - `.grid(i, cols, rows)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting
 - `.gridModulo(childIndex, numChildren, cols, rows)` — assigns multiple grid cells to a child; all args can be patterns
 - `.p(id)` — registers pattern for rendering (`$` = anonymous/stacking, `S` prefix = solo, `_` prefix/suffix = mute)
@@ -80,13 +81,15 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Indexing:** `index(...patterns)`, `indexCycle(...patterns)`, `indexWith(iLabel, countLabel, ...patterns)`, `indexCycleWith(iLabel, countLabel, ...patterns)`, `autoseed(...patterns)`
 
+**Media loading (imperative, idempotent):** `loadVideo(name, url)`, `loadImage(name, url)`, `loadCamera(name)`, `loadScreen(name)`
+
 **Global:** `setCps(n)`, `setCpm(n)`, `hush()`
 
 **Registration:** `$: expr` → `expr.p("$")` (stacking), `name: expr` → `expr.p("name")` (last write wins), `S` prefix = solo, `_` prefix/suffix = mute
 
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
-- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.fit()`
+- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
 - Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.urlBase()`
 - Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
 - Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
@@ -99,6 +102,7 @@ Example: `$: video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").fit("contain")`
 Example: `$: gridStack([color("red"), video("clip.mp4")], 2, 2)`
 Example: `$: index(color("red"), color("blue")).rowscols(2).gridMod()`
 Example: `$: video("a.mp4").i("0 1 2 3").rowscols(2).grid()`
+Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
 
 ## Video playback speed
 
@@ -156,12 +160,14 @@ When working through a list of tasks, **stop and check in with the user after co
 6. Report what was done and wait for go-ahead
 7. Don't commit changes unless asked
 
+Don't edit README yourself! This is a human written document. But do prompt the user if it's out of date.
+
 
 ## Key patterns to know
 
 - Strudel patterns have a `.queryArc(start, end)` method returning events with `.value`
 - `reify()` turns any value (number, string, Pattern) into a Pattern — use it uniformly, don't branch on type
-- `createMixParam(name)` registers a control on Pattern.prototype using `set.mix` (appBoth), which queries both patterns at frame time
+- `createMixParam(name)` registers a control on Pattern.prototype using a custom combiner that queries both patterns at frame time while preserving the source's whole span (see `docs/combinators.md`)
 - `.grid()` uses `new Pattern((state) => ...)` for query-time resolution; `state.span.begin`/`end` are Fraction objects
 - `composePos()` handles grid nesting by composing inner position relative to outer cell
 - Mininotation `,` = `stack()` (simultaneous), ` ` = alternation; `"0,3"` in `.grid()` means both cells at once
@@ -170,4 +176,4 @@ When working through a list of tasks, **stop and check in with the user after co
 - Strudel Fraction types produce repeating-decimal strings — always use `Number(v)` before arithmetic
 - The `videoPool` and `imagePool` Maps cache media elements by full URL to avoid re-creation
 - Config constants live in `src/config.ts` — timing values are in milliseconds
-- **`_onset` must be baked into video event values** — `set.mix` (appBoth) intersects `whole` spans, clipping `whole.begin` to each cycle boundary. Without `_onset`, `eventBeginFromHap` reads the clipped boundary and the video restarts every cycle. Any function that produces video events (`video()`, `screen()`) must wrap in `new PatternClass((state) => ...)` and set `_onset: Number(hap.whole.begin)` on the value so it survives downstream `set.mix` calls (e.g. `.alpha()`, `.speed()`)
+- **`_onset` is baked into video event values** for playback timing — `eventBeginFromHap` in main.ts uses it to determine where the video should be playing from. Any function that produces video events (`video()`, `screen()`) must wrap in `new PatternClass((state) => ...)` and set `_onset: Number(hap.whole.begin)` on the value

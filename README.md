@@ -60,6 +60,12 @@ In Strudel, you often create "stacks" of patterns - multiple patterns that run i
 
 In practice, you don't always need to call `stackN` on videos to make them render side by side - for example, `gridMod` will automatically do that math so that indexes will be cycled as necessary in order to fill all the spaces.
 
+### Sixth difference: randomness again
+
+Which means that when we call `stackN` or `index`, we also set the seed for the random number generator differently, so that a grid of videos where each has `.speed(choose(.5, 1, 2))` applied won't all decide to halve the speed or double the speed in unison.
+
+We also use Strudel's new snazzy `precise` RNG - just nicer than the old one, and we don't have backwards compatibility to worry about. 
+
 ### Sixth difference: I mean it's for rendering video
 
 It has a bunch of functions which relate to rendering visuals on screen, setting timings for videos, positioning in coordinate space etc. Let's get into some of those details more clearly.
@@ -67,8 +73,21 @@ It has a bunch of functions which relate to rendering visuals on screen, setting
 ## Visuals
 
 ### Nested coordinate system stuff
-grids within grids
+If you put a grid within another grid, it works! Similarly with adjusting `.x()` and `.y()`. 
+!!! Don't think this is yet true!
 
 ### i-frame encoding so that we can play videos backwards
 
-### 
+### It's 3D! I mean the browser is
+We're rendering a bunch of elements on the page, and these elements can move in 3D space. Because the browser context has full access to 3D rendering stuff. So we can apply perspective, we can rotate stuff, we can have things moving backwards and forwards.
+!!! don't think this is yet true
+
+### Blend modes
+Aren't in yet, but are nice and small to add. Let's do that.
+
+### Rendered via canvas
+We composite everything via canvas. 
+!!! Can we write canvas code with patterns in? No, probably not. Also it would suck for livecoding.
+
+### Live feeds - webcams and screen sharing
+Should work! Don't yet!

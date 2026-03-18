@@ -18,5 +18,17 @@
       "Failed to load resource: the server responded with a status of 400 (Bad Request)"
     ],
     "timestamp": "2026-03-11T16:16:40.338Z"
+  },
+  {
+    "code": "$: gridStack([screen(\"red\").opacity(sine.div(2)).chop(2).rev()], 2, 2)\n---\nbg: stackN(2, video(\"red.mp4, red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "codes": [
+      "$: gridStack([screen(\"red\").opacity(sine.div(2)).chop(2).rev()], 2, 2)",
+      "bg: stackN(2, video(\"red.mp4, red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 15 shrinks",
+    "errors": [
+      "[runtime warning] chop() received a signal pattern (no event boundaries). Signal controls like .scrub(sine) or .speed(sine) must come after chop(), not before — e.g. .chop(n).scrub(sine)"
+    ],
+    "timestamp": "2026-03-17T22:40:56.401Z"
   }
 ]
