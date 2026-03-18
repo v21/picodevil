@@ -30,14 +30,14 @@ import { gridStack, stackN } from "./grid-stack";
 import { cycle } from "./iterators";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
-import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl } from "./media-registry";
+import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
 import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
 import { transpile } from "./transpiler";
 import { warn, flushWarnings, clearWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
-import { getStreamVideoEl } from "./stream-manager";
+import { getStreamVideoEl, loadCamera, loadScreen } from "./stream-manager";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -340,8 +340,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", ...sigNames, ...modNames, ...combNames, transpiled)(
-      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", ...sigNames, ...modNames, ...combNames, transpiled)(
+      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
@@ -410,26 +410,28 @@ const SHARE_TIME_THRESHOLD = 0.04;
 
 /** Compute eventBegin from a hap — the cycle position used to compute elapsed playback time.
  *
- * For chopped/sliced events (_chopOnset present): use hap.whole.begin, which is the
- * sub-event's actual temporal position. This is correct even after .rev() — rev changes
- * hap.whole but not _chopOnset, so _chopOnset would give the pre-rev position.
- * The content position (which part of the video to show) is encoded in begin/end,
- * not eventBegin.
+ * Priority: sync > hap.whole.begin > _onset > t
  *
- * For non-chopped events: use sync > _onset > hap.whole.begin. _onset survives
- * set.mix (appBoth) whole-clipping for multi-cycle events like video("a.mp4").slow(5).
+ * hap.whole.begin is the correct post-slow/post-chop temporal position. _onset is baked
+ * inside screen()/video() from the inner hap before slow() retimes — so after .slow(N),
+ * _onset reflects pre-slow inner time, not the actual cycle position. Since createMixParam
+ * preserves wholes, hap.whole.begin is always available and correct. _onset is only a
+ * fallback for signals or edge cases where whole is missing.
+ *
+ * For chopped events with sync: rebase sync relative to the sub-event's offset from _onset.
  */
 function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  if (ev._chopOnset != null) {
-    // Chopped sub-event: use the hap's actual temporal position.
-    // sync overrides if present (rebased: sync + sub-event offset from original onset).
-    if (ev.sync != null) {
+  if (ev.sync != null) {
+    if (ev._chopOnset != null) {
+      // Chopped + sync: rebase sync by sub-event's offset from original onset
       const originalOnset = ev._onset ?? 0;
       return Number(ev.sync) + (Number(hap?.whole?.begin ?? t) - Number(originalOnset));
     }
-    return hap?.whole?.begin != null ? Number(hap.whole.begin) : t;
+    return Number(ev.sync);
   }
-  return Number(ev.sync ?? ev._onset ?? (hap?.whole?.begin != null ? Number(hap.whole.begin) : t));
+  // Prefer hap.whole.begin (post-slow, post-chop) over _onset (pre-slow inner time)
+  if (hap?.whole?.begin != null) return Number(hap.whole.begin);
+  return Number(ev._onset ?? t);
 }
 
 interface FrameEvent {

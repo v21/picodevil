@@ -31,10 +31,7 @@ function classifyToken(v: string): object {
  * $: s("red blue green")             // solid colors
  *
  * Note: for video tokens, `_onset` (the event's `whole.begin`) is baked into the
- * value so that it survives subsequent `set.mix` (appBoth) calls such as `.alpha()`
- * or `.speed()`. Without this, those controls would clip `whole.begin` to each cycle
- * boundary and the video would restart every cycle regardless of `/N` slowing.
- * See also: `video()` in video-pattern.ts, `eventBeginFromHap` in main.ts.
+ * value for video playback timing. See `eventBeginFromHap` in main.ts.
  */
 export function screen(pat: string | Pattern): Pattern {
   if (typeof pat !== "string" && !(pat && typeof (pat as any).queryArc === "function")) {
@@ -42,8 +39,7 @@ export function screen(pat: string | Pattern): Pattern {
   }
   const p = typeof pat === "string" ? mini(pat) : pat;
   // Wrap in PatternClass constructor to access hap.whole.begin and bake _onset
-  // into video values — same as video() does. Without this, set.mix (.alpha etc.)
-  // clips whole.begin to each cycle boundary and videos restart every cycle.
+  // into video values — same as video() does.
   return new PatternClass((state: any) => {
     return p.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       return hap.withValue((v: unknown) => {
@@ -61,7 +57,7 @@ export function screen(pat: string | Pattern): Pattern {
           return { _type: "color", color: "black" };
         }
         const classified = classifyToken(v);
-        // Bake _onset for video events so it survives subsequent set.mix calls
+        // Bake _onset for video events for playback timing
         if ((classified as any)._type === "video") {
           return { begin: 0, end: 1, ...classified, _onset: Number(hap.whole.begin) };
         }

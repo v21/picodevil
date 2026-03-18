@@ -12,12 +12,9 @@ import { warn } from "./warnings";
  * cycle, while `video("a.mp4").slow(5)` plays continuously for 5 cycles before
  * restarting.
  *
- * Note on controls: `.speed()`, `.alpha()`, and other controls use `appBoth`
- * (set.mix), which normally intersects event spans. For most controls this is
- * fine, but it does NOT affect playback timing — the onset is preserved
- * internally so that e.g. `video("a.mp4").slow(5).speed(2)` still plays
- * continuously for 5 cycles at double speed. This is intentional, but differs
- * from standard Strudel event-intersection behaviour.
+ * Controls (`.speed()`, `.alpha()`, etc.) use createMixParam's custom combiner,
+ * which preserves the source event's whole span. The onset is also baked into
+ * the value as `_onset` for video playback timing.
  *
  * Use `.sync(n)` to override the reference cycle for playback (e.g. `.sync(0)`
  * makes the video play as if it started from cycle 0 regardless of event
@@ -39,8 +36,7 @@ export function video(pat: string | Pattern): Pattern {
   }
   const p = typeof pat === 'string' ? mini(pat) : pat;
   // Use Pattern constructor to access each hap's whole.begin and bake it in as
-  // _onset. This survives subsequent set.mix (appBoth) calls — e.g. .speed(2)
-  // intersects whole spans per cycle, but _onset in the value is preserved.
+  // _onset for video playback timing (see eventBeginFromHap in main.ts).
   return new PatternClass((state: any) => {
     return p.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       if (typeof hap.value !== 'string') {

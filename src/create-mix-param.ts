@@ -1,11 +1,18 @@
 /**
- * createMixParam — registers a named control on Pattern.prototype via set.mix (appBoth).
+ * createMixParam — registers a named control on Pattern.prototype.
  *
- * Unlike Strudel's default set.in (appLeft), set.mix queries both patterns
- * at the original query state (frame time), so continuous signals like sine
- * get sampled at the exact frame time rather than the event's onset.
+ * Uses a custom combiner ("frame-time appLeft") that:
+ * - Queries both patterns at frame time (like appBoth/set.mix) so continuous
+ *   signals like sine animate smoothly every frame
+ * - Preserves the source pattern's whole (like appLeft/set.in) so downstream
+ *   operations like fit(), chop(), loopAt() see the true event duration
+ *
+ * For _perEvent controls (e.g. irand), the control is sampled at the hap's
+ * onset instead of frame time, giving stable random values per event.
+ *
+ * See docs/combinators.md for detailed explanation.
  */
-import { reify, Pattern, TimeSpan } from "@strudel/core";
+import { reify, Pattern, TimeSpan, Hap } from "@strudel/core";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -16,22 +23,47 @@ export function createMixParam(name: string) {
     if (!pat) return reify(value).withValue(withVal);
     if (value === undefined) return pat.fmap(withVal);
     const valPat = reify(value);
-    if ((valPat as any)._perEvent) {
-      // Per-event mode: query the control at each hap's onset time, not the current frame time.
-      // This makes random signals stable for the duration of a hap instead of flickering.
-      // We use state.setSpan (not queryArc) so that state.controls (e.g. randSeed injected by
-      // indexCycle/index) is preserved through to the rand signal evaluation.
-      return new Pattern((state: any) => {
-        return pat.query(state).map((hap: any) => {
-          const onset = Number(hap.whole?.begin ?? hap.part.begin);
-          const onsetState = state.setSpan(new TimeSpan(onset, onset + 1e-4));
-          const ctrlHaps = valPat.query(onsetState);
-          if (!ctrlHaps.length) return hap;
-          return hap.withValue((v: any) => ({ ...v, [name]: ctrlHaps[0].value }));
-        });
+    const perEvent = !!(valPat as any)._perEvent;
+
+    return new Pattern((state: any) => {
+      const mainHaps = pat.query(state);
+      return mainHaps.flatMap((hap: any) => {
+        // Where to sample the control:
+        // - default: current frame state → signals animate smoothly
+        // - _perEvent: hap's onset → random values are stable per-event
+        const ctrlState = perEvent
+          ? state.setSpan(new TimeSpan(
+              Number(hap.whole?.begin ?? hap.part.begin),
+              Number(hap.whole?.begin ?? hap.part.begin) + 1e-4))
+          : state;
+        const ctrlHaps = valPat.query(ctrlState);
+        if (!ctrlHaps.length) return [hap];
+
+        if (perEvent) {
+          // perEvent: control was sampled at onset, not frame time —
+          // parts won't overlap, so just take the first value directly.
+          // _perEvent patterns (rand, irand, choose) are signals that produce
+          // exactly one hap per query — if that assumption breaks, this [0] is wrong.
+          return [hap.withValue((v: any) => ({ ...v, [name]: ctrlHaps[0].value }))];
+        }
+
+        // Find control haps whose parts overlap this main hap's part
+        const results: any[] = [];
+        for (const ch of ctrlHaps) {
+          const newPart = hap.part.intersection(ch.part);
+          if (!newPart) continue;
+          results.push(new Hap(
+            hap.whole,   // PRESERVED from source pattern
+            newPart,     // part intersected for correct rendering window
+            { ...(typeof hap.value === 'object' && hap.value !== null
+                  ? hap.value : {}),
+              [name]: ch.value },
+            hap.context
+          ));
+        }
+        return results.length ? results : [hap];
       });
-    }
-    return pat.set.mix(valPat.withValue(withVal));
+    });
   };
 
   PatternProto[name] = function (value: any) {

@@ -1,9 +1,9 @@
 /**
- * Visual controls registered on Pattern.prototype via set.mix (appBoth).
+ * Visual controls registered on Pattern.prototype via createMixParam.
  *
- * Unlike Strudel's default set.in (appLeft), set.mix queries both patterns
- * at the original query state (frame time), so continuous signals like sine
- * get sampled at the exact frame time rather than the event's onset.
+ * createMixParam uses a custom combiner that queries both patterns at frame time
+ * (so signals animate smoothly) while preserving the source pattern's whole span
+ * (so fit/chop/loopAt see the true event duration). See docs/combinators.md.
  */
 import { reify, Pattern } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
@@ -209,8 +209,7 @@ PatternProto.sync = function (value?: any) {
  * $: video("clip.mp4").begin(0.2).end(0.8).chop(4)  // chop middle 60% into 4 slices
  *
  */
-// Override Strudel's registerControl version with createMixParam for consistency
-createMixParam("begin");
+export const begin = createMixParam("begin");
 
 /**
  * Sets the end position within a video (0–1, where 1 = end of video).
@@ -222,7 +221,7 @@ createMixParam("begin");
  * $: video("clip.mp4").begin(0.25).end(0.75) // play middle 50%
  *
  */
-createMixParam("end");
+export const end = createMixParam("end");
 
 /**
  * Sets the duration of video playback relative to begin position (0–1).
@@ -237,7 +236,7 @@ createMixParam("end");
  */
 PatternProto.duration = function (value: any) {
   const p = reify(value).withValue((v: any) => ({ _dur: v }));
-  const merged = this.set.mix(p);
+  const merged = this.set(p);
   return new Pattern((state: any) => {
     return merged.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       return hap.withValue((v: any) => {
@@ -259,11 +258,6 @@ PatternProto.dur = PatternProto.duration;
  * After .begin(0.2).end(0.8), scrub(0.5) freezes at the midpoint of that region (0.5).
  * After .chop(8), scrub(sine) scans within each slice's region.
  *
- * **Ordering with chop:** `.scrub(signal).chop(n)` will produce a black screen
- * because signal controls (sine, saw, etc.) erase the event's whole span via
- * set.mix, and chop needs whole spans to subdivide. Put chop before scrub:
- * `.chop(n).scrub(signal)`.
- *
  * @param {number | string | Pattern} value position within current range (0–1)
  * @returns {Pattern} pattern frozen at the interpolated position
  * @example
@@ -275,7 +269,7 @@ PatternProto.dur = PatternProto.duration;
  */
 PatternProto.scrub = function (value: any) {
   const p = reify(value).withValue((v: any) => ({ _scrub: v }));
-  const merged = this.set.mix(p);
+  const merged = this.set(p);
   return new Pattern((state: any) => {
     return merged.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       return hap.withValue((v: any) => {
@@ -321,6 +315,7 @@ PatternProto.fit = function (...args: any[]) {
       const dur = entry?.duration;
       if (!dur) return hap;
       const cps = getRuntimeCps();
+      // createMixParam preserves source whole, so hap.whole is never clipped
       const hapDur = Number(hap.whole.end) - Number(hap.whole.begin);
       if (hapDur <= 0) return hap;
       const sliceDur = (v.end ?? 1) - (v.begin ?? 0);

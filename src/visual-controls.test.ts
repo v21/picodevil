@@ -354,6 +354,60 @@ describe("visual controls via createMixParam", () => {
     });
   });
 
+  describe("whole-span preservation", () => {
+    function queryHap(pat: any, t: number) {
+      return pat.queryArc(t, t + 0.001)[0];
+    }
+
+    function wholeSpan(hap: any): [number, number] {
+      return [Number(hap.whole.begin), Number(hap.whole.end)];
+    }
+
+    it(".slow(N).alpha(constant) preserves whole=0-N", () => {
+      const pat = src("x").slow(8).alpha(0.5);
+      const hap = queryHap(pat, 2.5);
+      expect(hap.value.alpha).toBe(0.5);
+      expect(wholeSpan(hap)).toEqual([0, 8]);
+    });
+
+    it(".slow(N).alpha(sine) preserves whole (signal doesn't destroy it)", () => {
+      const pat = src("x").slow(4).alpha(sine);
+      const hap = queryHap(pat, 1.5);
+      expect(hap.value.alpha).toBeDefined();
+      expect(wholeSpan(hap)).toEqual([0, 4]);
+    });
+
+    it(".slow(N).alpha(structured) preserves whole", () => {
+      const pat = src("x").slow(4).alpha(mini("0.5 1"));
+      const hap = queryHap(pat, 0.7); // second half of cycle → alpha=1
+      expect(hap.value.alpha).toBe(1);
+      expect(wholeSpan(hap)).toEqual([0, 4]);
+    });
+
+    it("chaining multiple controls preserves whole through the chain", () => {
+      const pat = src("x").slow(4).alpha(0.5).speed(2).x(0.25);
+      const hap = queryHap(pat, 1.5);
+      expect(hap.value.alpha).toBe(0.5);
+      expect(hap.value.speed).toBe(2);
+      expect(hap.value.x).toBe(0.25);
+      expect(wholeSpan(hap)).toEqual([0, 4]);
+    });
+
+    it(".slow(N).begin(v).end(v) preserves whole", () => {
+      const pat = src("x").slow(8).begin(0.4).end(0.8);
+      const hap = queryHap(pat, 3.0);
+      expect(hap.value.begin).toBe(0.4);
+      expect(hap.value.end).toBe(0.8);
+      expect(wholeSpan(hap)).toEqual([0, 8]);
+    });
+
+    it("without slow, whole is 0-1 (single cycle)", () => {
+      const pat = src("x").alpha(0.5);
+      const hap = queryHap(pat, 0.5);
+      expect(wholeSpan(hap)).toEqual([0, 1]);
+    });
+  });
+
   describe("standalone functions", () => {
     it("speed as standalone wraps value", async () => {
       const { speed } = await import("./visual-controls");

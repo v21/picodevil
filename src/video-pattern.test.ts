@@ -123,9 +123,8 @@ describe("video()", () => {
   });
 
   it("bakes _onset into each event value", () => {
-    // _onset must survive set.mix (appBoth) calls like .speed() so that
-    // eventBeginFromHap returns the original event onset rather than the
-    // clipped hap.whole.begin after the intersection.
+    // _onset is baked so eventBeginFromHap can use the original event onset
+    // for video playback timing.
     const evs = video("a.mp4").queryArc(0, 0.001);
     expect(evs[0].value._onset).toBe(0);
 
@@ -231,7 +230,7 @@ describe("chop integration", () => {
     }
   });
 
-  it("chop + controls: _chopOnset survives .alpha() (set.mix)", () => {
+  it("chop + controls: _chopOnset survives .alpha()", () => {
     const evs = video("a.mp4").chop(4).alpha(0.5).queryArc(0, 1);
     expect(evs).toHaveLength(4);
     for (const ev of evs) {
@@ -393,6 +392,15 @@ describe("fit()", () => {
     const evs = video("test.mp4").begin(0.2).end(0.8).fit().queryArc(0, 1);
     expect(evs).toHaveLength(1);
     expect(evs[0].value.speed).toBeCloseTo(3);
+  });
+
+  it("slow(8).begin(.4).end(.8).fit() fills 8 cycles with 40% slice", () => {
+    // Event spans 8 cycles (whole=0-8). sliceDur=0.4. speed = 0.4 * 10 * 0.5 / 8 = 0.25
+    const evs = video("test.mp4").slow(8).begin(0.4).end(0.8).fit().queryArc(0, 1);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].value.begin).toBeCloseTo(0.4);
+    expect(evs[0].value.end).toBeCloseTo(0.8);
+    expect(evs[0].value.speed).toBeCloseTo(0.25);
   });
 
   it("is a no-op when duration is unknown", () => {
