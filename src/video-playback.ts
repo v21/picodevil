@@ -67,6 +67,25 @@ export function renderVideoFrame(c: VideoFrameContext): void {
   const beginVal = Number(c.ev.begin ?? 0);
   const endVal = Number(c.ev.end ?? 1);
 
+  // DEBUG: log at loop boundaries to trace fit() vs fit().chop() divergence
+  const dur = c.el.duration;
+  if (isFinite(dur) && dur > 0) {
+    const loopStart = beginVal * dur;
+    const loopEnd = endVal * dur;
+    const loopLen = Math.abs(loopEnd - loopStart);
+    const expected = computeExpectedTime({
+      currentCycle: c.currentCycle, eventBegin: c.eventBegin, cps: c.cps || 0.5,
+      speed, loopStart, loopEnd, duration: dur,
+    });
+    const prevExp = c.el._lastExpected;
+    const jumped = prevExp != null && loopLen > 0 && (prevExp - expected) > loopLen / 2;
+    const isNew = c.el._lastEventBegin !== c.eventBegin;
+    if (jumped || isNew) {
+      const src = (c.el._srcUrl ?? c.el.src).split("/").pop();
+      console.log(`[DEBUG] ${src} seek: eventBegin=${c.eventBegin} begin=${beginVal} end=${endVal} speed=${speed.toFixed(3)} expected=${expected.toFixed(3)} ct=${c.el.currentTime.toFixed(3)} loopRange=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] cycle=${c.currentCycle.toFixed(4)} isNew=${isNew} loopWrap=${jumped} _chopOnset=${c.ev._chopOnset ?? 'none'}`);
+    }
+  }
+
   updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps);
 }
 
@@ -102,8 +121,9 @@ function updateVideoPlayback(
   const now = Date.now();
   const canLog = (now - (el._lastLogTime ?? 0)) > 300;
 
+  const prevExpected = el._lastExpected;
   const wallDt = el._lastExpectedWall != null ? (now - el._lastExpectedWall) / 1000 : 0;
-  const windowIsMoving = detectWindowMoving({ expected, prevExpected: el._lastExpected, wallDt, speed, loopLen });
+  const windowIsMoving = detectWindowMoving({ expected, prevExpected, wallDt, speed, loopLen });
   el._lastExpected = expected;
   el._lastExpectedWall = now;
 
@@ -130,14 +150,18 @@ function updateVideoPlayback(
     // Native rate: let browser play, correct drift
     if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
     if (el.playbackRate !== speed) setPlaybackRate(el, speed);
-    // Use loop-adjusted drift: near loop boundaries, currentTime may be near
-    // loopEnd while expected has just wrapped to loopStart (or vice versa).
-    // Comparing modular distance avoids a false drift spike at every loop boundary.
+    // Detect loop wrap: expected jumped backward by ~loopLen (e.g. from near loopEnd
+    // to near loopStart). The browser doesn't loop for us, so we must seek immediately.
+    // Without this, the modular drift check sees rawDrift ≈ loopLen and computes drift ≈ 0,
+    // letting el.currentTime play past loopEnd uncorrected.
+    // Note: prevExpected is captured above (before el._lastExpected is updated).
+    const loopWrapped = loopLen > 0 && prevExpected != null &&
+      (prevExpected - expected) > loopLen / 2;
     const rawDrift = Math.abs(el.currentTime - expected);
     const drift = loopLen > 0
       ? Math.min(rawDrift, Math.abs(rawDrift - loopLen))
       : rawDrift;
-    if (isNewEvent || drift > DRIFT_THRESHOLD) {
+    if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
       if (!isNewEvent && drift > DRIFT_THRESHOLD && canLog) {
         const filename = src.split("/").pop() ?? src;
         console.warn(`[uzuvid] drift correction: ${filename} at ${el.currentTime.toFixed(3)}s / ${dur.toFixed(3)}s (expected ${expected.toFixed(3)}s, drift ${drift.toFixed(3)}s) [speed ${speed}x, window-stable native mode, src: ${src}]`);
