@@ -185,6 +185,35 @@ export function importAll(json: string) {
   save();
 }
 
+/** Idempotent: register a video by name. No-op if name+url already match. */
+export function loadVideo(name: string, url: string): void {
+  const existing = resolveMedia(name);
+  if (existing) {
+    if (existing.url === url && existing.type === "video") return;
+    updateUrl(name, url);
+    updateEntry(name, { type: "video" });
+  } else {
+    addMedia(url, name);
+    updateEntry(name, { type: "video" });
+  }
+  if (isYouTubeUrl(url)) {
+    downloadYouTube(name);
+  }
+}
+
+/** Idempotent: register an image by name. No-op if name+url already match. */
+export function loadImage(name: string, url: string): void {
+  const existing = resolveMedia(name);
+  if (existing) {
+    if (existing.url === url && existing.type === "image") return;
+    updateUrl(name, url);
+    updateEntry(name, { type: "image" });
+  } else {
+    addMedia(url, name);
+    updateEntry(name, { type: "image" });
+  }
+}
+
 export function clearAll() {
   registry.clear();
   save();

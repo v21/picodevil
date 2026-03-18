@@ -136,6 +136,22 @@ export function getAllStreamStates(): StreamState[] {
   return Array.from(streams.values());
 }
 
+/** Idempotent: start a webcam stream by name. No-op if already active. Fire-and-forget. */
+export function loadCamera(name: string): void {
+  if (isStreamActive(name)) return;
+  startWebcam(name).catch(err => {
+    console.warn(`[loadCamera] failed for "${name}":`, err.message);
+  });
+}
+
+/** Idempotent: start a screen capture by name. No-op if already active. Fire-and-forget. */
+export function loadScreen(name: string): void {
+  if (isStreamActive(name)) return;
+  startScreenCapture(name).catch(err => {
+    console.warn(`[loadScreen] failed for "${name}":`, err.message);
+  });
+}
+
 /**
  * Reconnect all persisted webcam streams on page load.
  * Screen captures cannot auto-reconnect (getDisplayMedia requires user gesture).

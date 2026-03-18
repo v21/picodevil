@@ -515,6 +515,23 @@ const gridChain: fc.Arbitrary<string> = fc.array(
   { minLength: 0, maxLength: 2 },
 ).map(ms => ms.join(""));
 
+/** Optional loadVideo/loadImage preamble lines. */
+const loadPreamble: fc.Arbitrary<string> = fc.oneof(
+  { weight: 4, arbitrary: fc.constant("") },
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.constantFrom(...VIDEO_REGISTRY_NAMES),
+      fc.constantFrom(...VIDEOS),
+    ).map(([name, file]) => `loadVideo('${name}', '/test-assets/${file}')`)
+  },
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.constantFrom(...IMAGE_REGISTRY_NAMES),
+      fc.constantFrom(...IMAGES),
+    ).map(([name, file]) => `loadImage('${name}', '/test-assets/${file}')`)
+  },
+);
+
 /** Label prefix: $, named, _muted, or Ssolo. */
 const labelPrefix: fc.Arbitrary<string> = fc.oneof(
   { weight: 6, arbitrary: fc.constant("$") },
@@ -528,17 +545,18 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   // gridStack expression
   {
     weight: 4, arbitrary: fc.tuple(
+      loadPreamble,
       fc.option(cpsValue, { nil: undefined }),
       fc.array(screenExpr, { minLength: 1, maxLength: 4 }),
       fc.integer({ min: 2, max: 5 }),
       fc.integer({ min: 2, max: 5 }),
       gridChain,
       labelPrefix,
-    ).map(([cps, children, cols, rows, chain, label]) => {
-      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+    ).map(([load, cps, children, cols, rows, chain, label]) => {
+      const preamble = [load, cps].filter(Boolean).join("\n");
       const childrenCode = children.map((c: any) => c.code).join(", ");
       return {
-        code: `${cpsCode}${label}: gridStack([${childrenCode}], ${cols}, ${rows})${chain}`,
+        code: `${preamble ? preamble + "\n" : ""}${label}: gridStack([${childrenCode}], ${cols}, ${rows})${chain}`,
       };
     })
   },
@@ -580,13 +598,14 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   // Standalone screen expression
   {
     weight: 3, arbitrary: fc.tuple(
+      loadPreamble,
       fc.option(cpsValue, { nil: undefined }),
       screenExpr,
       labelPrefix,
-    ).map(([cps, screen, label]) => {
-      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+    ).map(([load, cps, screen, label]) => {
+      const preamble = [load, cps].filter(Boolean).join("\n");
       return {
-        code: `${cpsCode}${label}: ${screen.code}`,
+        code: `${preamble ? preamble + "\n" : ""}${label}: ${screen.code}`,
       };
     })
   },

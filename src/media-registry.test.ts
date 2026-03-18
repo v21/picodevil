@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
+  loadVideo, loadImage,
 } from "./media-registry";
 
 beforeEach(() => {
@@ -167,6 +168,82 @@ describe("media registry", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  describe("loadVideo", () => {
+    it("creates a video entry", () => {
+      loadVideo("clip", "http://x/clip.mp4");
+      const entry = resolveMedia("clip");
+      expect(entry).toBeDefined();
+      expect(entry!.url).toBe("http://x/clip.mp4");
+      expect(entry!.type).toBe("video");
+    });
+
+    it("forces video type regardless of extension", () => {
+      loadVideo("data", "http://x/data.json");
+      expect(resolveMedia("data")!.type).toBe("video");
+    });
+
+    it("is idempotent for same name+url", () => {
+      loadVideo("clip", "http://x/clip.mp4");
+      const id1 = resolveMedia("clip")!.id;
+      loadVideo("clip", "http://x/clip.mp4");
+      expect(getAllEntries()).toHaveLength(1);
+      expect(resolveMedia("clip")!.id).toBe(id1);
+    });
+
+    it("updates url when name exists with different url", () => {
+      loadVideo("clip", "http://x/old.mp4");
+      loadVideo("clip", "http://x/new.mp4");
+      expect(getAllEntries()).toHaveLength(1);
+      expect(resolveMedia("clip")!.url).toBe("http://x/new.mp4");
+      expect(resolveMedia("clip")!.type).toBe("video");
+    });
+
+    it("triggers YouTube download for YouTube URLs", async () => {
+      let fetchCalled = false;
+      vi.stubGlobal("fetch", () => {
+        fetchCalled = true;
+        return new Promise(() => {}); // never resolves, just checking it was called
+      });
+      try {
+        loadVideo("yt", "https://youtube.com/watch?v=abc123");
+        expect(resolveMedia("yt")).toBeDefined();
+        // downloadYouTube is fire-and-forget, but fetch should have been called
+        await new Promise(r => setTimeout(r, 10));
+        expect(fetchCalled).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+  });
+
+  describe("loadImage", () => {
+    it("creates an image entry", () => {
+      loadImage("bg", "http://x/bg.png");
+      const entry = resolveMedia("bg");
+      expect(entry).toBeDefined();
+      expect(entry!.url).toBe("http://x/bg.png");
+      expect(entry!.type).toBe("image");
+    });
+
+    it("forces image type regardless of extension", () => {
+      loadImage("pic", "http://x/pic.mp4");
+      expect(resolveMedia("pic")!.type).toBe("image");
+    });
+
+    it("is idempotent for same name+url", () => {
+      loadImage("bg", "http://x/bg.png");
+      loadImage("bg", "http://x/bg.png");
+      expect(getAllEntries()).toHaveLength(1);
+    });
+
+    it("updates url when name exists with different url", () => {
+      loadImage("bg", "http://x/old.png");
+      loadImage("bg", "http://x/new.png");
+      expect(getAllEntries()).toHaveLength(1);
+      expect(resolveMedia("bg")!.url).toBe("http://x/new.png");
+    });
   });
 
   it("generates thumbnail for video", async () => {
