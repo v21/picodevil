@@ -49,11 +49,16 @@ function parseJSDoc(block: string): { description: string; params: string[]; exa
     } else if (inExample) {
       currentExample += line + "\n";
     } else {
-      if (line.trim()) description += (description ? " " : "") + line.trim();
+      if (line.trim()) {
+        description += (description ? " " : "") + line.trim();
+      } else if (description) {
+        // Blank line = paragraph break
+        description += "\n\n";
+      }
     }
   }
   if (inExample && currentExample.trim()) examples.push(currentExample.trim());
-  return { description, params, examples };
+  return { description: description.trim(), params, examples };
 }
 
 // Extract all JSDoc + export pairs from a file
@@ -234,10 +239,14 @@ export default function referencePlugin() {
         return `export default ${JSON.stringify(data, null, 2)};`;
       }
     },
-    handleHotUpdate({ file }: { file: string }) {
-      // Invalidate when source files change
+    handleHotUpdate({ file, server }: { file: string; server: any }) {
+      // Re-generate reference data when source files change
       if (file.includes("/src/") && file.endsWith(".ts")) {
-        return [];
+        const mod = server.moduleGraph.getModuleById(RESOLVED_ID);
+        if (mod) {
+          server.moduleGraph.invalidateModule(mod);
+          server.ws.send({ type: "full-reload" });
+        }
       }
     },
   };

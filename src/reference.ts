@@ -86,7 +86,15 @@ export function setupReference(container: HTMLElement) {
 
       const descEl = document.createElement("div");
       descEl.className = "ref-entry-desc";
-      descEl.textContent = entry.description;
+      const paragraphs = entry.description.split("\n\n");
+      for (let pi = 0; pi < paragraphs.length; pi++) {
+        const p = paragraphs[pi].trim();
+        if (!p) continue;
+        if (pi > 0) descEl.appendChild(document.createElement("br"));
+        const span = document.createElement("span");
+        span.textContent = p;
+        descEl.appendChild(span);
+      }
       entryEl.appendChild(descEl);
 
       if (entry.params.length) {

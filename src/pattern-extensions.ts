@@ -38,8 +38,9 @@ function bakeChopOnset(pat: any): any {
 
 /**
  * Check if a pattern produces signal events (no whole span). Chop/striate/slice
- * need whole spans to subdivide — signal controls (e.g. scrub(sine), speed(sine))
- * before chop erase the whole span via set.mix (appBoth), producing zero events.
+ * need whole spans to subdivide. A bare signal source (e.g. `sine.chop(4)`) has
+ * no whole spans. Note: signal *controls* (e.g. `.alpha(sine).chop(4)`) are fine
+ * because createMixParam preserves the source's whole.
  */
 function warnIfSignal(pat: any, method: string) {
   const evs = pat.queryArc(0, 1);
@@ -48,28 +49,79 @@ function warnIfSignal(pat: any, method: string) {
   }
 }
 
-// Save originals and wrap
+// Save originals
 const _origChop = PatternProto.chop;
-if (_origChop) {
-  PatternProto.chop = function (...args: any[]) {
-    warnIfSignal(this, "chop");
-    return bakeChopOnset(_origChop.apply(this, args));
-  };
-}
-
 const _origStriate = PatternProto.striate;
-if (_origStriate) {
-  PatternProto.striate = function (...args: any[]) {
-    warnIfSignal(this, "striate");
-    return bakeChopOnset(_origStriate.apply(this, args));
-  };
-}
 
-// ─── slice/splice reimplementation ──────────────────────────────────────────
-// Strudel's slice does `pure({ begin, end, ...o })` with `...o` LAST,
-// so pre-existing begin/end on the value overwrites the computed slice values.
-// We reimplement with the same merge logic chop uses: if the value already has
-// begin/end, scale the slice within that range.
+/**
+ * Chops each event into n equal slices, setting begin/end on each sub-event.
+ * For video, each slice shows a different portion of the video.
+ *
+ * Signal controls like `.scrub(sine)` or `.speed(sine)` must come after chop, not before,
+ * as they erase event boundaries that chop needs.
+ *
+ * Composes with `.begin()`/`.end()`: `.begin(0.2).end(0.8).chop(4)` chops within the 20–80% region.
+ *
+ * @param {number | Pattern} n number of slices per event
+ * @returns {Pattern} pattern with n sub-events per original event
+ * @example
+ * $: s("clip.mp4").chop(8)                      // 8 slices per cycle
+ * $: s("clip.mp4").chop(8).rev()                // reversed within each cycle
+ * $: s("clip.mp4").begin(0.2).end(0.8).chop(4)  // chop within region
+ *
+ */
+PatternProto.chop = function (...args: any[]) {
+  warnIfSignal(this, "chop");
+  return _origChop ? bakeChopOnset(_origChop.apply(this, args)) : this;
+};
+
+/**
+ * Like chop, but plays all slices simultaneously overlaid rather than sequentially.
+ * Each event gets a different begin/end slice, all starting at the same time.
+ *
+ * @param {number | Pattern} n number of slices
+ * @returns {Pattern} pattern with n overlapping sub-events
+ * @example
+ * $: s("clip.mp4").striate(4)                   // 4 overlapping slices
+ *
+ */
+PatternProto.striate = function (...args: any[]) {
+  warnIfSignal(this, "striate");
+  return _origStriate ? bakeChopOnset(_origStriate.apply(this, args)) : this;
+};
+
+// ─── JSDoc stubs for Strudel builtins (so the reference plugin picks them up) ──
+
+const _origRev = PatternProto.rev;
+
+/**
+ * Reverses the order of events within each cycle.
+ * With chop, reverses the slices within each cycle (pairwise if slowed).
+ *
+ * @returns {Pattern} pattern with per-cycle reversal
+ * @example
+ * $: s("clip.mp4").chop(8).rev()                // slices reversed within each cycle
+ * $: s("a.mp4 b.mp4 c.mp4").rev()              // plays c, b, a each cycle
+ *
+ */
+PatternProto.rev = function (...args: any[]) {
+  return _origRev.apply(this, args);
+};
+
+const _origRevv = PatternProto.revv;
+
+/**
+ * Reverses the entire pattern timeline (global reversal, not per-cycle).
+ * Unlike rev() which reverses within each cycle, revv() reverses across all cycles.
+ *
+ * @returns {Pattern} pattern with global reversal
+ * @example
+ * $: s("clip.mp4").loopAt(4).chop(8).revv()     // all 8 slices in reverse order
+ *
+ */
+PatternProto.revv = function (...args: any[]) {
+  return _origRevv.apply(this, args);
+};
 
 function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }): any {
   let b = sliceBeginEnd;
@@ -81,6 +133,18 @@ function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }
   return Object.assign({}, original, b);
 }
 
+/**
+ * Cuts the video into n slices and plays only the slices selected by the index pattern.
+ * Unlike chop (which plays all slices sequentially), slice lets you pick which slices to play and in what order.
+ *
+ * @param {number | Pattern} n number of slices to divide the video into
+ * @param {number | string | Pattern} ipat index pattern selecting which slices to play
+ * @returns {Pattern} pattern playing the selected slices
+ * @example
+ * $: s("clip.mp4").slice(8, "0 3 5 7")          // play slices 0, 3, 5, 7
+ * $: s("clip.mp4").slice(8, "0 1 2 3 4 5 6 7".rev()) // all slices reversed
+ *
+ */
 PatternProto.slice = function (n: any, ipat: any) {
   const pat = this;
   const nPat = reify(n);
@@ -97,6 +161,21 @@ PatternProto.slice = function (n: any, ipat: any) {
   return bakeChopOnset(pat.squeezeBind(func));
 };
 
+/**
+ * Like slice, but adjusts speed so each slice fills its event duration.
+ * Combines slicing with speed-fitting — each selected slice plays at the right speed
+ * to complete within its time slot.
+ *
+ * For video, uses the real video duration from the media registry for accurate speed.
+ *
+ * @param {number | Pattern} n number of slices to divide the video into
+ * @param {number | string | Pattern} ipat index pattern selecting which slices to play
+ * @returns {Pattern} pattern playing speed-fitted slices
+ * @example
+ * $: s("clip.mp4").splice(8, "0 3 5 7")         // play slices 0, 3, 5, 7 at fitted speed
+ * $: s("clip.mp4").splice(4, "0 1 2 3")         // 4 speed-fitted slices per cycle
+ *
+ */
 PatternProto.splice = function (n: any, ipat: any) {
   const sliced = this.slice(n, ipat);
   return new CorePattern((state: any) => {
