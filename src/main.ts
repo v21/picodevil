@@ -166,7 +166,7 @@ function fetchVideoBlob(srcUrl: string): void {
 
 function makeVideoEl(name: string): VideoEl {
   const el = document.createElement("video") as VideoEl;
-  el.loop = true;
+  el.loop = false;
   el.muted = true;
   el.playsInline = true;
   el.addEventListener("loadeddata", () => console.log("video loaded:", name));
