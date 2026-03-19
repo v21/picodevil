@@ -268,19 +268,24 @@ PatternProto.dur = PatternProto.duration;
  *
  */
 PatternProto.scrub = function (value: any) {
-  const p = reify(value).withValue((v: any) => ({ _scrub: v }));
-  const merged = this.set(p);
+  const pat = this;
+  const valPat = reify(value);
+  // Frame-time combiner: query the signal at current state (not at the event's
+  // whole span) so signals like sine animate smoothly every frame.
   return new Pattern((state: any) => {
-    return merged.queryArc(state.span.begin, state.span.end).map((hap: any) => {
+    const mainHaps = pat.queryArc(state.span.begin, state.span.end);
+    const ctrlHaps = valPat.queryArc(state.span.begin, state.span.end);
+    const scrubVal = ctrlHaps.length > 0 ? Number(ctrlHaps[0].value) : 0;
+    return mainHaps.map((hap: any) => {
       return hap.withValue((v: any) => {
-        if (v._scrub != null) {
-          const b = v.begin ?? 0;
-          const e = v.end ?? 1;
-          const pos = b + Number(v._scrub) * (e - b);
-          const { _scrub, ...rest } = v;
-          return { ...rest, begin: pos, end: pos };
-        }
-        return v;
+        const b = v.begin ?? 0;
+        const e = v.end ?? 1;
+        const pos = b + scrubVal * (e - b);
+        // Wrap within full video [0, 1], not within [b, e] —
+        // so scrubbing past a chop slice or begin/end region
+        // reaches other parts of the video rather than looping in place.
+        const wrapped = pos >= 0 && pos <= 1 ? pos : ((pos % 1) + 1) % 1;
+        return { ...v, begin: wrapped, end: wrapped };
       });
     });
   });

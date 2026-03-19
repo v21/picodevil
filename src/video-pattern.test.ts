@@ -89,6 +89,55 @@ describe("video()", () => {
     expect(evs[0].value.end).toBeCloseTo(0.8);
   });
 
+  it("scrub(signal) produces different values at different query times", () => {
+    // sine goes from 0→1 over a cycle, so querying at different times
+    // should produce different scrub positions
+    const pat = video("a.mp4").scrub(sine);
+    const at0 = pat.queryArc(0, 0);
+    const at025 = pat.queryArc(0.25, 0.25);
+    const at05 = pat.queryArc(0.5, 0.5);
+    // sine(0)=0, sine(0.25)=1, sine(0.5)=0 — scrub positions should differ
+    expect(at0[0].value.begin).not.toBeCloseTo(at025[0].value.begin, 1);
+  });
+
+  it("chop(4).scrub(signal) scrubs within each slice at frame time", () => {
+    // Each chop slice has a narrow begin/end range.
+    // scrub(sine) should produce different positions at different query times,
+    // even within the same slice.
+    const pat = video("a.mp4").chop(4).scrub(sine);
+    // Query at two different times within the first slice (whole: 0-0.25)
+    const at01 = pat.queryArc(0.1, 0.1);
+    const at02 = pat.queryArc(0.2, 0.2);
+    // sine(0.1) ≠ sine(0.2), so the scrub position within the first slice should differ
+    expect(at01.length).toBeGreaterThan(0);
+    expect(at02.length).toBeGreaterThan(0);
+    // Both should be within the first slice's range [0, 0.25]
+    expect(at01[0].value.begin).toBeGreaterThanOrEqual(0);
+    expect(at01[0].value.begin).toBeLessThanOrEqual(0.25);
+    expect(at02[0].value.begin).toBeGreaterThanOrEqual(0);
+    expect(at02[0].value.begin).toBeLessThanOrEqual(0.25);
+    // And they should differ
+    expect(at01[0].value.begin).not.toBeCloseTo(at02[0].value.begin, 2);
+  });
+
+
+  it("scrub() wraps values outside 0-1 range", () => {
+    // scrub(-0.25) should wrap to 0.75
+    const evs = video("a.mp4").scrub(-0.25).queryArc(0, 1);
+    expect(evs[0].value.begin).toBeCloseTo(0.75);
+    expect(evs[0].value.end).toBeCloseTo(0.75);
+    // scrub(1.3) should wrap to 0.3
+    const evs2 = video("a.mp4").scrub(1.3).queryArc(0, 1);
+    expect(evs2[0].value.begin).toBeCloseTo(0.3);
+    expect(evs2[0].value.end).toBeCloseTo(0.3);
+  });
+
+  it("scrub() wraps within full video, not begin/end range", () => {
+    // begin=0.2, end=0.8, scrub(-0.5) → pos = 0.2 + (-0.5 * 0.6) = -0.1, wraps to 0.9
+    const evs = video("a.mp4").begin(0.2).end(0.8).scrub(-0.5).queryArc(0, 1);
+    expect(evs[0].value.begin).toBeCloseTo(0.9);
+    expect(evs[0].value.end).toBeCloseTo(0.9);
+  });
 
   it("sync() defaults to true (boolean flag)", () => {
     const evs = video("a.mp4").sync().queryArc(0, 1);
