@@ -1,5 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { computeExpectedTime, detectWindowMoving } from "./video-playback";
+import { computeExpectedTime, detectWindowMoving, renderVideoFrame, type VideoEl } from "./video-playback";
+
+/** Create a mock video element for stateful playback tests. */
+function mockVideoEl(opts: { duration: number; currentTime?: number }): VideoEl {
+  const state = {
+    currentTime: opts.currentTime ?? 0,
+    duration: opts.duration,
+    paused: true,
+    playbackRate: 1,
+    src: "test.mp4",
+  };
+  return {
+    get currentTime() { return state.currentTime; },
+    set currentTime(v: number) { state.currentTime = v; },
+    get duration() { return state.duration; },
+    get paused() { return state.paused; },
+    get playbackRate() { return state.playbackRate; },
+    set playbackRate(v: number) { state.playbackRate = v; },
+    get src() { return state.src; },
+    play() { state.paused = false; return Promise.resolve(); },
+    pause() { state.paused = true; },
+  } as unknown as VideoEl;
+}
 
 describe("computeExpectedTime", () => {
   const dur = 10; // 10s video
@@ -206,5 +228,79 @@ describe("detectWindowMoving", () => {
     expect({ t: resetT, case1: e1, case2: e2, diff: e1 - e2 }).toEqual(
       expect.objectContaining({ diff: expect.closeTo(0, 2) })
     );
+  });
+});
+
+describe("renderVideoFrame stateful behavior", () => {
+  const cps = 0.5;
+
+  it("seeks to correct position on loop wrap", () => {
+    // 4s video, loopStart=0, loopEnd=4. At cps=0.5, loop wraps every 2 cycles.
+    const el = mockVideoEl({ duration: 4, currentTime: 3.9 });
+    const ev = { speed: 1, begin: 0, end: 1 };
+
+    // Frame just before wrap: cycle=1.95, eventBegin=0
+    renderVideoFrame({ ev, el, currentCycle: 1.95, eventBegin: 0, cps });
+
+    // Frame just after wrap: cycle=2.05, eventBegin=0
+    // expected = (2.05/0.5) % 4 = 4.1 % 4 = 0.1
+    // Without loop-wrap detection: if el.currentTime=4.0, rawDrift=3.9,
+    // modular drift = min(3.9, |3.9-4|) = 0.1 < 0.15 → missed!
+    el.currentTime = 4.0; // simulate browser playing past loopEnd
+    renderVideoFrame({ ev, el, currentCycle: 2.05, eventBegin: 0, cps });
+
+    expect(el.currentTime).toBeCloseTo(0.1, 1);
+  });
+
+  it("new event boundary resets tracking and seeks", () => {
+    const el = mockVideoEl({ duration: 10, currentTime: 5 });
+    const ev = { speed: 1, begin: 0, end: 1 };
+
+    // First event
+    renderVideoFrame({ ev, el, currentCycle: 2.5, eventBegin: 0, cps });
+    expect(el._lastEventBegin).toBe(0);
+
+    // New event: eventBegin=3, cycle=3.1 → expected = (3.1-3)/0.5 = 0.2s
+    renderVideoFrame({ ev, el, currentCycle: 3.1, eventBegin: 3, cps });
+    expect(el._lastEventBegin).toBe(3);
+    expect(el.currentTime).toBeCloseTo(0.2, 1);
+  });
+
+  it("prevExpected captured before overwriting (Bug 2 regression)", () => {
+    const el = mockVideoEl({ duration: 4, currentTime: 3.9 });
+    const ev = { speed: 1, begin: 0, end: 1 };
+
+    // Prime tracking state: _lastExpected near loopEnd
+    renderVideoFrame({ ev, el, currentCycle: 1.9, eventBegin: 0, cps });
+    expect(el._lastExpected).toBeCloseTo(3.8, 1);
+
+    // Wrap: cycle=2.1, expected≈0.2. prevExpected must be ~3.8 (old value).
+    el.currentTime = 3.95;
+    renderVideoFrame({ ev, el, currentCycle: 2.1, eventBegin: 0, cps });
+
+    // If prevExpected was correctly captured, wrap detection fires → seek to ~0.2
+    expect(el.currentTime).toBeCloseTo(0.2, 0);
+    expect(el._lastExpected).toBeCloseTo(0.2, 0);
+  });
+
+  it("negative speed uses manual seeking", () => {
+    const el = mockVideoEl({ duration: 10, currentTime: 0 });
+    const ev = { speed: -1, begin: 0, end: 1 };
+
+    renderVideoFrame({ ev, el, currentCycle: 0.5, eventBegin: 0, cps });
+
+    expect(el.paused).toBe(true);
+    // expected = loopEnd - (1 % 10) = 10 - 1 = 9
+    expect(el.currentTime).toBeCloseTo(9, 0);
+  });
+
+  it("native speed plays and corrects drift", () => {
+    const el = mockVideoEl({ duration: 10, currentTime: 0 });
+    const ev = { speed: 1, begin: 0, end: 1 };
+
+    // New event at cycle=1, expected=2s, el at 0 → drift > threshold → seek
+    renderVideoFrame({ ev, el, currentCycle: 1, eventBegin: 0, cps });
+    expect(el.currentTime).toBeCloseTo(2, 1);
+    expect(el.paused).toBe(false);
   });
 });

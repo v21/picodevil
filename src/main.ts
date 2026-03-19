@@ -32,6 +32,7 @@ import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage } from "./media-registry";
 import { renderVideoFrame, type VideoEl } from "./video-playback";
+import { eventBeginFromHap } from "./event-begin";
 import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
 import { transpile } from "./transpiler";
@@ -408,15 +409,6 @@ const frameAssignments = new Map<string, VideoEl>();
 /** Threshold for sharing: two events showing the same src within this many seconds share an element. */
 const SHARE_TIME_THRESHOLD = 0.04;
 
-/** Compute eventBegin from a hap — the cycle position used to compute elapsed playback time.
- *
- * When sync is enabled, eventBegin is always 0 (play continuously from cycle 0).
- * Otherwise, use the hap's whole.begin (the canonical post-slow/post-chop event start).
- */
-function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  if (ev.sync != null) return 0;
-  return Number(hap?.whole?.begin ?? t);
-}
 
 interface FrameEvent {
   screenIndex: number;
