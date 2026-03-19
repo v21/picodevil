@@ -89,7 +89,8 @@ export function renderVideoFrame(c: VideoFrameContext): void {
     }
   }
 
-  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps);
+  const syncOffset = c.ev.sync != null && c.ev.sync !== true ? Number(c.ev.sync) * c.el.duration : 0;
+  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset);
 }
 
 function updateVideoPlayback(
@@ -100,6 +101,7 @@ function updateVideoPlayback(
   currentCycle: number,
   eventBegin: number,
   cps: number,
+  syncOffset: number = 0,
 ): void {
   const dur = el.duration;
   const loopStart = beginVal * dur;
@@ -108,7 +110,7 @@ function updateVideoPlayback(
 
   const expected = computeExpectedTime({
     currentCycle, eventBegin, cps: cps || 0.5,
-    speed, loopStart, loopEnd, duration: dur,
+    speed, loopStart, loopEnd, duration: dur, syncOffset,
   });
 
   // Detect event boundary: new event means force-seek to expected position

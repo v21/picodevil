@@ -294,6 +294,16 @@ describe("renderVideoFrame stateful behavior", () => {
     expect(el.currentTime).toBeCloseTo(9, 0);
   });
 
+  it("sync phase offset is applied to playback position", () => {
+    // sync(0.3) on a 10s video → syncOffset = 0.3 * 10 = 3s
+    // At cycle 0, eventBegin 0: expected = 0 + 3 = 3s
+    const el = mockVideoEl({ duration: 10, currentTime: 0 });
+    const ev = { speed: 1, begin: 0, end: 1, sync: 0.3 };
+
+    renderVideoFrame({ ev, el, currentCycle: 0, eventBegin: 0, cps });
+    expect(el.currentTime).toBeCloseTo(3, 1);
+  });
+
   it("native speed plays and corrects drift", () => {
     const el = mockVideoEl({ duration: 10, currentTime: 0 });
     const ev = { speed: 1, begin: 0, end: 1 };
