@@ -1,12 +1,13 @@
 import { EditorView, keymap } from "@codemirror/view";
-import { EditorState, Prec } from "@codemirror/state";
+import { EditorState, Prec, Transaction } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
+import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
 
 declare global {
   interface Window {
-    uzuEval: (code: string) => string | null;
+    uzuEval: (code: string) => { error: string | null; widgets: WidgetCallInfo[] };
     uzuSetCode: (code: string) => void;
   }
 }
@@ -52,14 +53,42 @@ export function setupEditor(parent: HTMLElement): EditorView {
     }, 5000);
   });
 
+  /** Handle slider drag: update value store + rewrite code for persistence. */
+  function handleSliderChange(editorView: EditorView, index: number, newValue: number, addToHistory: boolean) {
+    // Value store already updated by editor-widgets.ts (setWidgetValue call)
+    // Read live positions (mapped through all prior doc changes)
+    const positions = editorView.state.field(widgetPositions);
+    const pos = positions[index];
+    if (!pos) return;
+    // Rewrite the value argument in the source code
+    const newText = toSigFigs(newValue);
+    editorView.dispatch({
+      changes: { from: pos.valueArgStart, to: pos.valueArgEnd, insert: newText },
+      annotations: Transaction.addToHistory.of(addToHistory),
+    });
+    // Save to localStorage
+    localStorage.setItem(STORAGE_KEY, editorView.state.doc.toString());
+  }
+
+  const widgets = widgetExtension(handleSliderChange);
+
+  /** Eval code and push widget decorations into the editor. */
+  function evalAndDecorate(editorView: EditorView, code: string) {
+    const result = window.uzuEval(code);
+    showError(result.error);
+    // Push widget metadata into the editor for decoration
+    editorView.dispatch({
+      effects: setWidgetMeta.of(result.widgets),
+    });
+  }
+
   const evalKeymap = Prec.highest(keymap.of([
     {
       key: "Ctrl-Enter",
       run(view: EditorView) {
         const code = view.state.doc.toString();
         localStorage.setItem(STORAGE_KEY, code);
-        const err = window.uzuEval(code);
-        showError(err);
+        evalAndDecorate(view, code);
         // flash effect
         const lines = view.dom.querySelectorAll(".cm-line");
         lines.forEach((el) => {
@@ -78,7 +107,7 @@ export function setupEditor(parent: HTMLElement): EditorView {
     parent,
     state: EditorState.create({
       doc: savedCode ?? defaultCode,
-      extensions: [basicSetup, javascript(), evalKeymap],
+      extensions: [basicSetup, javascript(), evalKeymap, widgets],
     }),
   });
 
@@ -89,7 +118,7 @@ export function setupEditor(parent: HTMLElement): EditorView {
   };
 
   // evaluate initial code at startup
-  showError(window.uzuEval(savedCode ?? defaultCode));
+  evalAndDecorate(view, savedCode ?? defaultCode);
 
   return view;
 }

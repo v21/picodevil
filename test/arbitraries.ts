@@ -215,6 +215,16 @@ const numericSignalFunction: fc.Arbitrary<string> = fc.oneof(
     .map(vs => `chooseIn(${vs.join(", ")})`),
   fc.integer({ min: 1, max: 8 }).map(n => `run(${n})`),
   fc.double({ min: 0, max: 1, noNaN: true }).map(n => `steady(${n.toFixed(2)})`),
+  fc.tuple(
+    fc.double({ min: 0, max: 1, noNaN: true }),
+    fc.double({ min: 0, max: 1, noNaN: true }),
+    fc.double({ min: 0, max: 2, noNaN: true }),
+  ).map(([val, min, max]) => {
+    const lo = Math.min(min, max);
+    const hi = Math.max(min, max) || 1;
+    const v = lo + val * (hi - lo);
+    return `slider(${v.toFixed(3)}, ${lo.toFixed(2)}, ${hi.toFixed(2)})`;
+  }),
 );
 
 /** Any signal expression (may include booleans — use for speed). */
