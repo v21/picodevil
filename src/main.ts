@@ -431,7 +431,7 @@ function collectFrameEvents(t: number): FrameEvent[] {
   for (let si = 0; si < screens.length; si++) {
     let events: any[];
     try {
-      events = screens[si].queryArc(t, t + 0.001);
+      events = screens[si].queryArc(t, t);
     } catch (e) {
       warn(`queryArc failed on screen ${si}: ${e instanceof Error ? e.message : e}`);
       continue;
@@ -654,7 +654,7 @@ function prewarmVideos(cycle: number, cps: number) {
   for (const screen of screens) {
     let futureEvents: any[];
     try {
-      futureEvents = screen.queryArc(futureT, futureT + 0.001);
+      futureEvents = screen.queryArc(futureT, futureT);
       if (!futureEvents || !Array.isArray(futureEvents)) continue;
     } catch { continue; }
 
@@ -727,7 +727,7 @@ function frame() {
 
   let cps = cyclesPerSecond;
   if (cpsPattern) {
-    const haps = cpsPattern.queryArc(accumulatedCycle, accumulatedCycle + 0.001);
+    const haps = cpsPattern.queryArc(accumulatedCycle, accumulatedCycle);
     if (haps.length > 0) cps = Math.max(0, Number(haps[0].value)) || 0;
   }
   accumulatedCycle += deltaSec * cps;

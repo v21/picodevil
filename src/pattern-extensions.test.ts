@@ -3,7 +3,7 @@ import { mini } from "@strudel/mini";
 import "./pattern-extensions";
 
 function queryVal(pat: any, t: number): number {
-  const evs = pat.queryArc(t, t + 0.001);
+  const evs = pat.queryArc(t, t);
   return evs.length ? evs[0].value : undefined;
 }
 

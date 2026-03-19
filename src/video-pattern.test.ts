@@ -28,8 +28,8 @@ describe("video()", () => {
 
   it("speed pattern aligns with src", () => {
     const p = video("a.mp4 b.mp4").speed(mini("1 2"));
-    const first = p.queryArc(0, 0.001);
-    const second = p.queryArc(0.5, 0.501);
+    const first = p.queryArc(0, 0);
+    const second = p.queryArc(0.5, 0.5);
     expect(first[0].value.src).toBe("a.mp4");
     expect(first[0].value.speed).toBe(1);
     expect(second[0].value.src).toBe("b.mp4");
@@ -123,7 +123,7 @@ describe("video()", () => {
   });
 
   it("does not bake _onset into event values", () => {
-    const evs = video("a.mp4").queryArc(0, 0.001);
+    const evs = video("a.mp4").queryArc(0, 0);
     expect(evs[0].value._onset).toBeUndefined();
   });
 

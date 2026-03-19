@@ -5,7 +5,7 @@ import { index } from "./index-patterns";
 import "./visual-controls";
 
 function queryAll(pat: any, t: number) {
-  return pat.queryArc(t, t + 0.001).map((e: any) => e.value);
+  return pat.queryArc(t, t).map((e: any) => e.value);
 }
 
 function approx(a: number, b: number, tol = 1e-9) {

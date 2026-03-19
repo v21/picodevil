@@ -7,7 +7,7 @@ import { rand, rand2, choose, degradeBy, degrade, sometimesBy } from "./event-ra
 import "./visual-controls";
 
 function queryAlpha(pat: any, t: number): number {
-  return pat.queryArc(t, t + 0.001)[0]?.value?.alpha;
+  return pat.queryArc(t, t)[0]?.value?.alpha;
 }
 
 // ─── per-event stability ──────────────────────────────────────────────────────
@@ -41,8 +41,8 @@ describe("per-event rand stability (no flicker)", () => {
 
   it("rand2 is also stable per hap", () => {
     const pat = color("red").x(rand2);
-    const v1 = pat.queryArc(0.1, 0.101)[0].value.x;
-    const v2 = pat.queryArc(0.7, 0.701)[0].value.x;
+    const v1 = pat.queryArc(0.1, 0.1)[0].value.x;
+    const v2 = pat.queryArc(0.7, 0.7)[0].value.x;
     expect(v1).toBe(v2);
   });
 
@@ -82,7 +82,7 @@ describe("per-event rand stability (no flicker)", () => {
 describe("parallel instance decorrelation via index()", () => {
   it("two simultaneous slots get different rand values", () => {
     const pat = index(color("red").alpha(rand), color("blue").alpha(rand));
-    const evs = pat.queryArc(0.1, 0.101);
+    const evs = pat.queryArc(0.1, 0.1);
     const red = evs.find((e: any) => e.value.color === "red");
     const blue = evs.find((e: any) => e.value.color === "blue");
     expect(red.value.alpha).not.toBe(blue.value.alpha);
@@ -90,8 +90,8 @@ describe("parallel instance decorrelation via index()", () => {
 
   it("slot values are stable across frame times", () => {
     const pat = index(color("red").alpha(rand), color("blue").alpha(rand));
-    const v1 = pat.queryArc(0.1, 0.101).find((e: any) => e.value.color === "red").value.alpha;
-    const v2 = pat.queryArc(0.4, 0.401).find((e: any) => e.value.color === "red").value.alpha;
+    const v1 = pat.queryArc(0.1, 0.1).find((e: any) => e.value.color === "red").value.alpha;
+    const v2 = pat.queryArc(0.4, 0.4).find((e: any) => e.value.color === "red").value.alpha;
     expect(v1).toBe(v2);
   });
 });
@@ -101,7 +101,7 @@ describe("parallel instance decorrelation via index()", () => {
 describe("parallel instance decorrelation via indexCycle()", () => {
   it("two simultaneous slots get different rand values", () => {
     const pat = indexCycle(color("red").alpha(rand), color("blue").alpha(rand));
-    const evs = pat.queryArc(0.1, 0.101);
+    const evs = pat.queryArc(0.1, 0.1);
     const red = evs.find((e: any) => e.value.color === "red");
     const blue = evs.find((e: any) => e.value.color === "blue");
     expect(red.value.alpha).not.toBe(blue.value.alpha);
@@ -113,7 +113,7 @@ describe("parallel instance decorrelation via indexCycle()", () => {
       color("red").alpha(rand),
       color("red").alpha(rand),
     );
-    const alphas = pat.queryArc(0.1, 0.101).map((e: any) => e.value.alpha);
+    const alphas = pat.queryArc(0.1, 0.1).map((e: any) => e.value.alpha);
     expect(alphas).toHaveLength(3);
     // All 3 should differ
     expect(new Set(alphas).size).toBe(3);
@@ -125,15 +125,15 @@ describe("parallel instance decorrelation via indexCycle()", () => {
 describe("parallel instance decorrelation via stackN()", () => {
   it("4 copies of same pattern get different rand values", () => {
     const pat = stackN(4, color("red").alpha(rand));
-    const alphas = pat.queryArc(0.1, 0.101).map((e: any) => e.value.alpha);
+    const alphas = pat.queryArc(0.1, 0.1).map((e: any) => e.value.alpha);
     expect(alphas).toHaveLength(4);
     expect(new Set(alphas).size).toBeGreaterThan(1);
   });
 
   it("slot values are stable across frame times", () => {
     const pat = stackN(2, color("red").alpha(rand));
-    const first1 = pat.queryArc(0.1, 0.101)[0].value.alpha;
-    const first2 = pat.queryArc(0.5, 0.501)[0].value.alpha;
+    const first1 = pat.queryArc(0.1, 0.1)[0].value.alpha;
+    const first2 = pat.queryArc(0.5, 0.5)[0].value.alpha;
     expect(first1).toBe(first2);
   });
 });
@@ -142,15 +142,15 @@ describe("parallel instance decorrelation via stackN()", () => {
 
 describe("degradeBy()", () => {
   it("prob=0 keeps all events", () => {
-    expect(color("red").degradeBy(0).queryArc(0.25, 0.251)).toHaveLength(1);
+    expect(color("red").degradeBy(0).queryArc(0.25, 0.25)).toHaveLength(1);
   });
 
   it("prob=1 removes all events", () => {
-    expect(color("red").degradeBy(1).queryArc(0.25, 0.251)).toHaveLength(0);
+    expect(color("red").degradeBy(1).queryArc(0.25, 0.25)).toHaveLength(0);
   });
 
   it("function form: degradeBy(0)(pat) keeps all", () => {
-    expect(degradeBy(0)(color("red")).queryArc(0.25, 0.251)).toHaveLength(1);
+    expect(degradeBy(0)(color("red")).queryArc(0.25, 0.25)).toHaveLength(1);
   });
 });
 

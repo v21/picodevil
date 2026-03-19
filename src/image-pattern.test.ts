@@ -18,7 +18,7 @@ describe("image()", () => {
   });
 
   it("queryArc at mid-cycle returns correct src", () => {
-    const evs = image("a.png b.png").queryArc(0.5, 0.501);
+    const evs = image("a.png b.png").queryArc(0.5, 0.5);
     expect(evs).toHaveLength(1);
     expect(evs[0].value.src).toBe("b.png");
   });

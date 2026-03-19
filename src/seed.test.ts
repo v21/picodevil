@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { rand } from "@strudel/core";
 
 function queryValue(pat: any, t: number): number {
-  const evs = pat.queryArc(t, t + 0.001);
+  const evs = pat.queryArc(t, t);
   return evs.length ? Number(evs[0].value) : NaN;
 }
 

@@ -62,7 +62,7 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
       const { hap: cycleHap, srcIdx } = cycleTagged[i];
       const onset = hapOnset(cycleHap);
       const onsetKey = String(onset);
-      if (Number(cycleHap.part.begin) >= Number(end) || Number(cycleHap.part.end) <= Number(begin))
+      if (Number(cycleHap.part.begin) > Number(end) || Number(cycleHap.part.end) <= Number(begin))
         continue;
 
       const groupKey = `${srcIdx}:${onsetKey}`;

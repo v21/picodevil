@@ -343,7 +343,7 @@ PatternProto.fit = function (...args: any[]) {
 PatternProto.loopAt = function (n: any) {
   const pat = this;
   return new Pattern((state: any) => {
-    const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin + 0.001)[0]?.value ?? 1);
+    const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin)[0]?.value ?? 1);
     return pat.slow(nVal).queryArc(state.span.begin, state.span.end).map((hap: any) => {
       if (!hap.value || !hap.whole) return hap;
       const v = hap.value;

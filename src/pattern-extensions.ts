@@ -175,7 +175,7 @@ PatternProto.splice = function (n: any, ipat: any) {
       }
 
       // Fallback: Strudel's formula (works for non-video or unknown duration)
-      const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin + 0.001)[0]?.value ?? n);
+      const nVal = Number(reify(n).queryArc(state.span.begin, state.span.begin)[0]?.value ?? n);
       const speedAdj = 1 / (nVal * wholeDur);
       return hap.withValue((val: any) => ({
         ...val,
@@ -340,8 +340,8 @@ PatternProto.lerp = function (curve: any = "linear", direction: any = "inout") {
     const evs = collectEvents(src, t);
     if (!evs.length) return [];
 
-    const curveVal = curvePat.queryArc(t, t + 0.001)[0]?.value ?? "linear";
-    const dirVal = dirPat.queryArc(t, t + 0.001)[0]?.value ?? "inout";
+    const curveVal = curvePat.queryArc(t, t)[0]?.value ?? "linear";
+    const dirVal = dirPat.queryArc(t, t)[0]?.value ?? "inout";
     const ease = getEase(String(curveVal), String(dirVal));
 
     const i = findCurrentIndex(evs, t);
@@ -385,7 +385,7 @@ PatternProto.spline = function (tension: any = 0.5) {
     const evs = collectEvents(src, t);
     if (!evs.length) return [];
 
-    const tensionVal = Number(tensionPat.queryArc(t, t + 0.001)[0]?.value ?? 0.5);
+    const tensionVal = Number(tensionPat.queryArc(t, t)[0]?.value ?? 0.5);
 
     const i = findCurrentIndex(evs, t);
     const cur = evs[i];

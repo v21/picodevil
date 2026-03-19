@@ -111,7 +111,7 @@ function renderScreen(
   t: number,
   opts: { imagePool?: Map<string, HTMLImageElement>; videoPool?: Map<string, HTMLVideoElement> } = {},
 ): void {
-  const events = screen.queryArc(t, t + 0.001);
+  const events = screen.queryArc(t, t);
   if (!events.length) return;
 
   for (const hap of events) {

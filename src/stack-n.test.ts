@@ -5,7 +5,7 @@ import { stackN } from "./grid-stack";
 import "./index-patterns";
 
 function queryAll(pat: any, t: number) {
-  return pat.queryArc(t, t + 0.001).map((e: any) => e.value);
+  return pat.queryArc(t, t).map((e: any) => e.value);
 }
 
 describe("stackN()", () => {
