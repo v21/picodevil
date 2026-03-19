@@ -11,10 +11,9 @@ uzuvid is a live-coding visual performance tool. Users write JavaScript in a bro
 - **Do things the Strudel way** - this means functional composition, simplicity, and optimising for a user who is live coding.
 - **No fast paths** — treat everything uniformly as patterns. No `typeof` shortcuts or separate code paths for literal values vs patterns. `reify()` handles both.
 - **Everything resolves at query time, not build time** — grid size, position, children, all parameters come from pattern resolution at the moment of query. No baking in values at construction time.
-- **One code path** — avoid branching on "is this a number or a pattern?". The same logic should handle both.
 - **Prefer simplicity and deletion** — remove code rather than add special cases. Three similar lines are better than a premature abstraction.
 - **Patterns all the way down** — everything is a Strudel Pattern with object values. Controls are methods on Pattern.prototype via `createMixParam`. No class hierarchy.
-- **Prefer testing to reasoning** - if you have a choice between creating a test case and tracing through the logic that way, or trying to trace through the logic manually - prefer making a test case.
+- **Prefer testing to reasoning** - if you have a choice between creating a test case and observing what happens, or trying to trace through the logic abstractly, then prefer making a test case.
 
 ## Project structure
 
@@ -57,7 +56,7 @@ uzuvid/
 2. The transpiler converts `$: expr` lines into `expr.p("$")` calls, and wraps double-quoted strings in `mini()`.
 3. The render loop runs at requestAnimationFrame rate. Each frame it:
    - Computes cycle position from elapsed time and `cyclesPerSecond`
-   - Queries each screen pattern with `queryArc(t, t + 0.001)`
+   - Queries each screen pattern with `queryArc(t, t)` (zero-width instant query)
    - Draws each event: resolves position (x/y/width/height), alpha, blend mode, scale, fit, then renders color/video/image
 4. `window.uzuEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
 
