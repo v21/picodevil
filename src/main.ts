@@ -454,6 +454,9 @@ function collectFrameEvents(t: number): FrameEvent[] {
  */
 function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) {
   frameAssignments.clear();
+  // Track expected times per assignment so sharing compares expected-to-expected
+  // (not el.currentTime which may not have been seeked yet)
+  const assignedExpected = new Map<string, { srcUrl: string; expected: number }>();
 
   for (const fe of frameEvents) {
     if (fe.ev._type !== "video") continue;
@@ -470,21 +473,23 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
     const prev = videoPool.get(drawPos);
     if (prev && prev._srcUrl === srcUrl) {
       frameAssignments.set(drawPos, prev);
+      if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
       continue;
     }
 
-    // 2. Share: another event already assigned this frame with same src at similar position
+    // 2. Share: another event already assigned this frame with same src at similar expected time
     let shared = false;
     if (expectedTime != null) {
-      for (const [, el] of frameAssignments) {
+      for (const [otherKey, el] of frameAssignments) {
         if (el._srcUrl !== srcUrl) continue;
-        const dur = isFinite(el.duration) ? el.duration : 0;
-        const score = dur > 0 ? scoreFreeElement(el.currentTime, expectedTime, dur) : Infinity;
+        const other = assignedExpected.get(otherKey);
+        if (!other || other.srcUrl !== srcUrl) continue;
+        const dur = cachedDur ?? (isFinite(el.duration) ? el.duration : 0);
+        const score = dur > 0 ? scoreFreeElement(other.expected, expectedTime, dur) : Math.abs(other.expected - expectedTime);
         if (score < SHARE_TIME_THRESHOLD) {
           frameAssignments.set(drawPos, el);
-          // Don't persist in videoPool — sharing is per-frame only.
-          // As playback diverges the check will fail and this position
-          // gets its own element from the free pool.
+          assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
+          uzuMetrics.shareHits++;
           shared = true;
           break;
         }
@@ -498,6 +503,7 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
     const isScrubbed = Number(ev.begin ?? 0) === Number(ev.end ?? 1);
     const el = getVideoEl(ev.src, base, drawPos, expectedTime ?? undefined, !isScrubbed);
     frameAssignments.set(drawPos, el as VideoEl);
+    if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
   }
 
   // Free active pool entries not used this frame
