@@ -36,10 +36,13 @@ uzuvid/
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
     screen-pattern.ts     — screen()/s() function: auto-detects type per token (registry → extension → color fallback)
     draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering, FitMode type
-    video-playback.ts     — video frame rendering: playback update, seeking
+    video-playback.ts     — video frame rendering: playback update, seeking (computeExpectedTime, detectWindowMoving, renderVideoFrame)
+    event-begin.ts        — eventBeginFromHap: derives playback start cycle from hap + event value
+    video-pool.ts         — computeExpectedFromEvent, scoreFreeElement for video element pool
     playback-rate.ts      — setPlaybackRate helper, native rate range constants
     time-value.ts         — TimeValue type and parsing (relative, seconds, milliseconds)
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
+    create-mix-param.ts   — createMixParam: custom combiner preserving whole spans
   test/
     monkey-test.ts        — grammar-based random pattern generator + browser runner
     regression-cases.json — saved regression cases for conformance replay
@@ -130,11 +133,30 @@ cd server && npm install && npm start
 npm test
 
 # Monkey testing — generates random patterns and checks for crashes/errors
-npx tsx test/monkey-test.ts --rounds 10 --delay 1000 --headless
+npm run test:monkey
 
 # Replay saved failures as a conformance suite
-npx tsx test/monkey-test.ts --replay --delay 1000 --headless
+npm run test:monkey:replay
+
+# Stress testing — runs demanding video patterns, collects frame timing metrics
+# Reports p50/p95/p99/max frame times, fails if p95 > 32ms (configurable)
+npm run test:stress:headless
+# Or with visible browser:
+npm run test:stress
 ```
+
+### Test suite overview
+
+Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest. Beyond standard per-module unit tests, the suite includes three higher-level test layers worth adding to when changing playback or pattern composition:
+
+- **Pipeline tests** (`playback-pipeline.test.ts`) — build real pattern chains, query them, and verify the full eventBeginFromHap → computeExpectedTime pipeline produces correct positions. Good place to add regression tests for specific pattern combos that break.
+- **Invariant tests** (`playback-invariants.test.ts`) — property-based tests via fast-check verifying invariants that must hold for any inputs (position in range, continuity, monotonicity, etc.)
+- **Simulation tests** (`playback-simulation.test.ts`) — step through pattern chains at 60fps, verify trace invariants, and test equivalence classes (e.g. alpha doesn't change position, speed(1) is identity)
+
+**Monkey & stress testing** (`test/`):
+- `monkey-test.ts` — grammar-based random pattern generator, checks for crashes/errors
+- `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
+- `regression-cases.json` — saved monkey failures for conformance replay
 
 ## Git commit style
 
@@ -155,7 +177,8 @@ When working through a list of tasks, **stop and check in with the user after co
 2. **Implement the change** to make the test pass (green)
 3. When adding new user-facing functionality, also add coverage to the monkey tester
 4. Run `npm test` (unit tests)
-5. Run monkey testing: `npx run test:monkey` and `npm run test:monkey:replay`
+5. Run monkey testing: `npm run test:monkey` and `npm run test:monkey:replay`
+5b. For performance-sensitive changes (video playback, pool management, render loop): also run `npm run test:stress:headless`
 6. Report what was done and wait for go-ahead
 7. Don't commit changes unless asked
 
