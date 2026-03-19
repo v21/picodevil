@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { computeExpectedTime, detectWindowMoving, renderVideoFrame, type VideoEl } from "./video-playback";
+import { createVideoState } from "./video-element-state";
 
 /** Create a mock video element for stateful playback tests. */
 function mockVideoEl(opts: { duration: number; currentTime?: number }): VideoEl {
-  const state = {
+  const elState = {
     currentTime: opts.currentTime ?? 0,
     duration: opts.duration,
     paused: true,
@@ -11,15 +12,16 @@ function mockVideoEl(opts: { duration: number; currentTime?: number }): VideoEl 
     src: "test.mp4",
   };
   return {
-    get currentTime() { return state.currentTime; },
-    set currentTime(v: number) { state.currentTime = v; },
-    get duration() { return state.duration; },
-    get paused() { return state.paused; },
-    get playbackRate() { return state.playbackRate; },
-    set playbackRate(v: number) { state.playbackRate = v; },
-    get src() { return state.src; },
-    play() { state.paused = false; return Promise.resolve(); },
-    pause() { state.paused = true; },
+    _state: createVideoState(),
+    get currentTime() { return elState.currentTime; },
+    set currentTime(v: number) { elState.currentTime = v; },
+    get duration() { return elState.duration; },
+    get paused() { return elState.paused; },
+    get playbackRate() { return elState.playbackRate; },
+    set playbackRate(v: number) { elState.playbackRate = v; },
+    get src() { return elState.src; },
+    play() { elState.paused = false; return Promise.resolve(); },
+    pause() { elState.paused = true; },
   } as unknown as VideoEl;
 }
 
@@ -258,11 +260,11 @@ describe("renderVideoFrame stateful behavior", () => {
 
     // First event
     renderVideoFrame({ ev, el, currentCycle: 2.5, eventBegin: 0, cps });
-    expect(el._lastEventBegin).toBe(0);
+    expect(el._state.lastEventBegin).toBe(0);
 
     // New event: eventBegin=3, cycle=3.1 → expected = (3.1-3)/0.5 = 0.2s
     renderVideoFrame({ ev, el, currentCycle: 3.1, eventBegin: 3, cps });
-    expect(el._lastEventBegin).toBe(3);
+    expect(el._state.lastEventBegin).toBe(3);
     expect(el.currentTime).toBeCloseTo(0.2, 1);
   });
 
@@ -272,7 +274,7 @@ describe("renderVideoFrame stateful behavior", () => {
 
     // Prime tracking state: _lastExpected near loopEnd
     renderVideoFrame({ ev, el, currentCycle: 1.9, eventBegin: 0, cps });
-    expect(el._lastExpected).toBeCloseTo(3.8, 1);
+    expect(el._state.lastExpected).toBeCloseTo(3.8, 1);
 
     // Wrap: cycle=2.1, expected≈0.2. prevExpected must be ~3.8 (old value).
     el.currentTime = 3.95;
@@ -280,7 +282,7 @@ describe("renderVideoFrame stateful behavior", () => {
 
     // If prevExpected was correctly captured, wrap detection fires → seek to ~0.2
     expect(el.currentTime).toBeCloseTo(0.2, 0);
-    expect(el._lastExpected).toBeCloseTo(0.2, 0);
+    expect(el._state.lastExpected).toBeCloseTo(0.2, 0);
   });
 
   it("negative speed uses manual seeking", () => {

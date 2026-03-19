@@ -1,6 +1,6 @@
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
-
-export type VideoEl = HTMLVideoElement & { _seeking?: boolean; _srcUrl?: string; _lastEventBegin?: number; _seekStartTime?: number; _lastLogTime?: number; _lastExpected?: number; _lastExpectedWall?: number };
+import type { VideoEl } from "./video-element-state";
+export type { VideoEl } from "./video-element-state";
 
 export interface VideoFrameContext {
   ev: any;
@@ -80,11 +80,11 @@ export function renderVideoFrame(c: VideoFrameContext): void {
       currentCycle: c.currentCycle, eventBegin: c.eventBegin, cps: c.cps || 0.5,
       speed, loopStart, loopEnd, duration: dur, syncOffset,
     });
-    const prevExp = c.el._lastExpected;
+    const prevExp = c.el._state.lastExpected;
     const jumped = prevExp != null && loopLen > 0 && (prevExp - expected) > loopLen / 2;
-    const isNew = c.el._lastEventBegin !== c.eventBegin;
+    const isNew = c.el._state.lastEventBegin !== c.eventBegin;
     if (jumped || isNew) {
-      const src = (c.el._srcUrl ?? c.el.src).split("/").pop();
+      const src = (c.el._state.srcUrl ?? c.el.src).split("/").pop();
       console.log(`[DEBUG] ${src} seek: eventBegin=${c.eventBegin} begin=${beginVal} end=${endVal} speed=${speed.toFixed(3)} expected=${expected.toFixed(3)} ct=${c.el.currentTime.toFixed(3)} loopRange=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] cycle=${c.currentCycle.toFixed(4)} isNew=${isNew} loopWrap=${jumped}`);
     }
   }
@@ -114,46 +114,47 @@ function updateVideoPlayback(
   });
 
   // Detect event boundary: new event means force-seek to expected position
-  const isNewEvent = el._lastEventBegin !== eventBegin;
+  const st = el._state;
+  const isNewEvent = st.lastEventBegin !== eventBegin;
   if (isNewEvent) {
-    el._lastEventBegin = eventBegin;
+    st.lastEventBegin = eventBegin;
     // Reset rate tracking so a position jump from a new event doesn't look like a moving window
-    el._lastExpected = undefined;
-    el._lastExpectedWall = undefined;
+    st.lastExpected = undefined;
+    st.lastExpectedWall = undefined;
   }
 
-  const src = el._srcUrl ?? el.src;
+  const src = st.srcUrl ?? el.src;
   const now = Date.now();
-  const canLog = (now - (el._lastLogTime ?? 0)) > 300;
+  const canLog = (now - (st.lastLogTime ?? 0)) > 300;
 
-  const prevExpected = el._lastExpected;
-  const wallDt = el._lastExpectedWall != null ? (now - el._lastExpectedWall) / 1000 : 0;
+  const prevExpected = st.lastExpected;
+  const wallDt = st.lastExpectedWall != null ? (now - st.lastExpectedWall) / 1000 : 0;
   const windowIsMoving = detectWindowMoving({ expected, prevExpected, wallDt, speed, loopLen });
-  el._lastExpected = expected;
-  el._lastExpectedWall = now;
+  st.lastExpected = expected;
+  st.lastExpectedWall = now;
 
   if (speed < 0 || !isNativeRate(speed) || windowIsMoving) {
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
-    if (el._seeking) {
-      const seekAge = now - (el._seekStartTime ?? now);
+    if (st.seeking) {
+      const seekAge = now - (st.seekStartTime ?? now);
       if (seekAge > 200 && canLog) {
         console.warn(`[uzuvid] ${src}: seeking is slow (${seekAge}ms pending) — playback will stutter [seeking mode, speed ${speed}x]`);
-        el._lastLogTime = now;
+        st.lastLogTime = now;
       }
     } else {
       if (isNewEvent && canLog) {
         console.log(`[uzuvid] ${src}: using manual seeking (speed ${speed}x) — won't play smoothly`);
-        el._lastLogTime = now;
+        st.lastLogTime = now;
       }
       if (Math.abs(el.currentTime - expected) > 0.01) {
-        el._seekStartTime = now;
+        st.seekStartTime = now;
         el.currentTime = expected;
       }
     }
   } else {
     // Native rate: let browser play, correct drift
-    if (el.paused) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
+    if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
     if (el.playbackRate !== speed) setPlaybackRate(el, speed);
     // Detect loop wrap: expected jumped backward by ~loopLen (e.g. from near loopEnd
     // to near loopStart). The browser doesn't loop for us, so we must seek immediately.
@@ -170,7 +171,7 @@ function updateVideoPlayback(
       if (!isNewEvent && drift > DRIFT_THRESHOLD && canLog) {
         const filename = src.split("/").pop() ?? src;
         console.warn(`[uzuvid] drift correction: ${filename} at ${el.currentTime.toFixed(3)}s / ${dur.toFixed(3)}s (expected ${expected.toFixed(3)}s, drift ${drift.toFixed(3)}s) [speed ${speed}x, window-stable native mode, src: ${src}]`);
-        el._lastLogTime = now;
+        st.lastLogTime = now;
       }
       el.currentTime = expected;
     }

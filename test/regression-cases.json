@@ -20,9 +20,9 @@
     "timestamp": "2026-03-11T16:16:40.338Z"
   },
   {
-    "code": "$: gridStack([screen(\"red\").opacity(sine.div(2)).chop(2).rev()], 2, 2)\n---\nbg: stackN(2, video(\"red.mp4, red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "code": "$: index(screen(\"red\").opacity(sine.div(2)).chop(2).rev()).rowscols(2).gridMod()\n---\nbg: stackN(2, video(\"red.mp4, red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()",
     "codes": [
-      "$: gridStack([screen(\"red\").opacity(sine.div(2)).chop(2).rev()], 2, 2)",
+      "$: index(screen(\"red\").opacity(sine.div(2)).chop(2).rev()).rowscols(2).gridMod()",
       "bg: stackN(2, video(\"red.mp4, red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()"
     ],
     "description": "shrunk from 15 shrinks",

@@ -26,12 +26,12 @@ import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
 import { screen, s } from "./screen-pattern";
-import { gridStack, stackN } from "./grid-stack";
-import { cycle } from "./iterators";
+import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage } from "./media-registry";
-import { renderVideoFrame, type VideoEl } from "./video-playback";
+import { renderVideoFrame } from "./video-playback";
+import { type VideoEl, createVideoState, resetVideoState } from "./video-element-state";
 import { eventBeginFromHap } from "./event-begin";
 import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
@@ -113,7 +113,7 @@ function destroyVideoEl(el: VideoEl) {
 /** Add an element to the free pool, enforcing per-src and total caps. */
 function freeVideoEl(el: VideoEl) {
   el.pause();
-  const srcUrl = el._srcUrl ?? el.src;
+  const srcUrl = el._state.srcUrl ?? el.src;
   const freeList = freeVideoPool.get(srcUrl) ?? [];
   if (freeList.length >= MAX_FREE_PER_SRC) {
     destroyVideoEl(el);
@@ -165,19 +165,20 @@ function fetchVideoBlob(srcUrl: string): void {
 }
 
 function makeVideoEl(name: string): VideoEl {
-  const el = document.createElement("video") as VideoEl;
+  const el = document.createElement("video") as unknown as VideoEl;
+  el._state = createVideoState();
   el.loop = false;
   el.muted = true;
   el.playsInline = true;
   el.addEventListener("loadeddata", () => console.log("video loaded:", name));
   el.addEventListener("loadedmetadata", () => {
-    if (el._srcUrl && isFinite(el.duration) && el.duration > 0) {
-      videoDurations.set(el._srcUrl, el.duration);
-      setDurationByUrl(el._srcUrl, el.duration);
+    if (el._state.srcUrl && isFinite(el.duration) && el.duration > 0) {
+      videoDurations.set(el._state.srcUrl, el.duration);
+      setDurationByUrl(el._state.srcUrl, el.duration);
     }
   });
-  el.addEventListener("seeking", () => { el._seeking = true; });
-  el.addEventListener("seeked", () => { el._seeking = false; });
+  el.addEventListener("seeking", () => { el._state.seeking = true; });
+  el.addEventListener("seeked", () => { el._state.seeking = false; });
   return el;
 }
 
@@ -202,8 +203,8 @@ function getVideoEl(name: string, base: string, poolKey: string, targetTime?: nu
     }
     const el = freeList.splice(bestIdx, 1)[0];
     if (freeList.length === 0) freeVideoPool.delete(srcUrl);
-    el._seeking = false;
-    el._srcUrl = srcUrl;
+    resetVideoState(el._state);
+    el._state.srcUrl = srcUrl;
     el.playbackRate = 1;
     if (autoPlay) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
     videoPool.set(poolKey, el);
@@ -212,7 +213,7 @@ function getVideoEl(name: string, base: string, poolKey: string, targetTime?: nu
 
   // Create new element; use blob URL if cached, otherwise stream directly + background blob fetch
   const el = makeVideoEl(name);
-  el._srcUrl = srcUrl;
+  el._state.srcUrl = srcUrl;
   const blobUrl = videoBlobUrls.get(srcUrl);
   el.src = blobUrl ?? srcUrl;
   if (!blobUrl) fetchVideoBlob(srcUrl); // cache for future elements
@@ -310,6 +311,23 @@ function hush() {
 
 // called from editor on ctrl+enter
 window.uzuEval = (code: string): string | null => {
+  // Phase 1: Transpile — if this fails, don't touch running state at all
+  let transpiled: string;
+  try {
+    transpiled = transpile(code);
+  } catch (e) {
+    console.error("transpile error:", e);
+    return e instanceof Error ? e.message : String(e);
+  }
+
+  // Phase 2: Snapshot current state so we can restore on execution failure
+  const prevScreens = [...screens];
+  const prevPPatterns = { ...pPatterns };
+  const prevAnonymousIndex = anonymousIndex;
+  const prevCpsPattern = cpsPattern;
+  const prevCyclesPerSecond = cyclesPerSecond;
+
+  // Phase 3: Clear state and execute
   clearVideos();
   clearImages();
   clearWarnings();
@@ -319,7 +337,6 @@ window.uzuEval = (code: string): string | null => {
   anonymousIndex = 0;
   cpsPattern = null;
   try {
-    const transpiled = transpile(code);
     const signals = {
       sine, sine2, cosine, cosine2,
       saw, saw2, isaw, isaw2,
@@ -341,8 +358,8 @@ window.uzuEval = (code: string): string | null => {
     const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
-    new Function("mini", "color", "video", "image", "screen", "s", "gridStack", "stackN", "cycle", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", ...sigNames, ...modNames, ...combNames, transpiled)(
-      mini, color, video, image, screen, s, gridStack, stackN, cycle, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators),
+    new Function("mini", "color", "video", "image", "screen", "s", "stackN", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", ...sigNames, ...modNames, ...combNames, transpiled)(
+      mini, color, video, image, screen, s, stackN, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
@@ -354,7 +371,13 @@ window.uzuEval = (code: string): string | null => {
     console.log("evaluated:", code, "screens:", screens.length);
     return null;
   } catch (e) {
+    // Execution failed — restore previous state so old visuals keep rendering
     console.error("eval error:", e);
+    screens = prevScreens;
+    pPatterns = prevPPatterns;
+    anonymousIndex = prevAnonymousIndex;
+    cpsPattern = prevCpsPattern;
+    cyclesPerSecond = prevCyclesPerSecond;
     return e instanceof Error ? e.message : String(e);
   }
 };
@@ -471,7 +494,7 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
 
     // 1. Reuse: same draw position, same src → keep same element
     const prev = videoPool.get(drawPos);
-    if (prev && prev._srcUrl === srcUrl) {
+    if (prev && prev._state.srcUrl === srcUrl) {
       frameAssignments.set(drawPos, prev);
       if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
       continue;
@@ -481,7 +504,7 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
     let shared = false;
     if (expectedTime != null) {
       for (const [otherKey, el] of frameAssignments) {
-        if (el._srcUrl !== srcUrl) continue;
+        if (el._state.srcUrl !== srcUrl) continue;
         const other = assignedExpected.get(otherKey);
         if (!other || other.srcUrl !== srcUrl) continue;
         const dur = cachedDur ?? (isFinite(el.duration) ? el.duration : 0);
@@ -682,19 +705,19 @@ function prewarmVideos(cycle: number, cps: number) {
         }
         const best = freeList[bestIdx];
         // Seek if it's far from target and not already seeking
-        if (!best._seeking && bestScore > 0.15) {
+        if (!best._state.seeking && bestScore > 0.15) {
           best.currentTime = expectedTime;
         }
         continue;
       }
 
       // Also check if already active
-      const alreadyActive = [...videoPool.values()].some(el => el._srcUrl === srcUrl);
+      const alreadyActive = [...videoPool.values()].some(el => el._state.srcUrl === srcUrl);
       if (alreadyActive) continue;
 
       // No element at all — create one and park in free pool
-      const el = makeVideoEl(ev.src) as VideoEl;
-      el._srcUrl = srcUrl;
+      const el = makeVideoEl(ev.src);
+      el._state.srcUrl = srcUrl;
       const blobUrl = videoBlobUrls.get(srcUrl);
       el.src = blobUrl ?? srcUrl;
       el.preload = "auto";

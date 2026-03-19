@@ -8,6 +8,7 @@
 import { reify, Pattern } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
 import { resolveMedia } from "./media-registry";
+import { resolveValue } from "./resolve-pattern-value";
 import { getRuntimeCps } from "./config";
 import { warn } from "./warnings";
 
@@ -512,15 +513,13 @@ function cellPos(i: number, cols: number, rows: number) {
   return { x: col / cols, y: row / rows, width: 1 / cols, height: 1 / rows };
 }
 
-// Helper: resolve first value of a pattern at a given time span, or return number directly
-function resolveNum(val: any, begin: any, end: any): number {
-  const evs = reify(val).queryArc(begin, end);
-  return evs.length ? Math.round(Number(evs[0].value)) : 0;
+// Convenience wrappers for resolveValue
+function resolveNum(val: any, begin: any): number {
+  return Math.round(resolveValue(val, begin));
 }
 
-function resolveFloat(val: any, begin: any, end: any): number {
-  const evs = reify(val).queryArc(begin, end);
-  return evs.length ? Number(evs[0].value) : 0;
+function resolveFloat(val: any, begin: any): number {
+  return resolveValue(val, begin);
 }
 
 // Compose a new grid cell position with any existing position on the event value.
@@ -569,8 +568,8 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
         const iVal = Math.round(Number(iEv.value));
         const positioned = self.withValue((v: any) => {
           const val = Object(v) === v ? v : {};
-          const r = rowsArg !== undefined ? resolveNum(rowsArg, begin, end) : (val.rows ?? 2);
-          const c = colsArg !== undefined ? resolveNum(colsArg, begin, end) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
+          const r = rowsArg !== undefined ? resolveNum(rowsArg, begin) : (val.rows ?? 2);
+          const c = colsArg !== undefined ? resolveNum(colsArg, begin) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
           return composePos(val, cellPos(iVal, c, r));
         });
         results.push(...positioned.queryArc(begin, end));
@@ -581,8 +580,8 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
     // No iArg: read i from each event's value
     return self.withValue((v: any) => {
       const val = Object(v) === v ? v : {};
-      const r = rowsArg !== undefined ? resolveNum(rowsArg, begin, end) : (val.rows ?? 2);
-      const c = colsArg !== undefined ? resolveNum(colsArg, begin, end) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
+      const r = rowsArg !== undefined ? resolveNum(rowsArg, begin) : (val.rows ?? 2);
+      const c = colsArg !== undefined ? resolveNum(colsArg, begin) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
       const iVal = val.i ?? 0;
       return composePos(val, cellPos(iVal, c, r));
     }).queryArc(begin, end);
@@ -590,7 +589,7 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
 };
 
 /**
- * Assigns grid cells to a child pattern by cycling through cells with a stride. Used internally by gridStack()
+ * Assigns grid cells to a child pattern by cycling through cells with a stride. Used by index()
  * to distribute children across a grid. All arguments can be patterns, resolved at query time.
  *
  * @param {number | Pattern} childIndex this child's index in the list of children
@@ -600,7 +599,7 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
  * @returns {Pattern} pattern positioned in its assigned grid cells
  * @example
  * // In a 2×2 grid with 2 children, child 0 gets cells 0,2 and child 1 gets cells 1,3
- * video("a.mp4").gridModulo(0, 2, 2, 2)
+ * index(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
  *
  */
 /**
@@ -622,8 +621,8 @@ PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
     const results: any[] = [];
     for (const ev of selfEvs) {
       const val = Object(ev.value) === ev.value ? ev.value : {};
-      const r = rowsArg !== undefined ? resolveNum(rowsArg, begin, end) : (val.rows ?? 2);
-      const c = colsArg !== undefined ? resolveNum(colsArg, begin, end) : (val.cols ?? 2);
+      const r = rowsArg !== undefined ? resolveNum(rowsArg, begin) : (val.rows ?? 2);
+      const c = colsArg !== undefined ? resolveNum(colsArg, begin) : (val.cols ?? 2);
       const ci = val.i ?? 0;
       const nc = val.count ?? 1;
       const totalCells = r * c;
@@ -635,35 +634,6 @@ PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
     }
     return results;
   });
-};
-
-/**
- * Returns an infinite generator of pattern variants, each transformed by `fn(pattern, index)`.
- * Pass to gridStack() — it will pull exactly cols×rows items at query time.
- *
- * @param {(x: Pattern, i: number) => Pattern} fn transform applied to each copy
- * @example
- * $: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i * 0.5 + 0.5)), 2, 2)
- */
-PatternProto.iteratorWith = function (fn: (x: any, i: number) => any): Iterable<any> {
-  const self = this;
-  return {
-    [Symbol.iterator]: function* () {
-      let i = 0;
-      while (true) yield fn(self, i++);
-    }
-  };
-};
-
-/**
- * Returns an infinite iterable of this pattern (no transformation).
- * Pass to gridStack() to fill all cells with copies of the same pattern.
- *
- * @example
- * $: gridStack(video("clip.mp4").iterator(), 2, 2)
- */
-PatternProto.iterator = function (): Iterable<any> {
-  return this.iteratorWith((x: any) => x);
 };
 
 // ─── circle / circleMod ───────────────────────────────────────────────────────
@@ -692,10 +662,10 @@ PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCou
     const { begin, end } = state.span;
     return self.withValue((v: any) => {
       const val = Object(v) === v ? v : {};
-      const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin, end) : (val.radius ?? 0.3);
-      const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin, end) : (val.startOffset ?? 0);
-      const n = circleCountArg !== undefined ? resolveNum(circleCountArg, begin, end) : (val.circleCount ?? val.count ?? 1);
-      const i = iArg !== undefined ? resolveNum(iArg, begin, end) : (val.i ?? 0);
+      const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin) : (val.radius ?? 0.3);
+      const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin) : (val.startOffset ?? 0);
+      const n = circleCountArg !== undefined ? resolveNum(circleCountArg, begin) : (val.circleCount ?? val.count ?? 1);
+      const i = iArg !== undefined ? resolveNum(iArg, begin) : (val.i ?? 0);
       const size = circleElementSize(n, r);
       const w = val.width ?? size;
       const h = val.height ?? size;
@@ -721,11 +691,11 @@ PatternProto.circleMod = function (radiusArg?: any, startOffsetArg?: any, circle
     const results: any[] = [];
     for (const ev of selfEvs) {
       const val = Object(ev.value) === ev.value ? ev.value : {};
-      const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin, end) : (val.radius ?? 0.3);
-      const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin, end) : (val.startOffset ?? 0);
+      const r = radiusArg !== undefined ? resolveFloat(radiusArg, begin) : (val.radius ?? 0.3);
+      const so = startOffsetArg !== undefined ? resolveFloat(startOffsetArg, begin) : (val.startOffset ?? 0);
       const ci = val.i ?? 0;
       const nc = val.count ?? 1;
-      const total = circleCountArg !== undefined ? resolveNum(circleCountArg, begin, end) : (val.circleCount ?? nc);
+      const total = circleCountArg !== undefined ? resolveNum(circleCountArg, begin) : (val.circleCount ?? nc);
       const size = circleElementSize(total, r);
       const w = val.width ?? size;
       const h = val.height ?? size;
@@ -760,25 +730,3 @@ PatternProto.mapWithVal = function (fn: (pat: any, value: any) => any) {
   });
 };
 
-PatternProto.gridModulo = function (childIndex: any, numChildren: any, cols: any, rows: any) {
-  const self = this;
-  return new Pattern((state: any) => {
-    const { begin, end } = state.span;
-    const ci = resolveNum(childIndex, begin, end);
-    const nc = resolveNum(numChildren, begin, end);
-    const c = resolveNum(cols, begin, end);
-    const r = resolveNum(rows, begin, end);
-    const totalCells = c * r;
-    const indices: number[] = [];
-    for (let idx = ci; idx < totalCells; idx += nc) {
-      indices.push(idx);
-    }
-    if (indices.length === 0) return [];
-    const results: any[] = [];
-    for (const idx of indices) {
-      const positioned = self.grid(r, c, idx);
-      results.push(...positioned.queryArc(begin, end));
-    }
-    return results;
-  });
-};

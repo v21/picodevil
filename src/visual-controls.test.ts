@@ -178,64 +178,6 @@ describe("visual controls via createMixParam", () => {
       expect(evs[1]).toMatchObject({ x: 0.5, y: 0.5 });
     });
 
-    it(".gridModulo(childIndex, numChildren, cols, rows) places child in correct cells", () => {
-      // child 0 of 2 in 2x2 grid → cells 0, 2 (top-left, bottom-left)
-      const pat = src("x").gridModulo(0, 2, 2, 2);
-      const evs = pat.queryArc(0, 0).map((e: any) => e.value);
-      expect(evs).toHaveLength(2);
-      evs.sort((a: any, b: any) => a.y - b.y);
-      expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
-      expect(evs[1]).toMatchObject({ x: 0, y: 0.5, width: 0.5, height: 0.5 });
-    });
-
-    it(".gridModulo() child 1 of 2 in 2x2", () => {
-      // child 1 of 2 → cells 1, 3 (top-right, bottom-right)
-      const pat = src("x").gridModulo(1, 2, 2, 2);
-      const evs = pat.queryArc(0, 0).map((e: any) => e.value);
-      expect(evs).toHaveLength(2);
-      evs.sort((a: any, b: any) => a.y - b.y);
-      expect(evs[0]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
-      expect(evs[1]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
-    });
-
-    it(".gridModulo() with pattern cols changes cell count dynamically", () => {
-      // child 0 of 1, cols alternates "2 3", rows=1
-      const pat = src("x").gridModulo(0, 1, mini("2 3"), 1);
-      // first half: 2 cols → 2 cells
-      const evs0 = pat.queryArc(0.1, 0.1).map((e: any) => e.value);
-      expect(evs0).toHaveLength(2);
-      // second half: 3 cols → 3 cells
-      const evs1 = pat.queryArc(0.6, 0.6).map((e: any) => e.value);
-      expect(evs1).toHaveLength(3);
-    });
-
-    it(".gridModulo() with pattern childIndex", () => {
-      // childIndex alternates "0 1", numChildren=2, 2x2 grid
-      // first half: childIndex=0 → cells 0,2; second half: childIndex=1 → cells 1,3
-      const pat = src("x").gridModulo(mini("0 1"), 2, 2, 2);
-      const evs0 = pat.queryArc(0.1, 0.1).map((e: any) => e.value);
-      expect(evs0).toHaveLength(2);
-      evs0.sort((a: any, b: any) => a.y - b.y);
-      expect(evs0[0]).toMatchObject({ x: 0, y: 0 });    // cell 0
-      expect(evs0[1]).toMatchObject({ x: 0, y: 0.5 });  // cell 2
-
-      const evs1 = pat.queryArc(0.6, 0.6).map((e: any) => e.value);
-      expect(evs1).toHaveLength(2);
-      evs1.sort((a: any, b: any) => a.y - b.y);
-      expect(evs1[0]).toMatchObject({ x: 0.5, y: 0 });   // cell 1
-      expect(evs1[1]).toMatchObject({ x: 0.5, y: 0.5 }); // cell 3
-    });
-
-    it(".gridModulo() with pattern numChildren", () => {
-      // childIndex=0, numChildren alternates "1 2", 2x2 grid
-      // first half: numChildren=1 → all 4 cells; second half: numChildren=2 → cells 0,2
-      const pat = src("x").gridModulo(0, mini("1 2"), 2, 2);
-      const evs0 = pat.queryArc(0.1, 0.1).map((e: any) => e.value);
-      expect(evs0).toHaveLength(4);
-      const evs1 = pat.queryArc(0.6, 0.6).map((e: any) => e.value);
-      expect(evs1).toHaveLength(2);
-    });
-
     it(".grid() with pattern cols", () => {
       // rows=1, cols alternates "2 3", i=0
       const pat = src("x").grid(1, mini("2 3"), 0);

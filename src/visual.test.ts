@@ -11,9 +11,10 @@ import { color as makeColor } from "./color-pattern";
 import "./visual-controls";
 import { image as makeImage } from "./image-pattern";
 import { video as makeVideo } from "./video-pattern";
-import { gridStack } from "./grid-stack";
 import { drawFit } from "./draw-fit";
+import { index } from "./index-patterns";
 import { renderVideoFrame } from "./video-playback";
+import { createVideoState } from "./video-element-state";
 
 // --- minimal render harness ---
 
@@ -55,7 +56,8 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 /** Load a video and wait for it to have a decodable frame. */
 function loadVideo(src: string): Promise<HTMLVideoElement> {
   return new Promise((resolve, reject) => {
-    const el = document.createElement("video");
+    const el = document.createElement("video") as any;
+    el._state = createVideoState();
     el.muted = true;
     el.playsInline = true;
     el.preload = "auto";
@@ -258,24 +260,21 @@ describe("visual rendering", () => {
 
   describe("grid", () => {
     it("2x1 grid splits horizontally", () => {
-      const g = gridStack([color("red"), color("blue")], 2, 1);
+      const g = index(color("red"), color("blue")).cols(2).rows(1).gridMod();
       const { ctx } = render([g]);
       expect(pixel(ctx, 10, 50)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx, 90, 50)).toEqual([0, 0, 255, 255]);
     });
 
     it("1x2 grid splits vertically", () => {
-      const g = gridStack([color("red"), color("blue")], 1, 2);
+      const g = index(color("red"), color("blue")).cols(1).rows(2).gridMod();
       const { ctx } = render([g]);
       expect(pixel(ctx, 50, 10)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx, 50, 90)).toEqual([0, 0, 255, 255]);
     });
 
     it("2x2 grid with 4 colors", () => {
-      const g = gridStack(
-        [color("red"), color("green"), color("blue"), color("yellow")],
-        2, 2,
-      );
+      const g = index(color("red"), color("green"), color("blue"), color("yellow")).rowscols(2).gridMod();
       const { ctx } = render([g]);
       expect(pixel(ctx, 10, 10)).toEqual([255, 0, 0, 255]);
       const [r1, g1, b1] = pixel(ctx, 90, 10);
@@ -285,7 +284,7 @@ describe("visual rendering", () => {
     });
 
     it("children cycle when fewer than cells", () => {
-      const g = gridStack([color("red"), color("blue")], 2, 2);
+      const g = index(color("red"), color("blue")).rowscols(2).gridMod();
       const { ctx } = render([g]);
       expect(pixel(ctx, 10, 10)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx, 90, 10)).toEqual([0, 0, 255, 255]);
@@ -294,7 +293,7 @@ describe("visual rendering", () => {
     });
 
     it("dynamic grid size changes with time", () => {
-      const g = gridStack([color("red"), color("blue"), color("green")], mini("2 3"), 1);
+      const g = index(color("red"), color("blue"), color("green")).cols(mini("2 3")).rows(1).gridMod();
       const { ctx: ctx1 } = render([g], 0.1);
       expect(pixel(ctx1, 25, 50)).toEqual([255, 0, 0, 255]);
       expect(pixel(ctx1, 75, 50)).toEqual([0, 0, 255, 255]);
@@ -375,7 +374,7 @@ describe("visual rendering", () => {
     });
 
     it("image in grid", () => {
-      const g = gridStack([image("red.png"), image("blue.png")], 2, 1);
+      const g = index(image("red.png"), image("blue.png")).cols(2).rows(1).gridMod();
       const { ctx } = render([g], 0, { imagePool: pool });
       const [r1] = pixel(ctx, 10, 50);
       expect(r1).toBeGreaterThan(200);
@@ -445,7 +444,7 @@ describe("visual rendering", () => {
     });
 
     it("video in grid cell", () => {
-      const g = gridStack([video("red.mp4"), color("blue")], 2, 1);
+      const g = index(video("red.mp4"), color("blue")).cols(2).rows(1).gridMod();
       const { ctx } = render([g], 0, { videoPool: pool as any });
       const [r1] = pixel(ctx, 10, 50);
       expect(r1).toBeGreaterThan(200);

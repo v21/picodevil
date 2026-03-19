@@ -506,7 +506,7 @@ const cpsValue: fc.Arbitrary<string> = fc.oneof(
   },
 );
 
-/** Grid method chain applied after gridStack. */
+/** Grid method chain applied after gridMod. */
 const gridChain: fc.Arbitrary<string> = fc.array(
   fc.oneof(
     alphaArg.map(a => `.alpha(${a})`),
@@ -542,7 +542,7 @@ const labelPrefix: fc.Arbitrary<string> = fc.oneof(
 
 /** Full top-level expression using label: syntax. */
 export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
-  // gridStack expression
+  // index + cols/rows + gridMod expression
   {
     weight: 4, arbitrary: fc.tuple(
       loadPreamble,
@@ -556,7 +556,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const preamble = [load, cps].filter(Boolean).join("\n");
       const childrenCode = children.map((c: any) => c.code).join(", ");
       return {
-        code: `${preamble ? preamble + "\n" : ""}${label}: gridStack([${childrenCode}], ${cols}, ${rows})${chain}`,
+        code: `${preamble ? preamble + "\n" : ""}${label}: index(${childrenCode}).cols(${cols}).rows(${rows}).gridMod()${chain}`,
       };
     })
   },

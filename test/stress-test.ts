@@ -38,12 +38,12 @@ const CASES: StressCase[] = [
   },
   {
     name: "4 videos in grid",
-    code: `$: gridStack([
+    code: `$: index(
       video("red.mp4").urlBase('/test-assets/'),
       video("blue.mp4").urlBase('/test-assets/'),
       video("red.mp4").urlBase('/test-assets/').speed(2),
       video("blue.mp4").urlBase('/test-assets/').speed(-1),
-    ], 2, 2)`,
+    ).rowscols(2).gridMod()`,
   },
   {
     name: "fast switching (8 cps)",
@@ -51,12 +51,12 @@ const CASES: StressCase[] = [
   },
   {
     name: "many identical videos (sharing test)",
-    code: `$: gridStack([
+    code: `$: index(
       video("red.mp4").urlBase('/test-assets/'),
       video("red.mp4").urlBase('/test-assets/'),
       video("red.mp4").urlBase('/test-assets/'),
       video("red.mp4").urlBase('/test-assets/'),
-    ], 2, 2)`,
+    ).rowscols(2).gridMod()`,
   },
   {
     name: "reverse + variable speed",
@@ -72,13 +72,13 @@ const CASES: StressCase[] = [
   },
   {
     name: "nested grid with videos",
-    code: `$: gridStack([
-      gridStack([
+    code: `$: index(
+      index(
         video("red.mp4").urlBase('/test-assets/'),
         video("blue.mp4").urlBase('/test-assets/'),
-      ], 2, 1),
+      ).cols(2).rows(1).gridMod(),
       video("red.mp4").urlBase('/test-assets/').speed(0.5),
-    ], 1, 2)`,
+    ).cols(1).rows(2).gridMod()`,
   },
   {
     name: "chop + scrub (pool reuse)",
@@ -98,12 +98,12 @@ const CASES: StressCase[] = [
   },
   {
     name: "scrub grid (sharing + reuse)",
-    code: `$: gridStack([
+    code: `$: index(
       video("red.mp4").urlBase('/test-assets/').chop(4).scrub(sine),
       video("red.mp4").urlBase('/test-assets/').chop(4).scrub(sine),
       video("blue.mp4").urlBase('/test-assets/').chop(4).scrub(saw),
       video("blue.mp4").urlBase('/test-assets/').chop(4).scrub(saw),
-    ], 2, 2)`,
+    ).rowscols(2).gridMod()`,
   },
 ];
 
