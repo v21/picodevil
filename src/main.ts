@@ -410,28 +410,12 @@ const SHARE_TIME_THRESHOLD = 0.04;
 
 /** Compute eventBegin from a hap — the cycle position used to compute elapsed playback time.
  *
- * Priority: sync > hap.whole.begin > _onset > t
- *
- * hap.whole.begin is the correct post-slow/post-chop temporal position. _onset is baked
- * inside screen()/video() from the inner hap before slow() retimes — so after .slow(N),
- * _onset reflects pre-slow inner time, not the actual cycle position. Since createMixParam
- * preserves wholes, hap.whole.begin is always available and correct. _onset is only a
- * fallback for signals or edge cases where whole is missing.
- *
- * For chopped events with sync: rebase sync relative to the sub-event's offset from _onset.
+ * When sync is enabled, eventBegin is always 0 (play continuously from cycle 0).
+ * Otherwise, use the hap's whole.begin (the canonical post-slow/post-chop event start).
  */
 function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  if (ev.sync != null) {
-    if (ev._chopOnset != null) {
-      // Chopped + sync: rebase sync by sub-event's offset from original onset
-      const originalOnset = ev._onset ?? 0;
-      return Number(ev.sync) + (Number(hap?.whole?.begin ?? t) - Number(originalOnset));
-    }
-    return Number(ev.sync);
-  }
-  // Prefer hap.whole.begin (post-slow, post-chop) over _onset (pre-slow inner time)
-  if (hap?.whole?.begin != null) return Number(hap.whole.begin);
-  return Number(ev._onset ?? t);
+  if (ev.sync != null) return 0;
+  return Number(hap?.whole?.begin ?? t);
 }
 
 interface FrameEvent {

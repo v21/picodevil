@@ -178,23 +178,23 @@ PatternProto.scale = function (value: any) {
 export const speed = createMixParam("speed");
 
 /**
- * Overrides the reference cycle for video playback timing. Without sync(), the
- * reference cycle comes from when the video's event started in the pattern —
- * so `video("a.mp4")` restarts each cycle, `video("a.mp4").slow(5)` plays for
- * 5 cycles. With sync(n), the video plays as if it started at cycle n,
- * ignoring event boundaries entirely.
+ * Enables continuous playback, ignoring event boundaries. Without sync(), a
+ * video restarts each cycle. With sync(), it plays continuously from cycle 0.
  *
- * @param {number | string | Pattern} value reference cycle (default 0)
- * @returns {Pattern} pattern with sync origin applied
+ * An optional phase offset (0–1, fraction of video duration) shifts the
+ * playback start point within the video.
+ *
+ * @param {number | string | Pattern} [value] phase offset as fraction of video duration (default: true = no offset)
+ * @returns {Pattern} pattern with sync enabled
  * @example
  * $: video("clip.mp4").sync()              // plays freely from cycle 0
- * $: video("clip.mp4").sync(10)            // plays as if started at cycle 10
- * $: video("clip.mp4").sync(sine.range(0, 10)) // patterned sync point
+ * $: video("clip.mp4").sync(0.5)           // plays from 50% into the video
+ * $: video("clip.mp4").sync(0.3).begin(0.5) // phase-shifted, looping in 50-100% range
  *
  */
 export const sync = createMixParam("sync");
 PatternProto.sync = function (value?: any) {
-  if (value === undefined) value = 0;
+  if (value === undefined) value = true;
   return sync(value, this);
 };
 

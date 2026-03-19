@@ -67,6 +67,24 @@ describe("computeExpectedTime", () => {
     expect(computeExpectedTime({ ...defaults, currentCycle: 100, eventBegin: 0, speed: 0, loopStart: 3 })).toBeCloseTo(3);
   });
 
+  it("syncOffset shifts playback position forward", () => {
+    // 10s video, syncOffset = 3s (= 0.3 fraction × 10s duration)
+    // At cycle 0 with eventBegin 0: elapsed = 0s, position = 0 + 3 = 3s
+    expect(computeExpectedTime({ ...defaults, currentCycle: 0, eventBegin: 0, syncOffset: 3 })).toBeCloseTo(3);
+    // At cycle 1: elapsed = 2s, position = 2 + 3 = 5s
+    expect(computeExpectedTime({ ...defaults, currentCycle: 1, eventBegin: 0, syncOffset: 3 })).toBeCloseTo(5);
+  });
+
+  it("syncOffset wraps around loopEnd", () => {
+    // 10s video, syncOffset = 9s, at cycle 1 (2s elapsed): position = (2+9) % 10 = 1s
+    expect(computeExpectedTime({ ...defaults, currentCycle: 1, eventBegin: 0, syncOffset: 9 })).toBeCloseTo(1);
+  });
+
+  it("syncOffset works with reverse speed", () => {
+    // speed = -1, syncOffset = 3s, at cycle 0: position = loopEnd - (0+3)%10 = 10-3 = 7
+    expect(computeExpectedTime({ ...defaults, currentCycle: 0, eventBegin: 0, speed: -1, syncOffset: 3 })).toBeCloseTo(7);
+  });
+
 describe("detectWindowMoving", () => {
   const dt = 1 / 60; // one frame at 60fps
 
@@ -156,7 +174,7 @@ describe("detectWindowMoving", () => {
     // Case 2 (chop 8): sub-events with different begin/end and eventBegin
     // chop(8) on begin=0.4, end=0.8 over whole=0-2:
     //   sub k: whole = k*0.25 to (k+1)*0.25, begin = 0.4 + k*0.05, end = 0.4 + (k+1)*0.05
-    // eventBegin = sub-event's whole.begin (via _chopOnset)
+    // eventBegin = sub-event's whole.begin
     function case2Expected(t: number, eventStartCycle: number) {
       const subIdx = Math.floor((t - eventStartCycle) / 0.25);
       const subStart = eventStartCycle + subIdx * 0.25;

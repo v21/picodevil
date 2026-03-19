@@ -39,7 +39,7 @@ describe("screen()", () => {
       expect(evs[0].value.src).toBe("mycam");
     });
 
-    it("stream entries do not get _onset baked in", () => {
+    it("no _onset is baked into any events", () => {
       addStream("screen", "myscreen");
       const evs = screen("myscreen").queryArc(0, 1);
       expect(evs[0].value._onset).toBeUndefined();

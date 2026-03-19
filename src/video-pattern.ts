@@ -12,13 +12,8 @@ import { warn } from "./warnings";
  * cycle, while `video("a.mp4").slow(5)` plays continuously for 5 cycles before
  * restarting.
  *
- * Controls (`.speed()`, `.alpha()`, etc.) use createMixParam's custom combiner,
- * which preserves the source event's whole span. The onset is also baked into
- * the value as `_onset` for video playback timing.
- *
- * Use `.sync(n)` to override the reference cycle for playback (e.g. `.sync(0)`
- * makes the video play as if it started from cycle 0 regardless of event
- * boundaries).
+ * Use `.sync()` for continuous playback ignoring event boundaries, with an
+ * optional phase offset as a fraction of video duration.
  *
  * @param {string | Pattern} pat mininotation string of video filenames, or an existing Pattern
  * @returns {Pattern} pattern of {_type: "video", src} objects
@@ -27,7 +22,7 @@ import { warn } from "./warnings";
  * $: video("clip1.mp4 clip2.mp4")              // alternates each cycle
  * $: video("clip.mp4").speed(-1).objectfit("contain")
  * $: video("clip.mp4").slow(5).speed(2)        // plays 5 cycles at 2× speed
- * $: video("clip.mp4").sync(0)                 // plays freely from cycle 0
+ * $: video("clip.mp4").sync()                  // plays freely from cycle 0
  *
  */
 export function video(pat: string | Pattern): Pattern {
@@ -35,8 +30,6 @@ export function video(pat: string | Pattern): Pattern {
     warn(`video() expected string or Pattern, got ${typeof pat}`);
   }
   const p = typeof pat === 'string' ? mini(pat) : pat;
-  // Use Pattern constructor to access each hap's whole.begin and bake it in as
-  // _onset for video playback timing (see eventBeginFromHap in main.ts).
   return new PatternClass((state: any) => {
     return p.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       if (typeof hap.value !== 'string') {
@@ -45,7 +38,6 @@ export function video(pat: string | Pattern): Pattern {
       return hap.withValue(() => ({
         _type: "video",
         src: hap.value,
-        _onset: Number(hap.whole.begin),
         begin: 0,
         end: 1,
       }));

@@ -19,6 +19,8 @@ export interface ExpectedTimeParams {
   loopStart: number;
   loopEnd: number;
   duration: number;
+  /** Phase offset in seconds (from sync(fraction) × duration). */
+  syncOffset?: number;
 }
 
 /** Compute expected video currentTime from pattern timing. Pure function. */
@@ -27,7 +29,7 @@ export function computeExpectedTime(p: ExpectedTimeParams): number {
   const elapsedSec = (p.currentCycle - p.eventBegin) / p.cps;
   const loopLen = Math.abs(p.loopEnd - p.loopStart);
   if (loopLen === 0) return p.loopStart;
-  const dist = elapsedSec * Math.abs(p.speed);
+  const dist = elapsedSec * Math.abs(p.speed) + (p.syncOffset ?? 0);
   const distInLoop = ((dist % loopLen) + loopLen) % loopLen; // always positive
   if (p.speed > 0) {
     return p.loopStart + distInLoop;
@@ -73,16 +75,17 @@ export function renderVideoFrame(c: VideoFrameContext): void {
     const loopStart = beginVal * dur;
     const loopEnd = endVal * dur;
     const loopLen = Math.abs(loopEnd - loopStart);
+    const syncOffset = c.ev.sync != null && c.ev.sync !== true ? Number(c.ev.sync) * dur : 0;
     const expected = computeExpectedTime({
       currentCycle: c.currentCycle, eventBegin: c.eventBegin, cps: c.cps || 0.5,
-      speed, loopStart, loopEnd, duration: dur,
+      speed, loopStart, loopEnd, duration: dur, syncOffset,
     });
     const prevExp = c.el._lastExpected;
     const jumped = prevExp != null && loopLen > 0 && (prevExp - expected) > loopLen / 2;
     const isNew = c.el._lastEventBegin !== c.eventBegin;
     if (jumped || isNew) {
       const src = (c.el._srcUrl ?? c.el.src).split("/").pop();
-      console.log(`[DEBUG] ${src} seek: eventBegin=${c.eventBegin} begin=${beginVal} end=${endVal} speed=${speed.toFixed(3)} expected=${expected.toFixed(3)} ct=${c.el.currentTime.toFixed(3)} loopRange=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] cycle=${c.currentCycle.toFixed(4)} isNew=${isNew} loopWrap=${jumped} _chopOnset=${c.ev._chopOnset ?? 'none'}`);
+      console.log(`[DEBUG] ${src} seek: eventBegin=${c.eventBegin} begin=${beginVal} end=${endVal} speed=${speed.toFixed(3)} expected=${expected.toFixed(3)} ct=${c.el.currentTime.toFixed(3)} loopRange=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] cycle=${c.currentCycle.toFixed(4)} isNew=${isNew} loopWrap=${jumped}`);
     }
   }
 

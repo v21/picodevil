@@ -90,14 +90,14 @@ describe("video()", () => {
   });
 
 
-  it("sync() defaults to 0", () => {
+  it("sync() defaults to true (boolean flag)", () => {
     const evs = video("a.mp4").sync().queryArc(0, 1);
-    expect(evs[0].value.sync).toBe(0);
+    expect(evs[0].value.sync).toBe(true);
   });
 
-  it("sync() accepts a value", () => {
-    const evs = video("a.mp4").sync(5).queryArc(0, 1);
-    expect(evs[0].value.sync).toBe(5);
+  it("sync() accepts a phase offset (fraction of video duration)", () => {
+    const evs = video("a.mp4").sync(0.3).queryArc(0, 1);
+    expect(evs[0].value.sync).toBe(0.3);
   });
 
   it("urlBase() merges into events", () => {
@@ -122,26 +122,9 @@ describe("video()", () => {
     expect(evs[0].value._type).toBe("video");
   });
 
-  it("bakes _onset into each event value", () => {
-    // _onset is baked so eventBeginFromHap can use the original event onset
-    // for video playback timing.
+  it("does not bake _onset into event values", () => {
     const evs = video("a.mp4").queryArc(0, 0.001);
-    expect(evs[0].value._onset).toBe(0);
-
-    // video("a.mp4/5") spans 5 cycles — onset stays 0 across all cycles
-    const slow = video("a.mp4").slow(5);
-    expect(slow.queryArc(0, 0.001)[0].value._onset).toBe(0);
-    expect(slow.queryArc(1, 1.001)[0].value._onset).toBe(0);
-    expect(slow.queryArc(4, 4.001)[0].value._onset).toBe(0);
-  });
-
-  it("_onset survives .speed() (appBoth whole-clipping)", () => {
-    // .speed(2) uses appBoth which intersects whole spans, clipping to per-cycle.
-    // _onset in the value must still reflect the original event onset.
-    const slow = video("a.mp4").slow(5).speed(2);
-    // At cycle 1, appBoth would produce whole=[1,2], but _onset should still be 0
-    expect(slow.queryArc(1, 1.001)[0].value._onset).toBe(0);
-    expect(slow.queryArc(3, 3.001)[0].value._onset).toBe(0);
+    expect(evs[0].value._onset).toBeUndefined();
   });
 
   it("chaining preserves all controls", () => {
@@ -172,14 +155,11 @@ describe("chop integration", () => {
     expect(sorted[3].value.end).toBeCloseTo(1);
   });
 
-  it("chop(4) stamps _chopOnset on each sub-event", () => {
+  it("chop(4) does not stamp _chopOnset on sub-events", () => {
     const evs = video("a.mp4").chop(4).queryArc(0, 1);
-    const sorted = [...evs].sort((a: any, b: any) => Number(a.part.begin) - Number(b.part.begin));
-    // Each sub-event should have a unique _chopOnset matching its whole.begin
-    expect(sorted[0].value._chopOnset).toBeCloseTo(0);
-    expect(sorted[1].value._chopOnset).toBeCloseTo(0.25);
-    expect(sorted[2].value._chopOnset).toBeCloseTo(0.5);
-    expect(sorted[3].value._chopOnset).toBeCloseTo(0.75);
+    for (const ev of evs) {
+      expect(ev.value._chopOnset).toBeUndefined();
+    }
   });
 
   it("chop(8).rev() reverses temporal order but preserves begin/end", () => {
@@ -230,11 +210,10 @@ describe("chop integration", () => {
     }
   });
 
-  it("chop + controls: _chopOnset survives .alpha()", () => {
+  it("chop + controls: alpha survives chop", () => {
     const evs = video("a.mp4").chop(4).alpha(0.5).queryArc(0, 1);
     expect(evs).toHaveLength(4);
     for (const ev of evs) {
-      expect(ev.value._chopOnset).toBeDefined();
       expect(ev.value.alpha).toBe(0.5);
     }
   });
@@ -255,10 +234,9 @@ describe("slice integration", () => {
     expect(sorted[3].value.end).toBeCloseTo(1);
   });
 
-  it("slice stamps _chopOnset on video-typed events", () => {
+  it("slice preserves _type on video events", () => {
     const evs = video("a.mp4").slice(4, mini("0 1 2 3")).queryArc(0, 1);
     for (const ev of evs) {
-      expect(ev.value._chopOnset).toBeDefined();
       expect(ev.value._type).toBe("video");
     }
   });
@@ -296,10 +274,9 @@ describe("splice integration", () => {
     }
   });
 
-  it("splice stamps _chopOnset on video-typed events", () => {
+  it("splice preserves _type on video events", () => {
     const evs = video("a.mp4").splice(4, mini("0 1 2 3")).queryArc(0, 1);
     for (const ev of evs) {
-      expect(ev.value._chopOnset).toBeDefined();
       expect(ev.value._type).toBe("video");
     }
   });
@@ -352,11 +329,10 @@ describe("revv integration", () => {
 });
 
 describe("striate integration", () => {
-  it("striate(4) stamps _chopOnset on video-typed events", () => {
+  it("striate(4) preserves _type on video events", () => {
     const evs = video("a.mp4").striate(4).queryArc(0, 1);
     expect(evs).toHaveLength(4);
     for (const ev of evs) {
-      expect(ev.value._chopOnset).toBeDefined();
       expect(ev.value._type).toBe("video");
       expect(ev.value.begin).toBeDefined();
       expect(ev.value.end).toBeDefined();

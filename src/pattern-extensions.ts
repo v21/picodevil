@@ -8,32 +8,9 @@ import { getRuntimeCps } from "./config";
 const PatternProto = CorePattern.prototype as any;
 
 // ─── chop/striate/slice/splice wrappers ────────────────────────────────────────
-// Strudel's chop/striate/slice/splice set begin/end on event values for sample
-// slicing. For video events, we also need _chopOnset (the sub-event's whole.begin)
-// so that the video playback engine resets elapsed time per sub-event.
-// Without this, all chopped sub-events share the original _onset and play from
-// the same continuous position.
 
 function isVideoTyped(v: any): boolean {
   return v != null && typeof v === "object" && v._type === "video";
-}
-
-/**
- * Wrap a pattern to stamp _chopOnset on video-typed event values.
- * _chopOnset = Number(hap.whole.begin) for each sub-event.
- */
-function bakeChopOnset(pat: any): any {
-  return new CorePattern((state: any) => {
-    return pat.queryArc(state.span.begin, state.span.end).map((hap: any) => {
-      if (hap.value && isVideoTyped(hap.value) && hap.whole) {
-        return hap.withValue((v: any) => ({
-          ...v,
-          _chopOnset: Number(hap.whole.begin),
-        }));
-      }
-      return hap;
-    });
-  });
 }
 
 /**
@@ -72,7 +49,7 @@ const _origStriate = PatternProto.striate;
  */
 PatternProto.chop = function (...args: any[]) {
   warnIfSignal(this, "chop");
-  return _origChop ? bakeChopOnset(_origChop.apply(this, args)) : this;
+  return _origChop ? _origChop.apply(this, args) : this;
 };
 
 /**
@@ -87,7 +64,7 @@ PatternProto.chop = function (...args: any[]) {
  */
 PatternProto.striate = function (...args: any[]) {
   warnIfSignal(this, "striate");
-  return _origStriate ? bakeChopOnset(_origStriate.apply(this, args)) : this;
+  return _origStriate ? _origStriate.apply(this, args) : this;
 };
 
 // ─── JSDoc stubs for Strudel builtins (so the reference plugin picks them up) ──
@@ -158,7 +135,7 @@ PatternProto.slice = function (n: any, ipat: any) {
       })
     );
   };
-  return bakeChopOnset(pat.squeezeBind(func));
+  return pat.squeezeBind(func);
 };
 
 /**

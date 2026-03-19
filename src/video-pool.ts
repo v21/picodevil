@@ -17,10 +17,11 @@ export function computeExpectedFromEvent(
   const speed = ev.speed != null ? Number(ev.speed) : 1;
   const loopStart = (ev.begin ?? 0) * dur;
   const loopEnd = (ev.end ?? 1) * dur;
+  const syncOffset = ev.sync != null && ev.sync !== true ? Number(ev.sync) * dur : 0;
 
   return computeExpectedTime({
     currentCycle, eventBegin, cps: cps || 0.5,
-    speed, loopStart, loopEnd, duration: dur,
+    speed, loopStart, loopEnd, duration: dur, syncOffset,
   });
 }
 

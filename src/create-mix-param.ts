@@ -7,12 +7,13 @@
  * - Preserves the source pattern's whole (like appLeft/set.in) so downstream
  *   operations like fit(), chop(), loopAt() see the true event duration
  *
- * For _perEvent controls (e.g. irand), the control is sampled at the hap's
- * onset instead of frame time, giving stable random values per event.
+ * For _perEvent controls (e.g. irand), we delegate to Strudel's appLeft
+ * which samples the control at the hap's whole span — giving stable random
+ * values per event rather than flickering every frame.
  *
  * See docs/combinators.md for detailed explanation.
  */
-import { reify, Pattern, TimeSpan, Hap } from "@strudel/core";
+import { reify, Pattern, Hap } from "@strudel/core";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -23,31 +24,24 @@ export function createMixParam(name: string) {
     if (!pat) return reify(value).withValue(withVal);
     if (value === undefined) return pat.fmap(withVal);
     const valPat = reify(value);
-    const perEvent = !!(valPat as any)._perEvent;
 
+    // _perEvent controls (rand, irand, choose): use Strudel's appLeft which
+    // samples the control at the hap's onset, giving stable per-event values.
+    if ((valPat as any)._perEvent) {
+      return pat.fmap((v: any) => (ctrl: any) => ({
+        ...(typeof v === 'object' && v !== null ? v : {}),
+        [name]: ctrl,
+      })).appLeft(valPat);
+    }
+
+    // Frame-time combiner: query control at current state so signals animate
+    // smoothly, but preserve source pattern's whole for downstream operations.
     return new Pattern((state: any) => {
       const mainHaps = pat.query(state);
       return mainHaps.flatMap((hap: any) => {
-        // Where to sample the control:
-        // - default: current frame state → signals animate smoothly
-        // - _perEvent: hap's onset → random values are stable per-event
-        const ctrlState = perEvent
-          ? state.setSpan(new TimeSpan(
-              Number(hap.whole?.begin ?? hap.part.begin),
-              Number(hap.whole?.begin ?? hap.part.begin) + 1e-4))
-          : state;
-        const ctrlHaps = valPat.query(ctrlState);
+        const ctrlHaps = valPat.query(state);
         if (!ctrlHaps.length) return [hap];
 
-        if (perEvent) {
-          // perEvent: control was sampled at onset, not frame time —
-          // parts won't overlap, so just take the first value directly.
-          // _perEvent patterns (rand, irand, choose) are signals that produce
-          // exactly one hap per query — if that assumption breaks, this [0] is wrong.
-          return [hap.withValue((v: any) => ({ ...v, [name]: ctrlHaps[0].value }))];
-        }
-
-        // Find control haps whose parts overlap this main hap's part
         const results: any[] = [];
         for (const ch of ctrlHaps) {
           const newPart = hap.part.intersection(ch.part);

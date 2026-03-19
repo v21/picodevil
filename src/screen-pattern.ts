@@ -30,25 +30,19 @@ function classifyToken(v: string): object {
  * $: s("clip.mp4 photo.jpg")         // extension fallback
  * $: s("red blue green")             // solid colors
  *
- * Note: for video tokens, `_onset` (the event's `whole.begin`) is baked into the
- * value for video playback timing. See `eventBeginFromHap` in main.ts.
  */
 export function screen(pat: string | Pattern): Pattern {
   if (typeof pat !== "string" && !(pat && typeof (pat as any).queryArc === "function")) {
     warn(`screen() expected string or Pattern, got ${typeof pat}`);
   }
   const p = typeof pat === "string" ? mini(pat) : pat;
-  // Wrap in PatternClass constructor to access hap.whole.begin and bake _onset
-  // into video values — same as video() does.
   return new PatternClass((state: any) => {
     return p.queryArc(state.span.begin, state.span.end).map((hap: any) => {
       return hap.withValue((v: unknown) => {
-        // Already-typed value (e.g. from color(), video(), image()) — pass through,
-        // but still bake _onset for video types that don't have it yet.
         if (typeof v === "object" && v !== null && "_type" in v) {
           const typed = v as any;
-          if (typed._type === "video" && typed._onset == null) {
-            return { begin: 0, end: 1, ...typed, _onset: Number(hap.whole.begin) };
+          if (typed._type === "video" && typed.begin == null) {
+            return { begin: 0, end: 1, ...typed };
           }
           return v;
         }
@@ -57,9 +51,8 @@ export function screen(pat: string | Pattern): Pattern {
           return { _type: "color", color: "black" };
         }
         const classified = classifyToken(v);
-        // Bake _onset for video events for playback timing
         if ((classified as any)._type === "video") {
-          return { begin: 0, end: 1, ...classified, _onset: Number(hap.whole.begin) };
+          return { begin: 0, end: 1, ...classified };
         }
         return classified;
       });
