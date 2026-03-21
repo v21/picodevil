@@ -447,3 +447,267 @@ describe("renderVideoFrame stateful behavior", () => {
     expect(el.paused).toBe(false);
   });
 });
+
+/**
+ * Multi-frame playback mode tests.
+ * Simulate N frames through renderVideoFrame, verify mode selection,
+ * effective playback rate, and position continuity.
+ */
+describe("playback mode selection (multi-frame)", () => {
+  const DUR = 10;
+  const CPS = 0.5;
+  const FPS = 60;
+  const dt = CPS / FPS; // cycle increment per frame
+
+  interface FrameResult {
+    cycle: number;
+    paused: boolean;
+    playbackRate: number;
+    currentTime: number;
+    expected: number; // what computeExpectedTime would give
+  }
+
+  /**
+   * Run N frames through renderVideoFrame, returning per-frame state.
+   * evFn produces the event value for a given cycle (allows dynamic begin/end).
+   * The mock element simulates browser behavior: in native mode, currentTime
+   * advances by playbackRate * wallDt between frames.
+   */
+  function runFrames(opts: {
+    evFn: (cycle: number) => any;
+    frames: number;
+    eventBegin?: number;
+  }): FrameResult[] {
+    const el = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const results: FrameResult[] = [];
+    const eventBegin = opts.eventBegin ?? 0;
+    const wallDt = 1 / FPS;
+
+    for (let i = 0; i < opts.frames; i++) {
+      const cycle = i * dt;
+      const ev = opts.evFn(cycle);
+
+      renderVideoFrame({ ev, el, currentCycle: cycle, eventBegin, cps: CPS });
+
+      results.push({
+        cycle,
+        paused: el.paused,
+        playbackRate: el.playbackRate,
+        currentTime: el.currentTime,
+        expected: el.currentTime, // after renderVideoFrame, currentTime ≈ expected
+      });
+
+      // Simulate browser advancing between frames (native mode only)
+      if (!el.paused) {
+        (el as any).currentTime = el.currentTime + el.playbackRate * wallDt;
+      }
+    }
+    return results;
+  }
+
+  /** Check that no frame has a position jump > maxJump (in seconds). */
+  function assertNoBigJumps(results: FrameResult[], maxJump: number, label: string) {
+    for (let i = 1; i < results.length; i++) {
+      const delta = Math.abs(results[i].currentTime - results[i - 1].currentTime);
+      // Allow jumps near video boundary (wrapping)
+      const wrappedDelta = Math.min(delta, Math.abs(delta - DUR));
+      expect(wrappedDelta, `${label} frame ${i}: jump=${delta.toFixed(3)}`).toBeLessThan(maxJump);
+    }
+  }
+
+  /** Check that the element is in native mode (not paused) for most frames. */
+  function assertMostlyNative(results: FrameResult[], minNativeFraction: number, label: string) {
+    const nativeFrames = results.filter(r => !r.paused).length;
+    const fraction = nativeFrames / results.length;
+    expect(fraction, `${label}: native fraction=${fraction.toFixed(2)}`).toBeGreaterThanOrEqual(minNativeFraction);
+  }
+
+  /** Check that the element is in manual seek mode (paused) for most frames. */
+  function assertMostlyManual(results: FrameResult[], minManualFraction: number, label: string) {
+    const manualFrames = results.filter(r => r.paused).length;
+    const fraction = manualFrames / results.length;
+    expect(fraction, `${label}: manual fraction=${fraction.toFixed(2)}`).toBeGreaterThanOrEqual(minManualFraction);
+  }
+
+  // --- Basic playback modes ---
+
+  it("speed(2): native mode at 2x", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: 2, begin: 0, end: 1 }),
+      frames: 120,
+    });
+    assertMostlyNative(results, 0.9, "speed(2)");
+    // After warmup, playback rate should be ~2
+    const lateRates = results.slice(10).map(r => r.playbackRate);
+    expect(lateRates.every(r => Math.abs(r - 2) < 0.5)).toBe(true);
+  });
+
+  it("speed(-1): manual seek mode (reverse)", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: -1, begin: 0, end: 1 }),
+      frames: 120,
+    });
+    assertMostlyManual(results, 0.9, "speed(-1)");
+  });
+
+  it("speed(0.5): native mode at 0.5x", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: 0.5, begin: 0, end: 1 }),
+      frames: 120,
+    });
+    assertMostlyNative(results, 0.9, "speed(0.5)");
+  });
+
+  it("speed(0): manual seek, frozen frame", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: 0, begin: 0, end: 1 }),
+      frames: 60,
+    });
+    // speed 0 → effective rate 0 → not native → manual seek
+    // All frames should be at loopStart (0)
+    for (const r of results) {
+      expect(r.currentTime).toBeCloseTo(0, 1);
+    }
+  });
+
+  // --- Dynamic begin/end (the fixed case) ---
+
+  it("sync().begin(saw).speed(1): native mode, no big jumps", () => {
+    const results = runFrames({
+      evFn: (cycle) => ({ speed: 1, begin: cycle % 1, end: 1, sync: true }),
+      frames: 240, // 4 seconds
+    });
+    // Should be native (effective rate ~5 is within native range)
+    assertMostlyNative(results, 0.8, "begin(saw).sync()");
+    // No big jumps (the bug was flicker from mode-switching)
+    assertNoBigJumps(results, 2.0, "begin(saw).sync()");
+  });
+
+  it("sync().begin(sine): native mode, smooth oscillation", () => {
+    const results = runFrames({
+      evFn: (cycle) => ({
+        speed: 1,
+        begin: 0.5 + 0.4 * Math.sin(Math.PI * 2 * cycle),
+        end: 1,
+        sync: true,
+      }),
+      frames: 240,
+    });
+    assertMostlyNative(results, 0.7, "begin(sine).sync()");
+    // Positions should always be valid (within video duration)
+    for (const r of results) {
+      expect(r.currentTime).toBeGreaterThanOrEqual(-0.1);
+      expect(r.currentTime).toBeLessThanOrEqual(DUR + 0.1);
+    }
+  });
+
+  it("sync().end(saw): native mode, smooth", () => {
+    const results = runFrames({
+      evFn: (cycle) => ({ speed: 1, begin: 0, end: (cycle % 1) || 1, sync: true }),
+      frames: 240,
+    });
+    assertNoBigJumps(results, 2.0, "end(saw).sync()");
+  });
+
+  // --- Inverted ranges (wrap-around) ---
+
+  it("begin(.8).end(.2): wraps through video boundary", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: 1, begin: 0.8, end: 0.2 }),
+      frames: 240,
+    });
+    // Positions should be in [8,10) ∪ [0,2)
+    for (const r of results.slice(2)) { // skip first couple frames (setup)
+      const inUpper = r.currentTime >= 7.9;
+      const inLower = r.currentTime <= 2.1;
+      expect(inUpper || inLower, `pos=${r.currentTime.toFixed(2)} not in inverted range`).toBe(true);
+    }
+  });
+
+  it("begin(.8).end(.2).speed(-1): reverse through wrapped range", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: -1, begin: 0.8, end: 0.2 }),
+      frames: 120,
+    });
+    assertMostlyManual(results, 0.9, "inverted reverse");
+  });
+
+  // --- Scrub ---
+
+  it("scrub(sine): smooth scrub, positions are valid", () => {
+    const results = runFrames({
+      evFn: (cycle) => {
+        const scrubVal = 0.5 + 0.5 * Math.sin(Math.PI * 2 * cycle);
+        return { speed: 1, begin: scrubVal, end: scrubVal, sync: undefined };
+      },
+      frames: 120,
+    });
+    // begin===end → loopLen=0 → speed 0 behavior, positions at loopStart
+    for (const r of results) {
+      expect(r.currentTime).toBeGreaterThanOrEqual(-0.1);
+      expect(r.currentTime).toBeLessThanOrEqual(DUR + 0.1);
+    }
+  });
+
+  // --- Combined operators ---
+
+  it("sync with speed changes: continuity maintained", () => {
+    const results = runFrames({
+      evFn: (cycle) => {
+        // Alternate speeds every 0.5 cycles (1 second)
+        const speeds = [1, 2, 4];
+        const idx = Math.floor(cycle * 2) % speeds.length;
+        return { speed: speeds[idx], begin: 0, end: 1, sync: true };
+      },
+      frames: 360,
+    });
+    assertMostlyNative(results, 0.8, "sync speed changes");
+    assertNoBigJumps(results, 2.0, "sync speed changes");
+  });
+
+  it("sync().begin(saw).speed(8): high effective rate, stays native if within range", () => {
+    const results = runFrames({
+      evFn: (cycle) => ({ speed: 8, begin: cycle % 1, end: 1, sync: true }),
+      frames: 120,
+    });
+    // Effective rate ≈ speed(8) + begin sweep ≈ 13, still within native range [0.0625, 16]
+    // Should be mostly native
+    assertMostlyNative(results, 0.7, "begin(saw).speed(8).sync()");
+  });
+
+  it("speed(20): manual seek (nominal rate > 16)", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: 20, begin: 0, end: 1 }),
+      frames: 60,
+    });
+    // speed 20 exceeds native range from the start → manual seek
+    assertMostlyManual(results, 0.9, "speed(20)");
+  });
+
+  // --- Edge cases ---
+
+  it("begin(.5).end(.5): zero-length range, frozen frame at begin", () => {
+    const results = runFrames({
+      evFn: () => ({ speed: 1, begin: 0.5, end: 0.5 }),
+      frames: 60,
+    });
+    for (const r of results) {
+      expect(r.currentTime).toBeCloseTo(5, 0); // loopStart = 0.5 * 10 = 5
+    }
+  });
+
+  it("begin(.5).duration(.9) wraps to end=0.4, inverted range", () => {
+    // begin=0.5, dur=0.9 → end = (0.5+0.9)%1 = 0.4
+    // loopStart=5, loopEnd=4, inverted range [5,10)∪[0,4)
+    const results = runFrames({
+      evFn: () => ({ speed: 1, begin: 0.5, end: 0.4 }),
+      frames: 240,
+    });
+    // Positions should be in [5,10) ∪ [0,4)
+    for (const r of results.slice(2)) {
+      const inUpper = r.currentTime >= 4.9;
+      const inLower = r.currentTime <= 4.1;
+      expect(inUpper || inLower, `pos=${r.currentTime.toFixed(2)} not in inverted range [5,10)∪[0,4)`).toBe(true);
+    }
+  });
+});
