@@ -208,7 +208,7 @@ function buildReferenceData(root: string): RefCategory[] {
   } catch {}
 
   // --- Strudel combinators ---
-  const combNames = new Set(["stack", "cat", "slowcat", "fastcat", "silence", "gap", "nothing", "pure", "reify"]);
+  const combNames = new Set(["stack", "cat", "slowcat", "fastcat", "sequence", "seq", "arrange", "slowcatPrime", "polymeter", "stepcat", "silence", "gap", "nothing", "pure", "reify"]);
   const patternPath = resolve(root, "node_modules/@strudel/core/pattern.mjs");
   try {
     const patternSource = readFileSync(patternPath, "utf-8");

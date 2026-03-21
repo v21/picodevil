@@ -8,7 +8,8 @@ import {
   time, mouseX, mouseY,
   run, chooseIn, chooseCycles,
   signal, steady,
-  stack, cat, slowcat, fastcat,
+  stack, cat, slowcat, fastcat, sequence, seq,
+  arrange, slowcatPrime, polymeter, stepcat,
   silence, gap, nothing,
   pure, reify,
 } from "@strudel/core";
@@ -240,7 +241,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     };
     const sigNames = Object.keys(signals);
     const modNames = Object.keys(structuralModifiers);
-    const combinators = { stack, cat, slowcat, fastcat, silence, gap, nothing, pure, reify };
+    const combinators = { stack, cat, slowcat, fastcat, sequence, seq, arrange, slowcatPrime, polymeter, stepcat, silence, gap, nothing, pure, reify };
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
     const slider = sliderWidget;
