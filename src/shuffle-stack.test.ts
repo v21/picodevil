@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { stack, steady, pure, sine } from "@strudel/core";
 import { mini } from "@strudel/mini";
 import { color } from "./color-pattern";
+import { rand } from "./event-random";
 import "./visual-controls";
 import "./index-patterns";
 import "./shuffle-stack";
@@ -312,6 +313,44 @@ describe("shuffleStack with signals/steady", () => {
     expect(haps1).toEqual(haps2);
     // Same across cycles (pure(42) is always 42)
     expect(haps1).toEqual(haps3);
+  });
+});
+
+describe("shuffleStackCycle seed resolution via createMixParam", () => {
+  it("rand (_perEvent) produces same shuffle within a cycle", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = base.shuffleStackCycle(rand);
+
+    const haps1 = shuffled.queryArc(0.1, 0.1).map((h: any) => h.value.color);
+    const haps2 = shuffled.queryArc(0.7, 0.7).map((h: any) => h.value.color);
+
+    // rand is _perEvent → appLeft samples at carrier's whole span → stable per cycle
+    expect(haps1).toEqual(haps2);
+  });
+
+  it("sine (not _perEvent) may vary within a cycle", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = base.shuffleStackCycle(sine);
+
+    const haps1 = shuffled.queryArc(0.1, 0.1).map((h: any) => h.value.color);
+    const haps2 = shuffled.queryArc(0.8, 0.8).map((h: any) => h.value.color);
+
+    // sine is NOT _perEvent → frame-time resolution → may produce different shuffles
+    // (sine(0.1) ≠ sine(0.8)), but all values are still present
+    expect(new Set(haps1)).toEqual(new Set(["red", "blue", "green", "yellow"]));
+    expect(new Set(haps2)).toEqual(new Set(["red", "blue", "green", "yellow"]));
+  });
+
+  it("mini '1 2' produces different shuffles in each half of cycle", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = base.shuffleStackCycle(mini("1 2"));
+
+    const haps1 = shuffled.queryArc(0.1, 0.1).map((h: any) => h.value.color);
+    const haps2 = shuffled.queryArc(0.6, 0.6).map((h: any) => h.value.color);
+
+    // "1 2" is discrete → frame-time combiner picks the active event
+    // first half gets seed=1, second half gets seed=2
+    expect(haps1).not.toEqual(haps2);
   });
 });
 

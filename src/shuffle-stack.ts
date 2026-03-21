@@ -10,7 +10,8 @@
  * different onset times keep their temporal order since indexCycle sorts by
  * onset.
  */
-import { reify, Pattern, steady } from "@strudel/core";
+import { reify, Pattern, steady, pure } from "@strudel/core";
+import { createMixParam } from "./create-mix-param";
 import "./visual-controls";
 
 const PatternProto = Pattern.prototype as any;
@@ -57,6 +58,11 @@ function resolveSeed(seedPat: any, begin: any, end: any, count: number): number 
   const seedVal = seedHaps.length > 0 ? Number(seedHaps[0].value) : 0;
   return hashStr(`${seedVal}:${count}`);
 }
+
+// Internal mix param for resolving seed values with the same logic as other controls.
+// _perEvent patterns (rand) get sampled per-event (= per cycle for a pure(0) carrier),
+// while discrete/continuous patterns get frame-time resolution.
+const _shuffleSeed = createMixParam("_shuffleSeed");
 
 /** The event's onset time — uses whole.begin when available. */
 function hapOnset(hap: any): number {
@@ -120,7 +126,15 @@ PatternProto.shuffleStackCycle = function (seedPat?: any) {
     const haps = self.query(state);
     if (haps.length <= 1) return haps;
 
-    const intSeed = resolveSeed(seed, begin, end, haps.length);
+    // Resolve seed via createMixParam applied to a one-cycle carrier.
+    // This delegates to the same logic as other controls:
+    // - _perEvent (rand, irand): appLeft samples at carrier's whole span (one per cycle)
+    // - discrete ("1 2"): frame-time combiner picks the active event
+    // - continuous (sine): frame-time combiner samples at query time
+    const carrier = _shuffleSeed(seed, pure(0));
+    const seedHaps = carrier.queryArc(Number(begin), Number(end));
+    const seedVal = seedHaps.length > 0 ? Number(seedHaps[0].value._shuffleSeed) : 0;
+    const intSeed = hashStr(`${seedVal}:${haps.length}`);
 
     // Group events by onset time (relative to cycle start for consistency across cycles)
     const groups = new Map<string, any[]>();
