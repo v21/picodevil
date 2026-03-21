@@ -314,6 +314,8 @@ const uzuMetrics = {
 let startTime = performance.now();
 /** Per-frame video element assignments, keyed by draw position (screenIndex:eventIndex). */
 const frameAssignments = new Map<string, VideoEl>();
+// Expose for testing
+(window as any)._uzuFrameAssignments = frameAssignments;
 
 /** Threshold for sharing: two events showing the same src within this many seconds share an element. */
 const SHARE_TIME_THRESHOLD = 0.04;

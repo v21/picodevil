@@ -1,4 +1,4 @@
-import { setPlaybackRate, isNativeRate } from "./playback-rate";
+import { setPlaybackRate, isNativeRate, MIN_NATIVE_RATE } from "./playback-rate";
 import { computeSyncDistOffset } from "./sync-continuity";
 import type { VideoEl } from "./video-element-state";
 export type { VideoEl } from "./video-element-state";
@@ -42,17 +42,21 @@ export function computeExpectedTime(p: ExpectedTimeParams): number {
   const loopLen = computeLoopLen(p.loopStart, p.loopEnd, p.duration);
   if (loopLen <= 0) return p.loopStart;
   const dist = elapsedSec * Math.abs(p.speed) + (p.syncOffset ?? 0) + (p.distOffset ?? 0);
-  const distInLoop = ((dist % loopLen) + loopLen) % loopLen; // always positive
+  const distInLoop = ((dist % loopLen) + loopLen) % loopLen; // always in [0, loopLen)
   let pos: number;
   if (p.speed > 0) {
     pos = p.loopStart + distInLoop;
   } else {
     pos = p.loopEnd - distInLoop;
   }
-  // Wrap through video boundary for inverted ranges
+  // Floating point: loopStart + distInLoop can round up to loopEnd (or beyond)
+  // even when distInLoop < loopLen. Wrap back to loopStart.
   if (inverted) {
     if (pos >= p.duration) pos -= p.duration;
     else if (pos < 0) pos += p.duration;
+  } else {
+    if (pos >= p.loopEnd) pos -= loopLen;
+    if (pos < p.loopStart) pos += loopLen;
   }
   return pos;
 }
@@ -112,27 +116,23 @@ export function computeDrift(p: {
 
 /**
  * Compute the effective playback rate from frame-to-frame position deltas.
- * Returns the rate (seconds/second) at which the expected position is moving.
- * Falls back to nominalSpeed when no previous frame exists or on loop wraps.
+ * Uses raw position delta (not loop-space offsets) so it works even when
+ * loop bounds change between frames (e.g. begin(saw) sweeping).
+ * Falls back to nominalSpeed when no previous frame exists.
  */
 export function computeEffectiveRate(p: {
   expected: number;
   prevExpected: number | undefined;
   wallDt: number;
-  loopStart: number;
-  loopEnd: number;
-  loopLen: number;
   duration: number;
   nominalSpeed: number;
 }): number {
   if (p.prevExpected == null || p.wallDt < 0.005) return p.nominalSpeed;
-  // Use loop-space offsets to handle both normal and inverted ranges
-  const curOff = toLoopOffset(p.expected, p.loopStart, p.loopEnd, p.duration);
-  const prevOff = toLoopOffset(p.prevExpected, p.loopStart, p.loopEnd, p.duration);
-  const rawDelta = curOff - prevOff;
-  // Ignore loop-boundary wraps (delta jumps by ~loopLen)
-  if (p.loopLen > 0 && Math.abs(rawDelta) >= p.loopLen / 2) return p.nominalSpeed;
-  return rawDelta / p.wallDt;
+  let delta = p.expected - p.prevExpected;
+  // Unwrap through video duration boundary (for inverted ranges or loop wraps)
+  if (delta > p.duration / 2) delta -= p.duration;
+  else if (delta < -p.duration / 2) delta += p.duration;
+  return delta / p.wallDt;
 }
 
 export function renderVideoFrame(c: VideoFrameContext): void {
@@ -239,35 +239,32 @@ function updateVideoPlayback(
     speed, loopStart, loopEnd, duration: dur, syncOffset, distOffset,
   });
 
-  const src = st.srcUrl ?? el.src;
   const now = Date.now();
-  const canLog = (now - (st.lastLogTime ?? 0)) > 300;
 
   const prevExpected = st.lastExpected;
   const wallDt = st.lastExpectedWall != null ? (now - st.lastExpectedWall) / 1000 : 0;
   const effectiveRate = computeEffectiveRate({
-    expected, prevExpected, wallDt,
-    loopStart, loopEnd, loopLen, duration: dur,
-    nominalSpeed: speed,
+    expected, prevExpected, wallDt, duration: dur, nominalSpeed: speed,
   });
   st.lastExpected = expected;
   st.lastExpectedWall = now;
-
   const rateIsNative = effectiveRate > 0 && isNativeRate(effectiveRate);
 
-  if (!rateIsNative) {
-    // Manual seek mode: negative rate, out of native range, or erratic
-    // Don't guard on st.seeking — just set currentTime unconditionally.
-    // With all-keyframe video this is smooth; with non-keyframe video the
-    // browser seeks to the nearest keyframe (better than skipping frames).
-    if (!el.paused) el.pause();
-    if (Math.abs(el.currentTime - expected) > 0.01) {
-      el.currentTime = expected;
-    }
-  } else {
-    // Native playback at effective rate
+  // Two modes based on whether the effective rate matches nominal speed:
+  // 1. Stable rate (effective ≈ nominal): native playback with drift correction
+  // 2. Varying rate (dynamic begin/end, scrub, etc.): seek every frame
+  const rateIsStable = rateIsNative && Math.abs(effectiveRate - speed) < 0.5;
+
+  // DEBUG: log every frame
+  if (synced) {
+    const mode = rateIsStable ? 'NATIVE' : 'SEEK';
+    console.log(`[F] ${mode} ct=${el.currentTime.toFixed(3)} exp=${expected.toFixed(3)} rate=${effectiveRate.toFixed(2)} begin=${beginVal.toFixed(4)} loopLen=${loopLen.toFixed(1)} paused=${el.paused} pbRate=${el.playbackRate.toFixed(2)}`);
+  }
+
+  if (rateIsStable) {
+    // Native playback: let browser play at speed, correct drift as needed
     if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
-    if (Math.abs(el.playbackRate - effectiveRate) > 0.01) setPlaybackRate(el, effectiveRate);
+    if (Math.abs(el.playbackRate - speed) > 0.01) setPlaybackRate(el, speed);
     const loopWrapped = detectLoopWrap({
       expected, prevExpected, loopStart, loopEnd, loopLen, duration: dur,
     });
@@ -275,12 +272,14 @@ function updateVideoPlayback(
       currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
     });
     if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
-      if (!isNewEvent && drift > DRIFT_THRESHOLD && canLog) {
-        const filename = src.split("/").pop() ?? src;
-        console.warn(`[uzuvid] drift correction: ${filename} at ${el.currentTime.toFixed(3)}s / ${dur.toFixed(3)}s (expected ${expected.toFixed(3)}s, drift ${drift.toFixed(3)}s) [effective rate ${effectiveRate.toFixed(2)}x, src: ${src}]`);
-        st.lastLogTime = now;
-      }
       el.currentTime = expected;
     }
+  } else {
+    // Seek mode: set currentTime every frame. Keep video playing (not paused)
+    // so the browser keeps decoding. Use minimum playback rate to minimize
+    // overshoot between our corrections.
+    if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
+    setPlaybackRate(el, MIN_NATIVE_RATE);
+    el.currentTime = expected;
   }
 }

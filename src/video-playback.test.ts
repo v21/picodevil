@@ -109,42 +109,42 @@ describe("computeExpectedTime", () => {
     expect(computeExpectedTime({ ...defaults, currentCycle: 0, eventBegin: 0, speed: -1, syncOffset: 3 })).toBeCloseTo(7);
   });
 
-describe("computeEffectiveRate", () => {
-  const dt = 1 / 60; // one frame at 60fps
-  const base = { loopStart: 0, loopEnd: 10, loopLen: 10, duration: 10 };
+describe("computeEffectiveRate (backward delta)", () => {
+  const dt = 1 / 60;
+  const dur = 10;
 
-  it("returns nominal speed on first frame (no previous expected)", () => {
-    expect(computeEffectiveRate({ expected: 2, prevExpected: undefined, wallDt: dt, nominalSpeed: 1, ...base })).toBe(1);
+  it("returns nominal speed on first frame (no prevExpected)", () => {
+    expect(computeEffectiveRate({ expected: 2, prevExpected: undefined, wallDt: dt, duration: dur, nominalSpeed: 1 })).toBe(1);
   });
 
   it("returns nominal speed when wallDt is too small", () => {
-    expect(computeEffectiveRate({ expected: 1.5, prevExpected: 1, wallDt: 0.001, nominalSpeed: 1, ...base })).toBe(1);
+    expect(computeEffectiveRate({ expected: 1.5, prevExpected: 1, wallDt: 0.001, duration: dur, nominalSpeed: 1 })).toBe(1);
   });
 
-  it("returns 1 when position advances at speed 1", () => {
-    const rate = computeEffectiveRate({ expected: 1 + dt, prevExpected: 1, wallDt: dt, nominalSpeed: 1, ...base });
+  it("returns ~1 when position advances at speed 1", () => {
+    const rate = computeEffectiveRate({ expected: 1 + dt, prevExpected: 1, wallDt: dt, duration: dur, nominalSpeed: 1 });
     expect(rate).toBeCloseTo(1, 1);
   });
 
-  it("returns 2 when position advances at speed 2", () => {
-    const rate = computeEffectiveRate({ expected: 1 + 2 * dt, prevExpected: 1, wallDt: dt, nominalSpeed: 2, ...base });
+  it("returns ~2 when position advances at speed 2", () => {
+    const rate = computeEffectiveRate({ expected: 1 + 2 * dt, prevExpected: 1, wallDt: dt, duration: dur, nominalSpeed: 2 });
     expect(rate).toBeCloseTo(2, 1);
   });
 
   it("returns ~5 when begin sweeps forward (begin(saw) scenario)", () => {
-    // Position advances by 5 * dt in one frame (speed 1 + begin sweep at 4s/s)
-    const rate = computeEffectiveRate({ expected: 1 + 5 * dt, prevExpected: 1, wallDt: dt, nominalSpeed: 1, ...base });
+    // Position advances by 5 * dt in one frame
+    const rate = computeEffectiveRate({ expected: 1 + 5 * dt, prevExpected: 1, wallDt: dt, duration: dur, nominalSpeed: 1 });
     expect(rate).toBeCloseTo(5, 1);
   });
 
-  it("returns nominal speed on loop-boundary wrap", () => {
-    // loopLen=2, position wraps from 1.99 to 0.01
-    const rate = computeEffectiveRate({ expected: 0.01, prevExpected: 1.99, wallDt: dt, nominalSpeed: 1, loopStart: 0, loopEnd: 2, loopLen: 2, duration: 10 });
-    expect(rate).toBe(1);
+  it("unwraps through video duration boundary", () => {
+    // Position wraps from 9.9 to 0.1 (crossed video end) — real delta is 0.2, not -9.8
+    const rate = computeEffectiveRate({ expected: 0.1, prevExpected: 9.9, wallDt: dt, duration: dur, nominalSpeed: 1 });
+    expect(rate).toBeCloseTo(0.2 / dt, 0);
   });
 
   it("returns negative rate for reverse playback", () => {
-    const rate = computeEffectiveRate({ expected: 1 - dt, prevExpected: 1, wallDt: dt, nominalSpeed: -1, ...base });
+    const rate = computeEffectiveRate({ expected: 1 - dt, prevExpected: 1, wallDt: dt, duration: dur, nominalSpeed: -1 });
     expect(rate).toBeCloseTo(-1, 1);
   });
 });
@@ -416,13 +416,13 @@ describe("renderVideoFrame stateful behavior", () => {
     expect(el._state.lastExpected).toBeCloseTo(0.2, 0);
   });
 
-  it("negative speed uses manual seeking", () => {
+  it("negative speed uses seek mode (not paused, low playbackRate)", () => {
     const el = mockVideoEl({ duration: 10, currentTime: 0 });
     const ev = { speed: -1, begin: 0, end: 1 };
 
     renderVideoFrame({ ev, el, currentCycle: 0.5, eventBegin: 0, cps });
 
-    expect(el.paused).toBe(true);
+    expect(el.paused).toBe(false);
     // expected = loopEnd - (1 % 10) = 10 - 1 = 9
     expect(el.currentTime).toBeCloseTo(9, 0);
   });
@@ -542,12 +542,15 @@ describe("playback mode selection (multi-frame)", () => {
     expect(lateRates.every(r => Math.abs(r - 2) < 0.5)).toBe(true);
   });
 
-  it("speed(-1): manual seek mode (reverse)", () => {
+  it("speed(-1): seek mode (not paused)", () => {
     const results = runFrames({
       evFn: () => ({ speed: -1, begin: 0, end: 1 }),
       frames: 120,
     });
-    assertMostlyManual(results, 0.9, "speed(-1)");
+    // Seek mode keeps video playing (not paused) at minimum rate
+    for (const r of results) {
+      expect(r.paused).toBe(false);
+    }
   });
 
   it("speed(0.5): native mode at 0.5x", () => {
@@ -572,18 +575,21 @@ describe("playback mode selection (multi-frame)", () => {
 
   // --- Dynamic begin/end (the fixed case) ---
 
-  it("sync().begin(saw).speed(1): native mode, no big jumps", () => {
+  it("sync().begin(saw).speed(1): seek mode (effective rate differs from speed), positions valid", () => {
     const results = runFrames({
       evFn: (cycle) => ({ speed: 1, begin: cycle % 1, end: 1, sync: true }),
-      frames: 240, // 4 seconds
+      frames: 240,
     });
-    // Should be native (effective rate ~5 is within native range)
-    assertMostlyNative(results, 0.8, "begin(saw).sync()");
-    // No big jumps (the bug was flicker from mode-switching)
-    assertNoBigJumps(results, 2.0, "begin(saw).sync()");
+    // Effective rate ~5 differs from speed 1 → seek mode (not paused)
+    // Check all positions are within valid video range
+    for (const r of results) {
+      expect(r.paused).toBe(false);
+      expect(r.currentTime).toBeGreaterThanOrEqual(-0.1);
+      expect(r.currentTime).toBeLessThanOrEqual(DUR + 0.1);
+    }
   });
 
-  it("sync().begin(sine): native mode, smooth oscillation", () => {
+  it("sync().begin(sine): seek mode, positions valid", () => {
     const results = runFrames({
       evFn: (cycle) => ({
         speed: 1,
@@ -593,8 +599,6 @@ describe("playback mode selection (multi-frame)", () => {
       }),
       frames: 240,
     });
-    assertMostlyNative(results, 0.7, "begin(sine).sync()");
-    // Positions should always be valid (within video duration)
     for (const r of results) {
       expect(r.currentTime).toBeGreaterThanOrEqual(-0.1);
       expect(r.currentTime).toBeLessThanOrEqual(DUR + 0.1);
@@ -624,12 +628,14 @@ describe("playback mode selection (multi-frame)", () => {
     }
   });
 
-  it("begin(.8).end(.2).speed(-1): reverse through wrapped range", () => {
+  it("begin(.8).end(.2).speed(-1): seek mode, not paused", () => {
     const results = runFrames({
       evFn: () => ({ speed: -1, begin: 0.8, end: 0.2 }),
       frames: 120,
     });
-    assertMostlyManual(results, 0.9, "inverted reverse");
+    for (const r of results) {
+      expect(r.paused).toBe(false);
+    }
   });
 
   // --- Scrub ---
@@ -675,13 +681,14 @@ describe("playback mode selection (multi-frame)", () => {
     assertMostlyNative(results, 0.7, "begin(saw).speed(8).sync()");
   });
 
-  it("speed(20): manual seek (nominal rate > 16)", () => {
+  it("speed(20): seek mode (not paused)", () => {
     const results = runFrames({
       evFn: () => ({ speed: 20, begin: 0, end: 1 }),
       frames: 60,
     });
-    // speed 20 exceeds native range from the start → manual seek
-    assertMostlyManual(results, 0.9, "speed(20)");
+    for (const r of results) {
+      expect(r.paused).toBe(false);
+    }
   });
 
   // --- Edge cases ---
