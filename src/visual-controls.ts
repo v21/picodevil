@@ -430,15 +430,6 @@ PatternProto.w = PatternProto.width;
 export const height = createMixParam("height");
 PatternProto.h = PatternProto.height;
 
-/**
- * Sets the cell index for grid/circle placement (0-based). Read by .grid(), .gridMod(), .circle(), .circleMod().
- * Set automatically by index() and indexCycle().
- *
- * @param {number | string | Pattern} value cell index (0-based)
- * @example
- * $: video("clip.mp4").i(2).rows(2).cols(2).grid()
- * $: index(color("red"), color("blue")).rowscols(2).gridMod()
- */
 // Custom implementation: .i() also sets count=Infinity when count isn't already
 // present, so that gridMod/circleMod place the element in exactly one cell by default.
 // Using index()/stackN() always sets count explicitly, so this only affects manual .i() usage.
@@ -477,6 +468,17 @@ const iFunc = function (value: any, pat?: any) {
   });
 };
 
+/**
+ * Sets the cell index for grid/circle placement (0-based). Read by .grid(), .gridMod(), .circle(), .circleMod().
+ * Set automatically by index() and indexCycle(). When used manually, defaults count to Infinity
+ * so gridMod/circleMod place the element in exactly one cell. Override with .count(n) for striding.
+ *
+ * @param {number | string | Pattern} value cell index (0-based)
+ * @example
+ * $: video("clip.mp4").i(2).rows(2).cols(2).grid()
+ * $: index(color("red"), color("blue")).rowscols(2).gridMod()
+ * $: s("red").i(3).rowscols(4).gridMod()
+ */
 PatternProto.i = function (value: any) {
   return iFunc(value, this);
 };
