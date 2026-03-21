@@ -16,6 +16,7 @@ import { color } from "./color-pattern";
 import { rand } from "./event-random";
 import "./visual-controls";
 import "./index-patterns";
+import "./grid-stack";
 import "./shuffle-stack";
 import { index, indexCycle } from "./index-patterns";
 
@@ -407,6 +408,28 @@ describe("shuffleStackCycle rand changes per cycle", () => {
     const c1 = shuffled.queryArc(1.1, 1.1).map((h: any) => h.value.color);
     // Should differ from cycle 0 (very high probability with 4 items)
     expect(c0a).not.toEqual(c1);
+  });
+});
+
+describe("shuffleStackCycle after stackN", () => {
+  it("rand seed still varies per cycle when chained after stackN", () => {
+    // Reproduces user report: .stackN(4).shuffleStackCycle(rand) same every cycle
+    const base = color("red").stackN(4);
+    const shuffled = base.shuffleStackCycle(rand);
+
+    const iOrder = (t: number) =>
+      shuffled.queryArc(t, t).map((h: any) => h.value.i);
+
+    const c0 = iOrder(0.1);
+    const c1 = iOrder(1.1);
+    const c2 = iOrder(2.1);
+
+    expect(c0).toHaveLength(4);
+
+    // Should not all be identical across cycles
+    const allSame = JSON.stringify(c0) === JSON.stringify(c1)
+      && JSON.stringify(c1) === JSON.stringify(c2);
+    expect(allSame).toBe(false);
   });
 });
 
