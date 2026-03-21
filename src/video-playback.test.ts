@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeExpectedTime, detectWindowMoving, renderVideoFrame, type VideoEl } from "./video-playback";
+import { computeExpectedTime, computeLoopLen, detectLoopWrap, computeDrift, toLoopOffset, computeEffectiveRate, renderVideoFrame, type VideoEl } from "./video-playback";
 import { createVideoState } from "./video-element-state";
 
 /** Create a mock video element for stateful playback tests. */
@@ -109,35 +109,43 @@ describe("computeExpectedTime", () => {
     expect(computeExpectedTime({ ...defaults, currentCycle: 0, eventBegin: 0, speed: -1, syncOffset: 3 })).toBeCloseTo(7);
   });
 
-describe("detectWindowMoving", () => {
+describe("computeEffectiveRate", () => {
   const dt = 1 / 60; // one frame at 60fps
+  const base = { loopStart: 0, loopEnd: 10, loopLen: 10, duration: 10 };
 
-  it("returns false on first call (no previous expected)", () => {
-    expect(detectWindowMoving({ expected: 2, prevExpected: undefined, wallDt: dt, speed: 1, loopLen: 10 })).toBe(false);
+  it("returns nominal speed on first frame (no previous expected)", () => {
+    expect(computeEffectiveRate({ expected: 2, prevExpected: undefined, wallDt: dt, nominalSpeed: 1, ...base })).toBe(1);
   });
 
-  it("returns false when expected advances at native speed", () => {
-    // speed=1, dt=1/60, expected advanced by exactly 1/60s → effective rate = 1
-    expect(detectWindowMoving({ expected: 1 + dt, prevExpected: 1, wallDt: dt, speed: 1, loopLen: 10 })).toBe(false);
+  it("returns nominal speed when wallDt is too small", () => {
+    expect(computeEffectiveRate({ expected: 1.5, prevExpected: 1, wallDt: 0.001, nominalSpeed: 1, ...base })).toBe(1);
   });
 
-  it("returns false when expected advances at native speed 2x", () => {
-    expect(detectWindowMoving({ expected: 1 + 2 * dt, prevExpected: 1, wallDt: dt, speed: 2, loopLen: 10 })).toBe(false);
+  it("returns 1 when position advances at speed 1", () => {
+    const rate = computeEffectiveRate({ expected: 1 + dt, prevExpected: 1, wallDt: dt, nominalSpeed: 1, ...base });
+    expect(rate).toBeCloseTo(1, 1);
   });
 
-  it("returns true when loopStart is sweeping (effective rate differs from speed)", () => {
-    // loopStart moves by 0.01s per frame (0.6s/s), speed=1 → effective rate ≈ 1.6
-    const loopStartDelta = 0.01;
-    expect(detectWindowMoving({ expected: 1 + dt + loopStartDelta, prevExpected: 1, wallDt: dt, speed: 1, loopLen: 10 })).toBe(true);
+  it("returns 2 when position advances at speed 2", () => {
+    const rate = computeEffectiveRate({ expected: 1 + 2 * dt, prevExpected: 1, wallDt: dt, nominalSpeed: 2, ...base });
+    expect(rate).toBeCloseTo(2, 1);
   });
 
-  it("returns false for loop-boundary wrap (false spike suppression)", () => {
-    // loopLen=2, expected jumps from 1.99 to 0.01 — delta≈-1.98, which is >= loopLen/2
-    expect(detectWindowMoving({ expected: 0.01, prevExpected: 1.99, wallDt: dt, speed: 1, loopLen: 2 })).toBe(false);
+  it("returns ~5 when begin sweeps forward (begin(saw) scenario)", () => {
+    // Position advances by 5 * dt in one frame (speed 1 + begin sweep at 4s/s)
+    const rate = computeEffectiveRate({ expected: 1 + 5 * dt, prevExpected: 1, wallDt: dt, nominalSpeed: 1, ...base });
+    expect(rate).toBeCloseTo(5, 1);
   });
 
-  it("returns false when wallDt is too small to be reliable", () => {
-    expect(detectWindowMoving({ expected: 1.5, prevExpected: 1, wallDt: 0.001, speed: 1, loopLen: 10 })).toBe(false);
+  it("returns nominal speed on loop-boundary wrap", () => {
+    // loopLen=2, position wraps from 1.99 to 0.01
+    const rate = computeEffectiveRate({ expected: 0.01, prevExpected: 1.99, wallDt: dt, nominalSpeed: 1, loopStart: 0, loopEnd: 2, loopLen: 2, duration: 10 });
+    expect(rate).toBe(1);
+  });
+
+  it("returns negative rate for reverse playback", () => {
+    const rate = computeEffectiveRate({ expected: 1 - dt, prevExpected: 1, wallDt: dt, nominalSpeed: -1, ...base });
+    expect(rate).toBeCloseTo(-1, 1);
   });
 });
 
@@ -230,6 +238,129 @@ describe("detectWindowMoving", () => {
     expect({ t: resetT, case1: e1, case2: e2, diff: e1 - e2 }).toEqual(
       expect.objectContaining({ diff: expect.closeTo(0, 2) })
     );
+  });
+});
+
+describe("inverted (wrap-around) ranges", () => {
+  const dur = 10;
+  // begin=0.8, end=0.2 → loopStart=8, loopEnd=2, plays [8,10)∪[0,2), loopLen=4
+  const loopStart = 8, loopEnd = 2;
+  const loopLen = computeLoopLen(loopStart, loopEnd, dur); // 4
+
+  it("computeLoopLen returns wrap-around length", () => {
+    expect(loopLen).toBe(4);
+    // Non-inverted for comparison
+    expect(computeLoopLen(2, 8, dur)).toBe(6);
+  });
+
+  it("computeExpectedTime wraps position through video boundary", () => {
+    const p = { cps: 0.5, speed: 1, loopStart, loopEnd, duration: dur, eventBegin: 0 };
+    // At cycle 0: elapsed=0, pos=8 (loopStart)
+    expect(computeExpectedTime({ ...p, currentCycle: 0 })).toBeCloseTo(8);
+    // At cycle 0.5: elapsed=1s, pos=8+1=9
+    expect(computeExpectedTime({ ...p, currentCycle: 0.5 })).toBeCloseTo(9);
+    // At cycle 1: elapsed=2s, pos=8+2=10 → wraps to 0
+    expect(computeExpectedTime({ ...p, currentCycle: 1 })).toBeCloseTo(0);
+    // At cycle 1.5: elapsed=3s, pos=8+3=11 → wraps to 1
+    expect(computeExpectedTime({ ...p, currentCycle: 1.5 })).toBeCloseTo(1);
+    // At cycle 2: elapsed=4s, 4%4=0, pos=8 → wraps back to loopStart
+    expect(computeExpectedTime({ ...p, currentCycle: 2 })).toBeCloseTo(8);
+  });
+
+  it("toLoopOffset maps positions to [0, loopLen)", () => {
+    // Position 8 (loopStart) → offset 0
+    expect(toLoopOffset(8, loopStart, loopEnd, dur)).toBeCloseTo(0);
+    // Position 9 → offset 1
+    expect(toLoopOffset(9, loopStart, loopEnd, dur)).toBeCloseTo(1);
+    // Position 0 (crossed video boundary) → offset 2 (dur - loopStart = 10 - 8 = 2)
+    expect(toLoopOffset(0, loopStart, loopEnd, dur)).toBeCloseTo(2);
+    // Position 1 → offset 3
+    expect(toLoopOffset(1, loopStart, loopEnd, dur)).toBeCloseTo(3);
+  });
+
+  it("detectLoopWrap: position crossing video boundary is NOT a loop wrap", () => {
+    // Position goes from 9.9 to 0.1 — normal playback crossing video duration
+    // In loop-space: 1.9 → 2.1 — advancing forward, not a wrap
+    expect(detectLoopWrap({
+      expected: 0.1, prevExpected: 9.9, loopStart, loopEnd, loopLen, duration: dur,
+    })).toBe(false);
+  });
+
+  it("detectLoopWrap: position jumping from near loopEnd to loopStart IS a loop wrap", () => {
+    // Position goes from 1.9 (near loopEnd=2) to 8.1 (near loopStart=8)
+    // In loop-space: 3.9 → 0.1 — jumped backward by ~loopLen
+    expect(detectLoopWrap({
+      expected: 8.1, prevExpected: 1.9, loopStart, loopEnd, loopLen, duration: dur,
+    })).toBe(true);
+  });
+
+  it("computeDrift: small drift near video boundary", () => {
+    // el.currentTime=9.95, expected=0.05 — rawDrift=9.9, but actual drift is 0.1
+    const drift = computeDrift({
+      currentTime: 9.95, expected: 0.05, loopStart, loopEnd, loopLen, duration: dur,
+    });
+    expect(drift).toBeCloseTo(0.1);
+  });
+
+  it("computeDrift: positions on same side of boundary", () => {
+    const drift = computeDrift({
+      currentTime: 8.5, expected: 8.6, loopStart, loopEnd, loopLen, duration: dur,
+    });
+    expect(drift).toBeCloseTo(0.1);
+  });
+});
+
+describe("renderVideoFrame: inverted range stateful behavior", () => {
+  const cps = 0.5;
+
+  it("seeks correctly when position wraps through video boundary", () => {
+    // begin=0.8, end=0.2, dur=10 → plays [8,10)∪[0,2)
+    const el = mockVideoEl({ duration: 10, currentTime: 9.9 });
+    const ev = { speed: 1, begin: 0.8, end: 0.2 };
+
+    // Frame near video boundary: cycle ≈ 0.95, expected ≈ 9.9
+    renderVideoFrame({ ev, el, currentCycle: 0.95, eventBegin: 0, cps });
+
+    // Frame crossing video boundary: cycle ≈ 1.05, expected ≈ 0.1
+    // Browser stalled near end of video while expected crossed to other side
+    // rawDrift ≈ 9.7, but through the video boundary, actual drift = |10 - 9.7| = 0.3
+    // which exceeds DRIFT_THRESHOLD → must seek to 0.1
+    el.currentTime = 9.8;
+    renderVideoFrame({ ev, el, currentCycle: 1.05, eventBegin: 0, cps });
+    expect(el.currentTime).toBeCloseTo(0.1, 0);
+  });
+
+  it("seeks correctly at loop wrap (loopEnd → loopStart)", () => {
+    // After playing through [8,10)∪[0,2), should wrap back to 8
+    const el = mockVideoEl({ duration: 10, currentTime: 1.9 });
+    const ev = { speed: 1, begin: 0.8, end: 0.2 };
+
+    // Prime tracking: frame near loopEnd
+    renderVideoFrame({ ev, el, currentCycle: 1.95, eventBegin: 0, cps });
+
+    // Frame after loop wrap: cycle=2.05, expected=8.1
+    el.currentTime = 2.0; // browser kept playing past loopEnd
+    renderVideoFrame({ ev, el, currentCycle: 2.05, eventBegin: 0, cps });
+    expect(el.currentTime).toBeCloseTo(8.1, 0);
+  });
+
+  it("does not false-trigger loop wrap when crossing video boundary", () => {
+    // Crossing the video duration boundary (9.9→0.1) should NOT be detected
+    // as a loop wrap and cause a seek to loopStart
+    const el = mockVideoEl({ duration: 10, currentTime: 9.9 });
+    const ev = { speed: 1, begin: 0.8, end: 0.2 };
+
+    // Build up tracking state
+    renderVideoFrame({ ev, el, currentCycle: 0.9, eventBegin: 0, cps });
+
+    // Cross boundary
+    renderVideoFrame({ ev, el, currentCycle: 0.95, eventBegin: 0, cps });
+    el.currentTime = 0.05; // browser wrapped correctly
+    renderVideoFrame({ ev, el, currentCycle: 1.025, eventBegin: 0, cps });
+
+    // Should be near 0.05, NOT jumped back to 8
+    expect(el.currentTime).toBeLessThan(2);
+    expect(el.currentTime).toBeGreaterThanOrEqual(0);
   });
 });
 

@@ -24,6 +24,8 @@ export interface SyncDistOffsetParams {
   syncOffset: number;
   /** Previous distOffset (from prior speed/range changes). */
   oldDistOffset: number;
+  /** Video duration in seconds (needed for inverted range wrapping). */
+  duration?: number;
 }
 
 /** Positive-modulo helper: always returns a value in [0, m). */
@@ -37,8 +39,11 @@ function posMod(x: number, m: number): number {
  */
 export function computeSyncDistOffset(p: SyncDistOffsetParams): number {
   if (p.newLoopLen <= 0) return 0;
+  const dur = p.duration ?? Infinity;
+  const oldInverted = p.oldBegin > p.oldEnd;
+  const newInverted = p.newBegin > p.newEnd;
 
-  // 1. Compute old position
+  // 1. Compute old position (mirrors computeExpectedTime logic)
   let oldPos: number;
   if (p.oldSpeed === 0 || p.oldLoopLen <= 0) {
     oldPos = p.oldBegin;
@@ -48,21 +53,53 @@ export function computeSyncDistOffset(p: SyncDistOffsetParams): number {
     oldPos = p.oldSpeed > 0
       ? p.oldBegin + oldDistInLoop
       : p.oldEnd - oldDistInLoop;
+    // Wrap through video boundary for inverted ranges
+    if (oldInverted && dur < Infinity) {
+      if (oldPos >= dur) oldPos -= dur;
+      else if (oldPos < 0) oldPos += dur;
+    }
   }
 
-  // 2. Clamp old position into new range [newBegin, newEnd).
-  //    newEnd itself is not a valid position (distInLoop is always in [0, loopLen)
-  //    due to modulo), so clamp to just under newEnd when position >= newEnd.
-  const maxPos = p.newEnd - 1e-9;
-  const clampedPos = Math.max(p.newBegin, Math.min(maxPos, oldPos));
+  // 2. Check if old position is within new range; if not, clamp.
+  //    For inverted ranges, valid positions are [newBegin, dur) ∪ [0, newEnd).
+  let clampedPos: number;
+  if (newInverted && dur < Infinity) {
+    const inUpper = oldPos >= p.newBegin;
+    const inLower = oldPos < p.newEnd;
+    if (inUpper || inLower) {
+      clampedPos = oldPos; // already in range
+    } else {
+      // Out of range — clamp to nearest edge
+      const distToBegin = Math.abs(oldPos - p.newBegin);
+      const distToEnd = Math.abs(oldPos - p.newEnd);
+      clampedPos = distToBegin <= distToEnd ? p.newBegin : p.newEnd - 1e-9;
+    }
+  } else {
+    const maxPos = p.newEnd - 1e-9;
+    clampedPos = Math.max(p.newBegin, Math.min(maxPos, oldPos));
+  }
 
-  // 3. Compute target distInLoop for new speed direction
-  const targetDistInLoop = p.newSpeed > 0
-    ? clampedPos - p.newBegin
-    : p.newEnd - clampedPos;
+  // 3. Compute target distInLoop for new speed direction.
+  //    For inverted ranges, distInLoop wraps through the video boundary.
+  let targetDistInLoop: number;
+  if (newInverted && dur < Infinity) {
+    if (p.newSpeed > 0) {
+      targetDistInLoop = clampedPos >= p.newBegin
+        ? clampedPos - p.newBegin
+        : clampedPos + (dur - p.newBegin);
+    } else {
+      targetDistInLoop = clampedPos < p.newEnd
+        ? p.newEnd - clampedPos
+        : p.newEnd + (dur - clampedPos);
+    }
+  } else {
+    targetDistInLoop = p.newSpeed > 0
+      ? clampedPos - p.newBegin
+      : p.newEnd - clampedPos;
+  }
 
   // 4. Compute new base distInLoop (without any offset)
-  if (p.newSpeed === 0) return 0; // speed=0 always returns loopStart, no offset needed
+  if (p.newSpeed === 0) return 0;
   const newBaseDist = p.elapsedSec * Math.abs(p.newSpeed) + p.syncOffset;
   const newBaseDistInLoop = posMod(newBaseDist, p.newLoopLen);
 

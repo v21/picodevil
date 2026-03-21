@@ -30,5 +30,233 @@
       "[runtime warning] chop() received a signal pattern (no event boundaries). Signal controls like .scrub(sine) or .speed(sine) must come after chop(), not before — e.g. .chop(n).scrub(sine)"
     ],
     "timestamp": "2026-03-17T22:40:56.401Z"
+  },
+  {
+    "code": "Sbg: index(color(\"red\")).rowscols(2).gridMod()",
+    "description": "shrunk from 6 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:49:48.388Z"
+  },
+  {
+    "code": "Sbg: index(screen(\"~\").urlBase('/test-assets/')).rowscols(2).gridMod()\n---\nbg: color(mini(\"[[red]]\"))",
+    "codes": [
+      "Sbg: index(screen(\"~\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+      "bg: color(mini(\"[[red]]\"))"
+    ],
+    "description": "shrunk from 17 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:50:12.337Z"
+  },
+  {
+    "code": "$: index(video(\"{red.mp4}\").urlBase('/test-assets/')).rowscols(2).gridMod()\n---\n$: index(video(\"{red.mp4}\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "codes": [
+      "$: index(video(\"{red.mp4}\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+      "$: index(video(\"{red.mp4}\").urlBase('/test-assets/')).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:50:29.076Z"
+  },
+  {
+    "code": "$: index(color(mini(\"[~], red\"))).rowscols(2).gridMod()\n---\n$: index(color(mini(\"[~], red\"))).rowscols(2).gridMod()",
+    "codes": [
+      "$: index(color(mini(\"[~], red\"))).rowscols(2).gridMod()",
+      "$: index(color(mini(\"[~], red\"))).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 8 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:50:43.274Z"
+  },
+  {
+    "code": "loadImage('redimg', '/test-assets/red.png')\n$: index(image(\"red.png\").urlBase('/test-assets/')).cols(2).rows(2).gridMod()",
+    "description": "shrunk from 9 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:50:53.842Z"
+  },
+  {
+    "code": "bg: index(video(\"redvid\")).cols(2).rows(2).gridMod()",
+    "description": "shrunk from 4 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:51:00.074Z"
+  },
+  {
+    "code": "bg: index(color(\"<<red>>\")).cols(2).rows(2).gridMod()",
+    "description": "shrunk from 13 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:51:14.933Z"
+  },
+  {
+    "code": "$: color(\"red, <red>\")\n---\n$: index(video(\"redvid\")).rowscols(2).gridMod()",
+    "codes": [
+      "$: color(\"red, <red>\")",
+      "$: index(video(\"redvid\")).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 14 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:51:49.657Z"
+  },
+  {
+    "code": "$: image(\"redimg | redimg\")\n$: screen(\"red\")",
+    "description": "shrunk from 11 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:52:03.100Z"
+  },
+  {
+    "code": "Sbg: stackN(2, screen(image(\"redimg\"))).rowscols(2).gridMod()",
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:52:12.767Z"
+  },
+  {
+    "code": "$: index(video(\"[redvid] | [[redvid]]\")).rowscols(2).gridMod()",
+    "description": "shrunk from 11 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:52:26.733Z"
+  },
+  {
+    "code": "$: index(color(\"red | red\")).cols(2).rows(2).gridMod()\n---\n$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "codes": [
+      "$: index(color(\"red | red\")).cols(2).rows(2).gridMod()",
+      "$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 19 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:53:04.252Z"
+  },
+  {
+    "code": "$: index(color(\"red, red\")).cols(2).rows(2).gridMod()\n---\n$: index(color(\"red, red\")).cols(2).rows(2).gridMod()",
+    "codes": [
+      "$: index(color(\"red, red\")).cols(2).rows(2).gridMod()",
+      "$: index(color(\"red, red\")).cols(2).rows(2).gridMod()"
+    ],
+    "description": "shrunk from 10 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:54:04.288Z"
+  },
+  {
+    "code": "bg: index(video(\"<red.mp4>\").urlBase('/test-assets/')).cols(2).rows(2).gridMod()\n---\n$: stackN(2, video(\"[redvid]\")).rowscols(2).gridMod()",
+    "codes": [
+      "bg: index(video(\"<red.mp4>\").urlBase('/test-assets/')).cols(2).rows(2).gridMod()",
+      "$: stackN(2, video(\"[redvid]\")).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 15 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:54:39.717Z"
+  },
+  {
+    "code": "$: index(video(\"~\").urlBase('/test-assets/')).rowscols(2).gridMod()\n---\n$: index(video(\"~\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "codes": [
+      "$: index(video(\"~\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+      "$: index(video(\"~\").urlBase('/test-assets/')).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 4 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:54:52.997Z"
+  },
+  {
+    "code": "$: image(\"red.png\").urlBase('/test-assets/')\n$: screen(\"~\")",
+    "description": "shrunk from 4 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:55:01.915Z"
+  },
+  {
+    "code": "loadImage('redimg', '/test-assets/red.png')\nbg: screen(video(\"[redvid]\"))\n---\n_bg: image(\"red.png\").urlBase('/test-assets/')",
+    "codes": [
+      "loadImage('redimg', '/test-assets/red.png')\nbg: screen(video(\"[redvid]\"))",
+      "_bg: image(\"red.png\").urlBase('/test-assets/')"
+    ],
+    "description": "shrunk from 14 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:55:35.835Z"
+  },
+  {
+    "code": "$: index(image(\"[{[red.png]}]\").urlBase('/test-assets/')).cols(2).rows(2).gridMod()",
+    "description": "shrunk from 12 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:55:59.318Z"
+  },
+  {
+    "code": "Sbg: stackN(2, screen(\"<red>\").urlBase('/test-assets/')).rowscols(2).gridMod()\n---\nSbg: stackN(2, screen(\"<red>\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "codes": [
+      "Sbg: stackN(2, screen(\"<red>\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+      "Sbg: stackN(2, screen(\"<red>\").urlBase('/test-assets/')).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 9 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T15:56:29.578Z"
+  },
+  {
+    "code": "$: index(screen(\"red\")).cols(2).rows(2).gridMod()\n---\n$: index(screen(\"red\")).cols(2).rows(2).gridMod()",
+    "codes": [
+      "$: index(screen(\"red\")).cols(2).rows(2).gridMod()",
+      "$: index(screen(\"red\")).cols(2).rows(2).gridMod()"
+    ],
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
+    ],
+    "timestamp": "2026-03-20T16:04:42.555Z"
   }
 ]

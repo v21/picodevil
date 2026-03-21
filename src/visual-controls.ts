@@ -244,7 +244,9 @@ PatternProto.duration = function (value: any) {
         if (v._dur != null) {
           const b = v.begin ?? 0;
           const { _dur, ...rest } = v;
-          return { ...rest, end: b + Number(_dur) };
+          const rawEnd = b + Number(_dur);
+          const end = rawEnd >= 0 && rawEnd <= 1 ? rawEnd : ((rawEnd % 1) + 1) % 1;
+          return { ...rest, end };
         }
         return v;
       });

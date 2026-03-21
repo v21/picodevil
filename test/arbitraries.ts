@@ -262,7 +262,9 @@ const scaleArg: fc.Arbitrary<string> = fc.oneof(
 /** Position argument. */
 const posArg: fc.Arbitrary<string> = fc.oneof(
   { weight: 3, arbitrary: continuousSignal },
-  { weight: 7, arbitrary: miniArb(["0", "0.25", "0.5", "0.75", "1"], 1).map(m => `"${m}"`) },
+  { weight: 6, arbitrary: miniArb(["0", "0.25", "0.5", "0.75", "1"], 1).map(m => `"${m}"`) },
+  // Edge cases: negative, >1, and values that create inverted ranges
+  { weight: 1, arbitrary: miniArb(["-0.5", "-0.25", "0", "1.5", "2"], 1).map(m => `"${m}"`) },
 );
 
 /** Dimension argument. */
@@ -301,6 +303,10 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   posArg.map(a => ({ code: `.scrub(${a})` })),
   fc.constant({ code: `.speed(0)` }),
   fc.constantFrom(...SPEED_LITERALS).map(n => ({ code: `.speed(${n})` })),
+  // sync mode: bare sync(), sync(true), sync(fraction)
+  fc.constant({ code: `.sync()` }),
+  fc.constant({ code: `.sync(true)` }),
+  fc.double({ min: 0, max: 1, noNaN: true }).map(n => ({ code: `.sync(${n.toFixed(2)})` })),
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
   alphaArg.map(a => ({ code: `.opacity(${a})` })),
   fc.constantFrom(...FIT_MODES).map(m => ({ code: `.objectfit("${m}")` })),
