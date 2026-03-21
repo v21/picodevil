@@ -277,6 +277,14 @@ const dimArg: fc.Arbitrary<string> = fc.oneof(
 // Strudel pattern method arbitraries
 // ============================================================
 
+/** Seed argument for shuffleStack/shuffleStackCycle: number, mini pattern, or signal. */
+const shuffleSeed: fc.Arbitrary<string> = fc.oneof(
+  { weight: 3, arbitrary: fc.integer({ min: 0, max: 100 }).map(n => `${n}`) },
+  { weight: 3, arbitrary: miniArb(["1", "2", "3", "4", "5", "6", "7", "8"], 1).map(m => `"${m}"`) },
+  { weight: 2, arbitrary: fc.constantFrom("sine", "saw", "rand", "tri") },
+  { weight: 2, arbitrary: fc.constant("") }, // no arg = default fixed shuffle
+);
+
 /** Strudel methods that work on any pattern. */
 const strudelMethod: fc.Arbitrary<string> = fc.oneof(
   fc.integer({ min: 2, max: 8 }).map(n => `.slow(${n})`),
@@ -360,6 +368,9 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.constant({ code: `.sometimes(x => x.fast(2))` }),
   fc.constant({ code: `.often(x => x.fast(2))` }),
   fc.constant({ code: `.rarely(x => x.fast(2))` }),
+  // shuffleStack/shuffleStackCycle — can appear anywhere, even after index (nonsensical but shouldn't crash)
+  shuffleSeed.map(s => ({ code: `.shuffleStack(${s})` })),
+  shuffleSeed.map(s => ({ code: `.shuffleStackCycle(${s})` })),
 );
 
 // ============================================================
@@ -653,6 +664,44 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const lineCode = lines.map(([screen, label]) => `${label}: ${screen.code}`).join("\n");
       return {
         code: `${cpsCode}${lineCode}`,
+      };
+    })
+  },
+
+  // shuffleStack + index + gridMod — shuffled grid layout
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 2, maxLength: 4 }),
+      shuffleSeed,
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, seed, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      const seedArg = seed ? `(${seed})` : "()";
+      return {
+        code: `${cpsCode}${label}: stack(${childrenCode}).shuffleStack${seedArg}.index().rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // shuffleStackCycle + indexCycle + gridMod
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 2, maxLength: 4 }),
+      shuffleSeed,
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, seed, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      const seedArg = seed ? `(${seed})` : "()";
+      return {
+        code: `${cpsCode}${label}: stack(${childrenCode}).shuffleStackCycle${seedArg}.indexCycle().rowscols(${cols}).gridMod()${chain}`,
       };
     })
   },

@@ -28,6 +28,7 @@ import { image } from "./image-pattern";
 import { screen, s } from "./screen-pattern";
 import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
+import "./shuffle-stack";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage } from "./media-registry";
 import { renderVideoFrame } from "./video-playback";
