@@ -131,6 +131,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Controls", "src/visual-controls.ts"],
     ["Interpolation", "src/pattern-extensions.ts"],
     ["Layout", "src/grid-stack.ts"],
+    ["Layout", "src/shuffle-stack.ts"],
     ["Indexing", "src/index-patterns.ts"],
     ["Iteration", "src/iterators.ts"],
   ];

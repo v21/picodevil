@@ -24,6 +24,7 @@ uzuvid/
   package.json            — Vite dev server, Strudel + CodeMirror deps
   notes.md                — design notes (human-authored, aspirational, not all implemented)
   TODO.md                 — current task list
+  README.md               - human-authored README file, explaining the architecture of the project
   src/
     main.ts               — core runtime: pattern state, video pool, render loop, eval bridge
     editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
@@ -31,6 +32,7 @@ uzuvid/
     transpiler.ts         — $: label transpiler, double-quote mini() wrapping
     visual-controls.ts    — createMixParam, position/grid/speed/alpha controls on Pattern.prototype
     grid-stack.ts         — gridStack() and four() helpers using .gridModulo()
+    shuffle-stack.ts      — .shuffleStack(seed?) and .shuffleStackCycle(seed?) on Pattern.prototype
     color-pattern.ts      — color() function: wraps mini pattern with {color} values
     video-pattern.ts      — video() function: wraps mini pattern with {src} values
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
@@ -98,12 +100,14 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
 - Circle placement: `.circle(radius?, startOffset?, circleCount?, i?)`, `.circleMod(radius?, startOffset?, circleCount?)`
 - Iteration: `.iteratorWith(fn)`, `.iterator()`
+- Stack shuffling: `.shuffleStack(seed?)`, `.shuffleStackCycle(seed?)`
 - Misc: `.mapWithVal(fn)`, `.stackN(n)`
 
 Example: `$: video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").fit("contain")`
 Example: `$: gridStack([color("red"), video("clip.mp4")], 2, 2)`
 Example: `$: index(color("red"), color("blue")).rowscols(2).gridMod()`
 Example: `$: video("a.mp4").i("0 1 2 3").rowscols(2).grid()`
+Example: `$: stack(color("red"), color("blue"), color("green")).shuffleStack(42).index().rowscols(2).gridMod()`
 Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
 
 ## Video playback speed
@@ -147,16 +151,24 @@ npm run test:stress
 
 ### Test suite overview
 
-Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest. Beyond standard per-module unit tests, the suite includes three higher-level test layers worth adding to when changing playback or pattern composition:
+Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest. Beyond standard per-module unit tests, the suite includes five higher-level test layers that we should expand whenever possible:
 
 - **Pipeline tests** (`playback-pipeline.test.ts`) — build real pattern chains, query them, and verify the full eventBeginFromHap → computeExpectedTime pipeline produces correct positions. Good place to add regression tests for specific pattern combos that break.
 - **Invariant tests** (`playback-invariants.test.ts`) — property-based tests via fast-check verifying invariants that must hold for any inputs (position in range, continuity, monotonicity, etc.)
 - **Simulation tests** (`playback-simulation.test.ts`) — step through pattern chains at 60fps, verify trace invariants, and test equivalence classes (e.g. alpha doesn't change position, speed(1) is identity)
+- **Monkey testing** (`test/`):
+  - `monkey-test.ts` — grammar-based random pattern generator, checks for crashes/errors
+  - `regression-cases.json` — saved monkey failures for conformance replay
+- **Stress testing** (`test/`) - `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
 
-**Monkey & stress testing** (`test/`):
-- `monkey-test.ts` — grammar-based random pattern generator, checks for crashes/errors
-- `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
-- `regression-cases.json` — saved monkey failures for conformance replay
+## Documentation
+
+User-facing functions and methods should have JSDoc comments in their source files. These are automatically extracted by `vite-plugin-reference.ts` and displayed in the sidebar reference tab.
+
+- The plugin scans source files listed in `buildReferenceData()` in `vite-plugin-reference.ts` — add new files there when creating new user-facing modules.
+- It matches `/** ... */ export function name` and `/** ... */ PatternProto.name =` patterns.
+- Use `@param` for parameters and `@example` for usage examples in JSDoc blocks.
+- Categories are defined in the `fileMap` array (e.g. "Sources", "Controls", "Layout", "Indexing").
 
 ## Git commit style
 
