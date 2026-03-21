@@ -1,4 +1,4 @@
-import { setPlaybackRate, isNativeRate, MIN_NATIVE_RATE } from "./playback-rate";
+import { setPlaybackRate, isNativeRate } from "./playback-rate";
 import { computeSyncDistOffset } from "./sync-continuity";
 import type { VideoEl } from "./video-element-state";
 export type { VideoEl } from "./video-element-state";
@@ -250,15 +250,11 @@ function updateVideoPlayback(
   st.lastExpectedWall = now;
   const rateIsNative = effectiveRate > 0 && isNativeRate(effectiveRate);
 
-  // Two modes based on whether the effective rate matches nominal speed:
-  // 1. Stable rate (effective ≈ nominal): native playback with drift correction
-  // 2. Varying rate (dynamic begin/end, scrub, etc.): seek every frame
-  const rateIsStable = rateIsNative && Math.abs(effectiveRate - speed) < 0.5;
-
-  if (rateIsStable) {
-    // Native playback: let browser play at speed, correct drift as needed
+  if (rateIsNative) {
+    // Native playback at the effective rate (which may differ from nominal speed
+    // when begin/end are dynamic, e.g. begin(saw) produces effective rate ~5)
     if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
-    if (Math.abs(el.playbackRate - speed) > 0.01) setPlaybackRate(el, speed);
+    if (Math.abs(el.playbackRate - effectiveRate) > 0.01) setPlaybackRate(el, effectiveRate);
     const loopWrapped = detectLoopWrap({
       expected, prevExpected, loopStart, loopEnd, loopLen, duration: dur,
     });
@@ -269,11 +265,10 @@ function updateVideoPlayback(
       el.currentTime = expected;
     }
   } else {
-    // Seek mode: set currentTime every frame. Keep video playing (not paused)
-    // so the browser keeps decoding. Use minimum playback rate to minimize
-    // overshoot between our corrections.
-    if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
-    setPlaybackRate(el, MIN_NATIVE_RATE);
-    el.currentTime = expected;
+    // Non-native rate: pause and seek to computed position
+    if (!el.paused) el.pause();
+    if (Math.abs(el.currentTime - expected) > 0.01) {
+      el.currentTime = expected;
+    }
   }
 }

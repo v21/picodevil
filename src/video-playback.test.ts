@@ -416,13 +416,13 @@ describe("renderVideoFrame stateful behavior", () => {
     expect(el._state.lastExpected).toBeCloseTo(0.2, 0);
   });
 
-  it("negative speed uses seek mode (not paused, low playbackRate)", () => {
+  it("negative speed uses pause + seek", () => {
     const el = mockVideoEl({ duration: 10, currentTime: 0 });
     const ev = { speed: -1, begin: 0, end: 1 };
 
     renderVideoFrame({ ev, el, currentCycle: 0.5, eventBegin: 0, cps });
 
-    expect(el.paused).toBe(false);
+    expect(el.paused).toBe(true);
     // expected = loopEnd - (1 % 10) = 10 - 1 = 9
     expect(el.currentTime).toBeCloseTo(9, 0);
   });
@@ -542,15 +542,12 @@ describe("playback mode selection (multi-frame)", () => {
     expect(lateRates.every(r => Math.abs(r - 2) < 0.5)).toBe(true);
   });
 
-  it("speed(-1): seek mode (not paused)", () => {
+  it("speed(-1): pause + seek mode", () => {
     const results = runFrames({
       evFn: () => ({ speed: -1, begin: 0, end: 1 }),
       frames: 120,
     });
-    // Seek mode keeps video playing (not paused) at minimum rate
-    for (const r of results) {
-      expect(r.paused).toBe(false);
-    }
+    assertMostlyManual(results, 0.9, "speed(-1)");
   });
 
   it("speed(0.5): native mode at 0.5x", () => {
@@ -628,14 +625,12 @@ describe("playback mode selection (multi-frame)", () => {
     }
   });
 
-  it("begin(.8).end(.2).speed(-1): seek mode, not paused", () => {
+  it("begin(.8).end(.2).speed(-1): pause + seek mode", () => {
     const results = runFrames({
       evFn: () => ({ speed: -1, begin: 0.8, end: 0.2 }),
       frames: 120,
     });
-    for (const r of results) {
-      expect(r.paused).toBe(false);
-    }
+    assertMostlyManual(results, 0.9, "inverted reverse");
   });
 
   // --- Scrub ---
@@ -681,14 +676,12 @@ describe("playback mode selection (multi-frame)", () => {
     assertMostlyNative(results, 0.7, "begin(saw).speed(8).sync()");
   });
 
-  it("speed(20): seek mode (not paused)", () => {
+  it("speed(20): pause + seek mode (out of native range)", () => {
     const results = runFrames({
       evFn: () => ({ speed: 20, begin: 0, end: 1 }),
       frames: 60,
     });
-    for (const r of results) {
-      expect(r.paused).toBe(false);
-    }
+    assertMostlyManual(results, 0.9, "speed(20)");
   });
 
   // --- Edge cases ---
