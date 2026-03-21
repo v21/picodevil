@@ -10,7 +10,7 @@
  *   stack(a, b, c).shuffleStackCycle(42).indexCycle().rowscols(2).gridMod()
  */
 import { describe, it, expect } from "vitest";
-import { stack, steady, pure, sine } from "@strudel/core";
+import { stack, steady, pure, sine, useRNG } from "@strudel/core";
 import { mini } from "@strudel/mini";
 import { color } from "./color-pattern";
 import { rand } from "./event-random";
@@ -351,6 +351,62 @@ describe("shuffleStackCycle seed resolution via createMixParam", () => {
     // "1 2" is discrete → frame-time combiner picks the active event
     // first half gets seed=1, second half gets seed=2
     expect(haps1).not.toEqual(haps2);
+  });
+});
+
+describe("shuffleStackCycle rand changes per cycle", () => {
+  it("rand seed produces different shuffles in different cycles", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = base.shuffleStackCycle(rand);
+
+    const c0 = shuffled.queryArc(0.1, 0.1).map((h: any) => h.value.color);
+    const c1 = shuffled.queryArc(1.1, 1.1).map((h: any) => h.value.color);
+    const c2 = shuffled.queryArc(2.1, 2.1).map((h: any) => h.value.color);
+
+    // All should have same colors
+    expect(new Set(c0)).toEqual(new Set(["red", "blue", "green", "yellow"]));
+    expect(new Set(c1)).toEqual(new Set(["red", "blue", "green", "yellow"]));
+
+    // Different cycles should (very likely) produce different orderings
+    const allSame = JSON.stringify(c0) === JSON.stringify(c1) && JSON.stringify(c1) === JSON.stringify(c2);
+    expect(allSame).toBe(false);
+  });
+
+  it("rand seed produces different shuffles in different cycles (legacy RNG)", () => {
+    // The browser uses legacy RNG by default — verify it works there too
+    (useRNG as any)("legacy");
+    try {
+      const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+      const shuffled = base.shuffleStackCycle(rand);
+
+      const c0 = shuffled.queryArc(0.1, 0.1).map((h: any) => h.value.color);
+      const c1 = shuffled.queryArc(1.1, 1.1).map((h: any) => h.value.color);
+      const c2 = shuffled.queryArc(2.1, 2.1).map((h: any) => h.value.color);
+
+      // All should have same colors
+      expect(new Set(c0)).toEqual(new Set(["red", "blue", "green", "yellow"]));
+
+      // Different cycles should produce different orderings
+      const allSame = JSON.stringify(c0) === JSON.stringify(c1) && JSON.stringify(c1) === JSON.stringify(c2);
+      expect(allSame).toBe(false);
+    } finally {
+      (useRNG as any)("precise");
+    }
+  });
+
+  it("stable within a cycle, different across cycles", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = base.shuffleStackCycle(rand);
+
+    // Same cycle, different frame times
+    const c0a = shuffled.queryArc(0.1, 0.1).map((h: any) => h.value.color);
+    const c0b = shuffled.queryArc(0.7, 0.7).map((h: any) => h.value.color);
+    expect(c0a).toEqual(c0b);
+
+    // Different cycle
+    const c1 = shuffled.queryArc(1.1, 1.1).map((h: any) => h.value.color);
+    // Should differ from cycle 0 (very high probability with 4 items)
+    expect(c0a).not.toEqual(c1);
   });
 });
 
