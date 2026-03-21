@@ -255,12 +255,6 @@ function updateVideoPlayback(
   // 2. Varying rate (dynamic begin/end, scrub, etc.): seek every frame
   const rateIsStable = rateIsNative && Math.abs(effectiveRate - speed) < 0.5;
 
-  // DEBUG: log every frame
-  if (synced) {
-    const mode = rateIsStable ? 'NATIVE' : 'SEEK';
-    console.log(`[F] ${mode} ct=${el.currentTime.toFixed(3)} exp=${expected.toFixed(3)} rate=${effectiveRate.toFixed(2)} begin=${beginVal.toFixed(4)} loopLen=${loopLen.toFixed(1)} paused=${el.paused} pbRate=${el.playbackRate.toFixed(2)}`);
-  }
-
   if (rateIsStable) {
     // Native playback: let browser play at speed, correct drift as needed
     if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
