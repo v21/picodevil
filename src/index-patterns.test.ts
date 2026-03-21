@@ -23,6 +23,26 @@ describe(".i()", () => {
     expect(evs0[0].i).toBe(0);
     expect(evs1[0].i).toBe(1);
   });
+
+  it("sets count to Infinity when count is not already set", () => {
+    const evs = queryAll(color("red").i(3), 0);
+    expect(evs[0].i).toBe(3);
+    expect(evs[0].count).toBe(Infinity);
+  });
+
+  it("does not override existing count", () => {
+    const evs = queryAll(color("red").count(4).i(1), 0);
+    expect(evs[0].i).toBe(1);
+    expect(evs[0].count).toBe(4);
+  });
+
+  it("i(3) in gridMod places in exactly one cell", () => {
+    const pat = color("red").i(3).rowscols(4).gridMod();
+    const evs = queryAll(pat, 0.1);
+    expect(evs).toHaveLength(1);
+    // cell 3 in a 4x4 grid = col 3, row 0
+    expect(evs[0]).toMatchObject({ x: 0.75, y: 0, width: 0.25, height: 0.25 });
+  });
 });
 
 describe(".count()", () => {

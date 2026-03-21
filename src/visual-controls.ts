@@ -5,7 +5,7 @@
  * (so signals animate smoothly) while preserving the source pattern's whole span
  * (so fit/chop/loopAt see the true event duration). See docs/combinators.md.
  */
-import { reify, Pattern } from "@strudel/core";
+import { reify, Pattern, Hap } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
 import { resolveMedia } from "./media-registry";
 import { resolveValue } from "./resolve-pattern-value";
@@ -439,7 +439,48 @@ PatternProto.h = PatternProto.height;
  * $: video("clip.mp4").i(2).rows(2).cols(2).grid()
  * $: index(color("red"), color("blue")).rowscols(2).gridMod()
  */
-export const i = createMixParam("i");
+// Custom implementation: .i() also sets count=Infinity when count isn't already
+// present, so that gridMod/circleMod place the element in exactly one cell by default.
+// Using index()/stackN() always sets count explicitly, so this only affects manual .i() usage.
+const iFunc = function (value: any, pat?: any) {
+  if (!pat) return reify(value).withValue((v: any) => ({ i: v, count: Infinity }));
+  if (value === undefined) return pat.fmap((v: any) => ({ i: v, count: Infinity }));
+  const valPat = reify(value);
+
+  if ((valPat as any)._perEvent) {
+    return pat.fmap((v: any) => (ctrl: any) => {
+      const base = typeof v === 'object' && v !== null ? v : {};
+      return { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ctrl };
+    }).appLeft(valPat);
+  }
+
+  return new Pattern((state: any) => {
+    const mainHaps = pat.query(state);
+    return mainHaps.flatMap((hap: any) => {
+      const ctrlHaps = valPat.query(state);
+      if (!ctrlHaps.length) return [hap];
+
+      const results: any[] = [];
+      for (const ch of ctrlHaps) {
+        const newPart = hap.part.intersection(ch.part);
+        if (!newPart) continue;
+        const base = typeof hap.value === 'object' && hap.value !== null ? hap.value : {};
+        results.push(new Hap(
+          hap.whole,
+          newPart,
+          { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ch.value },
+          hap.context
+        ));
+      }
+      return results.length ? results : [hap];
+    });
+  });
+};
+
+PatternProto.i = function (value: any) {
+  return iFunc(value, this);
+};
+export { iFunc as i };
 
 /**
  * Sets the stride — number of patterns sharing the grid. Used by .gridMod() and .circleMod()
