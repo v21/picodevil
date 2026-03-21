@@ -113,7 +113,8 @@ export function setupReference(container: HTMLElement) {
 
       detail.appendChild(entryEl);
 
-      const queryText = [entry.name, ...entry.aliases, entry.description].join(" ").toLowerCase();
+      const displayName = entry.isMethod ? `.${entry.name}(` : `${entry.name}(`;
+      const queryText = [displayName, entry.name, ...entry.aliases, entry.description].join(" ").toLowerCase();
       filterItems.push({ query: queryText, navLink, detailEntry: entryEl, cat: cat.name });
     }
   }

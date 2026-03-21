@@ -22,7 +22,7 @@ interface RefCategory {
 
 // Parse a JSDoc block into description, @param, @example
 function parseJSDoc(block: string): { description: string; params: string[]; examples: string[] } {
-  const lines = block.split("\n").map((l) => l.replace(/^\s*\*\s?/, "").replace(/^\s*\/\*\*\s*/, "").replace(/\s*\*\/\s*$/, ""));
+  const lines = block.split("\n").map((l) => l.replace(/^\s*\/\*\*\s*/, "").replace(/\s*\*\/\s*$/, "").replace(/^\s*\*\s?/, ""));
   let description = "";
   const params: string[] = [];
   const examples: string[] = [];
