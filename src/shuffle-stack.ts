@@ -119,8 +119,6 @@ PatternProto.shuffleStackCycle = function (seedPat?: any) {
   const self = this;
   const seed = seedPat !== undefined ? reify(seedPat) : steady(0);
 
-  let _lastPermKey = "";
-
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const cBegin = begin.floor ? Number(begin.floor()) : Math.floor(Number(begin));
@@ -163,14 +161,6 @@ PatternProto.shuffleStackCycle = function (seedPat?: any) {
       for (const idx of groupPerm) {
         result.push(group[idx]);
       }
-    }
-
-    // Debug: log only when permutation changes
-    const permKey = result.map((h: any) => h.value?.i ?? "?").join(",");
-    if (permKey !== _lastPermKey) {
-      const caller = new Error().stack?.split("\n")[2]?.trim() ?? "";
-      console.log(`shuffleStackCycle: cycle=${cBegin} t=${Number(begin).toFixed(6)} haps=${haps.length} perm=[${permKey}] from: ${caller}`);
-      _lastPermKey = permKey;
     }
 
     return result;
