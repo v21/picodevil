@@ -68,6 +68,18 @@ describe("*To field operators", () => {
     expect(queryObj(result, 0.5)?.x).toBeCloseTo(2.0);
   });
 
+  it("mulTo with missing key uses identity 1, not 0", () => {
+    const pat = mini("1").fmap((_v: number) => ({ s: "a" })); // no x
+    const result = (pat as any).mulTo("x", 2);
+    expect(queryObj(result, 0)?.x).toBeCloseTo(2); // 1 * 2 = 2, not 0 * 2 = 0
+  });
+
+  it("addTo with missing key uses identity 0", () => {
+    const pat = mini("1").fmap((_v: number) => ({ s: "a" }));
+    const result = (pat as any).addTo("x", 0.5);
+    expect(queryObj(result, 0)?.x).toBeCloseTo(0.5); // 0 + 0.5 = 0.5
+  });
+
   it("setTo replaces a specific key", () => {
     const pat = mini("0 1").fmap((v: number) => ({ x: v, y: 0.5 }));
     const result = (pat as any).setTo("y", 0.9);

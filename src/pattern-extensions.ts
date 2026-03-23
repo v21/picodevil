@@ -407,14 +407,14 @@ PatternProto.spline = function (tension: any = 0.5) {
 // that target a specific key within object values, using mix (appBoth) combining.
 // e.g. pat.x(".5 .1").addTo("x", "-.5 0 .5") adds the amount pattern to the x field.
 
-const _toOps: Record<string, (a: number, b: number) => number | string> = {
-  set: (_a, b) => b,
-  add: (a, b) => a + b,
-  sub: (a, b) => a - b,
-  mul: (a, b) => a * b,
-  div: (a, b) => a / b,
-  mod: (a, b) => ((a % b) + b) % b,
-  pow: (a, b) => Math.pow(a, b),
+const _toOps: Record<string, { op: (a: number, b: number) => number; identity: number }> = {
+  set: { op: (_a, b) => b,              identity: 0 },
+  add: { op: (a, b) => a + b,           identity: 0 },
+  sub: { op: (a, b) => a - b,           identity: 0 },
+  mul: { op: (a, b) => a * b,           identity: 1 },
+  div: { op: (a, b) => a / b,           identity: 1 },
+  mod: { op: (a, b) => ((a % b) + b) % b, identity: 0 },
+  pow: { op: (a, b) => Math.pow(a, b),  identity: 1 },
 };
 
 /**
@@ -435,7 +435,7 @@ const _toOps: Record<string, (a: number, b: number) => number | string> = {
  * $: s("clip.mp4").x(".2").y(".3").addTo("x y", ".1")        // alternate: add to x, then y
  * $: s("clip.mp4").alpha(".5 1").mulTo('alpha', ".8 1")       // multiply alpha field
  */
-for (const [name, op] of Object.entries(_toOps)) {
+for (const [name, { op, identity }] of Object.entries(_toOps)) {
   PatternProto[`${name}To`] = function (key: any, amount: any) {
     const keyPat = reify(key);
     const amountPat = reify(amount);
@@ -460,7 +460,7 @@ for (const [name, op] of Object.entries(_toOps)) {
             results.push(new Hap(
               sh.whole,
               aPart,
-              { ...sh.value, [k]: op(sh.value?.[k] ?? 0, ah.value) },
+              { ...sh.value, [k]: op(sh.value?.[k] ?? identity, ah.value) },
               sh.context,
             ));
           }
@@ -470,3 +470,33 @@ for (const [name, op] of Object.entries(_toOps)) {
     });
   };
 }
+
+/**
+ * Adds `amount` to a specific named field of the pattern's value objects.
+ * Uses mix (appBoth) combining, so the amount pattern's rhythm interleaves with the source.
+ * The key can be a pattern to vary the target field over time.
+ * Use single quotes for literal key strings — double-quoted strings are wrapped in `mini()` by the transpiler.
+ * Also available as a method: `pat.addTo(key, amount)`. Related: `subTo`, `mulTo`, `divTo`, `modTo`, `powTo`, `setTo`.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name to add to (use single quotes: `'x'`)
+ * @param {number | Pattern} amount value or pattern to add
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x("-.1 .1").addTo('x', "<.2 .5>")   // shift x by .2 or .5 each cycle
+ * $: addTo(s("clip.mp4").x("-.1 .1"), 'x', "<.2 .5>")   // function form
+ * $: s("clip.mp4").x(".2").y(".3").addTo("x y", ".1")    // alternate target field
+ */
+export const addTo = (pat: any, key: any, amount: any) => pat.addTo(key, amount);
+/** Like addTo but subtracts. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".5").subTo('x', ".1 .2") */
+export const subTo = (pat: any, key: any, amount: any) => pat.subTo(key, amount);
+/** Like addTo but multiplies. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha("1").mulTo('alpha', ".5 .8") */
+export const mulTo = (pat: any, key: any, amount: any) => pat.mulTo(key, amount);
+/** Like addTo but divides. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".8").divTo('x', "2 4") */
+export const divTo = (pat: any, key: any, amount: any) => pat.divTo(key, amount);
+/** Like addTo but applies modulo. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x("0 .3 .6 .9").modTo('x', ".5") */
+export const modTo = (pat: any, key: any, amount: any) => pat.modTo(key, amount);
+/** Like addTo but raises to a power. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha(".5 1").powTo('alpha', "2") */
+export const powTo = (pat: any, key: any, amount: any) => pat.powTo(key, amount);
+/** Replaces a specific named field with the given value pattern. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".2").setTo('x', "<.5 .8>") */
+export const setTo = (pat: any, key: any, amount: any) => pat.setTo(key, amount);

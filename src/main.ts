@@ -20,7 +20,7 @@ import {
   sometimesBy, sometimes, someCyclesBy, someCycles,
   often, rarely, almostNever, almostAlways, always, never,
 } from "./event-random";
-import "./pattern-extensions";
+import { addTo, subTo, mulTo, divTo, modTo, powTo, setTo } from "./pattern-extensions";
 import "./visual-controls";
 import { setupEditor } from "./editor";
 import { color } from "./color-pattern";
@@ -245,8 +245,10 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
     const slider = sliderWidget;
-    new Function("mini", "color", "video", "image", "screen", "s", "stackN", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", "slider", ...sigNames, ...modNames, ...combNames, transpiled)(
-      mini, color, video, image, screen, s, stackN, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, slider, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators),
+    const fieldOps = { addTo, subTo, mulTo, divTo, modTo, powTo, setTo };
+    const fieldOpNames = Object.keys(fieldOps);
+    new Function("mini", "color", "video", "image", "screen", "s", "stackN", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", "slider", ...sigNames, ...modNames, ...combNames, ...fieldOpNames, transpiled)(
+      mini, color, video, image, screen, s, stackN, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, slider, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators), ...Object.values(fieldOps),
     );
     // Collect $: registered patterns
     const pScreens = collectScreens();
