@@ -7,12 +7,18 @@
  */
 import { reify, Pattern, Hap } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
+import "./pattern-extensions"; // registers addTo on Pattern.prototype
 import { resolveMedia } from "./media-registry";
 import { resolveValue } from "./resolve-pattern-value";
 import { getRuntimeCps } from "./config";
 import { warn } from "./warnings";
 
 const PatternProto = Pattern.prototype as any;
+
+// Module-level counter for assigning unique layoutParent tokens to layout primitives.
+// Incremented at pattern construction time (closure-captured), stable across query frames.
+// Deterministic across synced clients: same code → same construction order → same values.
+let _layoutParentCounter = 0;
 
 /**
  * Sets the transparency of the pattern. 0 = fully transparent, 1 = fully opaque.
@@ -381,28 +387,66 @@ PatternProto.loopat = PatternProto.loopAt;
 export const urlBase = createMixParam("urlBase");
 
 /**
- * Sets the horizontal position of the pattern (0–1, where 0 = left edge).
+ * Shifts the horizontal position of the pattern (additive — 0 by default, so top-level
+ * `.x(0.5)` still places at x=0.5). Additive behaviour lets nested grids be shifted
+ * as a unit: `inner.gridMod().x(0.1)` shifts the whole inner group within its outer cell.
  *
- * @param {number | string | Pattern} value x position
- * @returns {Pattern} pattern with x position applied
+ * @param {number | string | Pattern} value x offset
+ * @returns {Pattern} pattern with x offset applied
  * @example
  * $: color("red").x(0.5).width(0.5)       // right half of screen
  * $: video("clip.mp4").x(sine).width(0.5)  // slides left to right
+ * $: stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().x(0.1)
+ *    // shift inner group 0.1 units right within its outer cell
  *
  */
-export const x = createMixParam("x");
+// x and y are additive (use addTo / appBoth) rather than replacement (createMixParam / appLeft).
+// This lets .x(v) shift position relative to whatever the current x is — so nested grids
+// composed by gridMod() can be shifted as a unit: inner.gridMod().x(0.1) shifts the whole
+// inner group within its outer cell, rather than jumping to an absolute position.
+// Top-level usage is unchanged: 0 (default) + v = v.
+//
+// Exception: _perEvent controls (rand, irand, choose) use appLeft instead of appBoth.
+// appBoth samples the control at frame time (flickering rand values), whereas appLeft
+// samples at the hap's onset — giving stable per-event random values. The additive
+// merge is still applied; only the combining strategy differs.
+function makeXY(field: 'x' | 'y') {
+  const method = function (this: any, value: any) {
+    const valPat = reify(value);
+    if ((valPat as any)._perEvent) {
+      return this.fmap((v: any) => (ctrl: any) => {
+        const base = typeof v === 'object' && v !== null ? v : {};
+        return { ...base, [field]: (base[field] ?? 0) + ctrl };
+      }).appLeft(valPat);
+    }
+    return this.addTo(field, value);
+  };
+  (PatternProto as any)[field] = method;
+}
+makeXY('x');
+makeXY('y');
+
+export const x = function (value: any, pat?: any) {
+  if (!pat) return reify(value).withValue((v: any) => ({ x: v }));
+  return (pat as any).x(value);
+};
 PatternProto.left = PatternProto.x;
 
 /**
- * Sets the vertical position of the pattern (0–1, where 0 = top edge).
+ * Shifts the vertical position of the pattern (additive — 0 by default, so top-level
+ * `.y(0.5)` still places at y=0.5). Additive behaviour lets nested grids be shifted
+ * as a unit: `inner.gridMod().y(0.1)` shifts the whole inner group within its outer cell.
  *
- * @param {number | string | Pattern} value y position
- * @returns {Pattern} pattern with y position applied
+ * @param {number | string | Pattern} value y offset
+ * @returns {Pattern} pattern with y offset applied
  * @example
  * $: color("red").y(0.5).height(0.5)       // bottom half of screen
  *
  */
-export const y = createMixParam("y");
+export const y = function (value: any, pat?: any) {
+  if (!pat) return reify(value).withValue((v: any) => ({ y: v }));
+  return (pat as any).y(value);
+};
 PatternProto.top = PatternProto.y;
 
 /**
@@ -434,14 +478,14 @@ PatternProto.h = PatternProto.height;
 // present, so that gridMod/circleMod place the element in exactly one cell by default.
 // Using index()/stackN() always sets count explicitly, so this only affects manual .i() usage.
 const iFunc = function (value: any, pat?: any) {
-  if (!pat) return reify(value).withValue((v: any) => ({ i: v, count: Infinity }));
-  if (value === undefined) return pat.fmap((v: any) => ({ i: v, count: Infinity }));
+  if (!pat) return reify(value).withValue((v: any) => ({ i: v, count: Infinity, layoutParent: undefined }));
+  if (value === undefined) return pat.fmap((v: any) => ({ i: v, count: Infinity, layoutParent: undefined }));
   const valPat = reify(value);
 
   if ((valPat as any)._perEvent) {
     return pat.fmap((v: any) => (ctrl: any) => {
       const base = typeof v === 'object' && v !== null ? v : {};
-      return { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ctrl };
+      return { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ctrl, layoutParent: undefined };
     }).appLeft(valPat);
   }
 
@@ -459,7 +503,7 @@ const iFunc = function (value: any, pat?: any) {
         results.push(new Hap(
           hap.whole,
           newPart,
-          { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ch.value },
+          { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ch.value, layoutParent: undefined },
           hap.context
         ));
       }
@@ -602,6 +646,7 @@ function composePos(value: any, outer: { x: number; y: number; width: number; he
  */
 PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
   const self = this;
+  const layoutParent = ++_layoutParentCounter;
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
 
@@ -615,7 +660,7 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
           const val = Object(v) === v ? v : {};
           const r = rowsArg !== undefined ? resolveNum(rowsArg, begin) : (val.rows ?? 2);
           const c = colsArg !== undefined ? resolveNum(colsArg, begin) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
-          return composePos(val, cellPos(iVal, c, r));
+          return { ...composePos(val, cellPos(iVal, c, r)), layoutParent };
         });
         results.push(...positioned.queryArc(begin, end));
       }
@@ -628,7 +673,7 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
       const r = rowsArg !== undefined ? resolveNum(rowsArg, begin) : (val.rows ?? 2);
       const c = colsArg !== undefined ? resolveNum(colsArg, begin) : rowsArg !== undefined ? 1 : (val.cols ?? 2);
       const iVal = val.i ?? 0;
-      return composePos(val, cellPos(iVal, c, r));
+      return { ...composePos(val, cellPos(iVal, c, r)), layoutParent };
     }).queryArc(begin, end);
   });
 };
@@ -651,13 +696,21 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
  * Like .grid() but cycles this pattern across multiple cells based on i, count, cols, rows.
  * All args optional — reads from event values (.i(), .count(), .rows(), .cols()) if not provided.
  *
+ * Stamps a unique `layoutParent` token on all output events so that outer index() calls
+ * treat all events from this gridMod as a single logical slot — enabling nested grids.
+ *
  * @param {number | Pattern} rowsArg number of rows (optional)
  * @param {number | Pattern} colsArg number of columns (optional)
  * @example
  * $: stack(video("a.mp4"), video("b.mp4")).index().rowscols(2).gridMod()
+ * $: stack(
+ *      stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod(),
+ *      color("red")
+ *    ).index().rowscols(2).gridMod()   // nested 2×2 inside outer 2×2
  */
 PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
   const self = this;
+  const layoutParent = ++_layoutParentCounter;
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const selfEvs = self.queryArc(begin, end);
@@ -673,8 +726,7 @@ PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
       const totalCells = r * c;
       for (let idx = ci; idx < totalCells; idx += nc) {
         const pos = cellPos(idx, c, r);
-        // Use ev.withValue to preserve Hap structure
-        results.push(ev.withValue(() => composePos(val, pos)));
+        results.push(ev.withValue(() => ({ ...composePos(val, pos), layoutParent })));
       }
     }
     return results;
@@ -703,6 +755,7 @@ function circleElementSize(n: number, r: number): number {
  */
 PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCountArg?: any, iArg?: any) {
   const self = this;
+  const layoutParent = ++_layoutParentCounter;
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     return self.withValue((v: any) => {
@@ -715,7 +768,7 @@ PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCou
       const w = val.width ?? size;
       const h = val.height ?? size;
       const pos = circlePos(i, n, r, so, w, h);
-      return { ...val, ...pos };
+      return { ...val, ...pos, layoutParent };
     }).queryArc(begin, end);
   });
 };
@@ -729,6 +782,7 @@ PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCou
  */
 PatternProto.circleMod = function (radiusArg?: any, startOffsetArg?: any, circleCountArg?: any) {
   const self = this;
+  const layoutParent = ++_layoutParentCounter;
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const selfEvs = self.queryArc(begin, end);
@@ -746,7 +800,7 @@ PatternProto.circleMod = function (radiusArg?: any, startOffsetArg?: any, circle
       const h = val.height ?? size;
       for (let idx = ci; idx < total; idx += nc) {
         const pos = circlePos(idx, total, r, so, w, h);
-        results.push(ev.withValue(() => ({ ...val, ...pos })));
+        results.push(ev.withValue(() => ({ ...val, ...pos, layoutParent })));
       }
     }
     return results;

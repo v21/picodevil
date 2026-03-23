@@ -279,3 +279,130 @@ describe(".gridMod()", () => {
     expect(blues).toHaveLength(2);
   });
 });
+
+// ─── nested gridMod (layoutParent grouping) ───────────────────────────────────
+
+describe("nested gridMod", () => {
+  it("inner gridMod events are treated as one slot by outer index()", () => {
+    // inner produces 4 events (2x2 grid); outer should see 2 slots: inner + red
+    const inner = stack(color("cyan"), color("magenta"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const pat = stack(inner, color("red"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const evs = queryAll(pat, 0.1);
+    // Outer 2x2 with 2 groups:
+    // group 0 (inner): 4 inner events × 2 outer cells (0,2) = 8 events
+    // group 1 (red): 1 red event × 2 outer cells (1,3) = 2 events
+    expect(evs).toHaveLength(10);
+    const reds = evs.filter((v: any) => v.color === "red");
+    expect(reds).toHaveLength(2); // red in outer cells 1 and 3
+    // red events should be in the "i=1" outer cells: x=0.5,y=0 and x=0.5,y=0.5
+    reds.sort((a: any, b: any) => a.y - b.y);
+    expect(reds[0]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
+    expect(reds[1]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+  });
+
+  it("inner cells compose positions correctly within outer cells", () => {
+    const inner = stack(color("cyan"), color("magenta"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const pat = stack(inner, color("red"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const evs = queryAll(pat, 0.1);
+    const cyans = evs.filter((v: any) => v.color === "cyan");
+    // cyan = i=0 in inner 2x2 → inner cells 0,2 → each replicated in outer cells 0,2
+    // In outer cell 0 (x=0,y=0,w=0.5,h=0.5): inner cell 0 of inner 2x2 → x:0,y:0,w:0.25,h:0.25
+    expect(cyans).toHaveLength(4); // 2 inner cells × 2 outer cells
+    cyans.sort((a: any, b: any) => a.y - b.y || a.x - b.x);
+    expect(cyans[0]).toMatchObject({ x: 0, y: 0, width: 0.25, height: 0.25 });
+  });
+
+  it("layoutParent is unique per gridMod call", () => {
+    const a = color("red").index().rowscols(2).gridMod();
+    const b = color("blue").index().rowscols(2).gridMod();
+    const evA = queryAll(a, 0.1);
+    const evB = queryAll(b, 0.1);
+    expect(evA[0].layoutParent).toBeDefined();
+    expect(evB[0].layoutParent).toBeDefined();
+    expect(evA[0].layoutParent).not.toBe(evB[0].layoutParent);
+  });
+
+  it("all events from one gridMod share the same layoutParent", () => {
+    const inner = stack(color("cyan"), color("magenta"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const evs = queryAll(inner, 0.1);
+    expect(evs.length).toBeGreaterThan(1);
+    const lp = evs[0].layoutParent;
+    expect(lp).toBeDefined();
+    expect(evs.every((v: any) => v.layoutParent === lp)).toBe(true);
+  });
+
+  it(".i() clears layoutParent for explicit slot override", () => {
+    const inner = stack(color("cyan"), color("magenta"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const withExplicit = inner.i(0);
+    const evs = queryAll(withExplicit, 0.1);
+    expect(evs.every((v: any) => v.layoutParent === undefined)).toBe(true);
+  });
+
+  it("backwards compat: non-nested index().gridMod() still works", () => {
+    const pat = stack(color("red"), color("blue"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const evs = queryAll(pat, 0.1);
+    expect(evs).toHaveLength(4);
+    expect(evs.filter((v: any) => v.color === "red")).toHaveLength(2);
+    expect(evs.filter((v: any) => v.color === "blue")).toHaveLength(2);
+  });
+});
+
+// ─── additive .x() and .y() ───────────────────────────────────────────────────
+
+describe("additive .x() and .y()", () => {
+  it(".x(0.5) on a plain pattern sets x to 0.5 (default 0 + 0.5)", () => {
+    const evs = queryAll(color("red").x(0.5), 0.1);
+    expect(evs[0].x).toBeCloseTo(0.5);
+  });
+
+  it(".x() is additive: pat.x(0.3).x(0.2) => x = 0.5", () => {
+    const evs = queryAll(color("red").x(0.3).x(0.2), 0.1);
+    expect(evs[0].x).toBeCloseTo(0.5);
+  });
+
+  it(".y(0.5) on a plain pattern sets y to 0.5", () => {
+    const evs = queryAll(color("red").y(0.5), 0.1);
+    expect(evs[0].y).toBeCloseTo(0.5);
+  });
+
+  it("inner gridMod().x(0.1) shifts inner group, preserved through outer gridMod", () => {
+    const inner = stack(color("cyan"), color("magenta"))
+      .index()
+      .rowscols(2)
+      .gridMod()
+      .x(0.1); // additive shift within outer cell space
+    const pat = stack(inner, color("red"))
+      .index()
+      .rowscols(2)
+      .gridMod();
+    const evs = queryAll(pat, 0.1);
+    const cyans = evs.filter((v: any) => v.color === "cyan");
+    // cyan's x should be shifted by 0.1 * outer_cell_width (0.5) = 0.05 from base
+    // base outer cell 0: x=0; inner cell 0: x=0; after additive x(0.1): x += 0.1*0.5 = 0.05
+    // Actually addTo adds the raw value before outer compose, so x = 0 + 0.1 = 0.1 (inner space),
+    // then outer compose: finalX = 0 + 0.1 * 0.5 = 0.05
+    cyans.sort((a: any, b: any) => a.y - b.y || a.x - b.x);
+    expect(cyans[0].x).toBeCloseTo(0.05);
+  });
+});

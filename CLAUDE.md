@@ -71,11 +71,14 @@ There is no class hierarchy. Everything is a Strudel `Pattern` with object-value
 
 Key controls (all on Pattern.prototype):
 - `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
-- `.grid(i, cols, rows)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting
-- `.gridModulo(childIndex, numChildren, cols, rows)` — assigns multiple grid cells to a child; all args can be patterns
+- `.x()` and `.y()` are **additive** (use `addTo` / appBoth) rather than replacement. This enables nested grid offset propagation: `inner.gridMod().x(0.1)` shifts the inner group within its outer cell. Exception: `_perEvent` controls (rand, irand, choose) fall back to appLeft for stable-per-onset sampling.
+- `.grid(rows?, cols?, i?)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting
+- `.gridMod(rows?, cols?)` — assigns multiple grid cells to a child; all args can be patterns; stamps `layoutParent` on all output events
 - `.p(id)` — registers pattern for rendering (`$` = anonymous/stacking, `S` prefix = solo, `_` prefix/suffix = mute)
 
 Grid position composition: when `.grid()` is called on a pattern that already has position (from a prior `.grid()`), positions compose: `finalX = outer.x + inner.x * outer.width`. This enables grid-of-grids nesting.
+
+**Nested grids**: `gridMod()` (and `grid()`, `circleMod()`, `circle()`) stamps a `layoutParent` token (unique per call site, assigned at construction time via `_layoutParentCounter`) on all output events. `applyIndex` in `index-patterns.ts` groups events sharing the same `(srcIdx, layoutParent)` as one logical slot when assigning `i`/`count`. This means an inner `index().gridMod()` group is treated as a single slot by an outer `index()`. `.i()` clears `layoutParent` to allow explicit slot overrides. Always use `stack(a, b, ...)` with separate args — `stack([a, b])` sequences the array into alternating events per cycle.
 
 ## User-facing API (available in the editor)
 
@@ -109,6 +112,7 @@ Example: `$: index(color("red"), color("blue")).rowscols(2).gridMod()`
 Example: `$: video("a.mp4").i("0 1 2 3").rowscols(2).grid()`
 Example: `$: stack(color("red"), color("blue"), color("green")).shuffleStack(42).index().rowscols(2).gridMod()`
 Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
+Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod(), color("red")).index().rowscols(2).gridMod()`
 
 ## Video playback speed
 

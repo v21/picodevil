@@ -108,16 +108,18 @@ All controls are methods you chain onto a pattern. Every control accepts pattern
 By default, each pattern fills the entire canvas (x=0, y=0, width=1, height=1). Values are 0–1 relative to the canvas.
 
 ```js
-$: color("red").x(0.5).width(0.5)       // right half
+$: color("red").x(0.5).width(0.5)          // right half
 $: video("clip.mp4").x("0 0.5").width(0.5) // bounces left/right
 ```
 
 | Method       | Description         | Default |
 | ------------ | ------------------- | ------- |
-| `.x(v)`      | Horizontal position | 0       |
-| `.y(v)`      | Vertical position   | 0       |
+| `.x(v)`      | Horizontal offset   | 0       |
+| `.y(v)`      | Vertical offset     | 0       |
 | `.width(v)`  | Width               | 1       |
 | `.height(v)` | Height              | 1       |
+
+`.x()` and `.y()` are **additive**: each call shifts by the given amount rather than setting an absolute position. This makes them work correctly with nested grids — `inner.gridMod().x(0.1)` shifts the whole inner group by 0.1 within its outer cell without affecting the outer layout. At the top level the behaviour is the same: `0 + v = v`.
 
 ### Transparency
 
@@ -279,6 +281,30 @@ Explicit `rows`/`cols` arguments override the values:
 
 ```js
 $: color("red").i(0).count(2).gridMod(2, 2)   // override grid size
+```
+
+#### Nested grids
+
+You can nest a `gridMod()` inside another one. Use `index()` at each level to assign slots correctly. The inner group is treated as a single slot by the outer `index()`:
+
+```js
+// 2×2 outer grid: left cells contain an inner 2×2, right cells contain red
+$: stack(
+  stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod(),
+  color("red")
+).index().rowscols(2).gridMod()
+```
+
+**Important:** always pass patterns as separate arguments to `stack()`, not as an array. `stack([a, b])` treats the array as a sequence (alternating per cycle) — `stack(a, b)` stacks them simultaneously.
+
+You can shift a nested group within its outer cells using `.x()` / `.y()` before the outer `gridMod()` — because `.x()` is additive, it composes correctly at each level:
+
+```js
+$: stack(
+  stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().x(0.1),
+  color("red")
+).index().rowscols(2).gridMod()
+// inner 2×2 is shifted 0.1 units to the right within each of its outer cells
 ```
 
 The circle methods use three circle-specific value setters:

@@ -51,7 +51,20 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
     const cycleTagged = querySeparately(pats, Number(cBegin), Number(cBegin) + 1);
     // Sort by onset (stable — preserves insertion order for ties, keeping slot identity)
     cycleTagged.sort((a, b) => hapOnset(a.hap) - hapOnset(b.hap));
-    const count = cycleTagged.length;
+
+    // Assign group indices with same layoutParent grouping as applyIndex
+    const groupOrder: string[] = [];
+    const eventGroupIdx: number[] = new Array(cycleTagged.length);
+    for (let i = 0; i < cycleTagged.length; i++) {
+      const { hap, srcIdx } = cycleTagged[i];
+      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
+      let gIdx = groupOrder.indexOf(key);
+      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      eventGroupIdx[i] = gIdx;
+    }
+
+    const count = groupOrder.length;
 
     // Track sub-index within each (srcIdx, onset) group so multiple haps from the same
     // source at the same onset each get the right slot (one per re-query, taken by index).
@@ -60,6 +73,7 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
     const result: any[] = [];
     for (let i = 0; i < cycleTagged.length; i++) {
       const { hap: cycleHap, srcIdx } = cycleTagged[i];
+      const gIdx = eventGroupIdx[i];
       const onset = hapOnset(cycleHap);
       const onsetKey = String(onset);
       if (Number(cycleHap.part.begin) > Number(end) || Number(cycleHap.part.end) <= Number(begin))
@@ -69,11 +83,10 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
       const subIdx = subIdxCounters.get(groupKey) ?? 0;
       subIdxCounters.set(groupKey, subIdx + 1);
 
-      const seed = hashStr(`${i}:${cycle}`);
+      const seed = hashStr(`${gIdx}:${cycle}`);
       const seededState = state.setControls({ randSeed: seed });
 
       // Re-query source pattern with seeded state; take the subIdx-th hap at this onset.
-      // Using whole?.begin ensures the comparison works even when part is clipped by the arc.
       const matching: any[] = [];
       for (const hap of pats[srcIdx].query(seededState)) {
         if (String(hapOnset(hap)) === onsetKey) matching.push(hap);
@@ -83,7 +96,7 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
         result.push(
           target.withValue((v: any) => ({
             ...(Object(v) === v ? v : {}),
-            [iLabel]: i,
+            [iLabel]: gIdx,
             [countLabel]: count,
           })),
         );
@@ -100,13 +113,27 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
 
     // Query each source at the current arc in insertion order
     const arcTagged = querySeparately(pats, state.span.begin, state.span.end);
-    const count = arcTagged.length;
 
+    // Assign group indices: events with layoutParent share a group key per (srcIdx, layoutParent);
+    // events without layoutParent each get their own group (preserves existing behaviour).
+    const groupOrder: string[] = [];
+    const eventGroupIdx: number[] = new Array(arcTagged.length);
+    for (let i = 0; i < arcTagged.length; i++) {
+      const { hap, srcIdx } = arcTagged[i];
+      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
+      let gIdx = groupOrder.indexOf(key);
+      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      eventGroupIdx[i] = gIdx;
+    }
+
+    const count = groupOrder.length;
     const subIdxCounters = new Map<string, number>();
     const result: any[] = [];
 
     for (let i = 0; i < arcTagged.length; i++) {
       const { hap: ev, srcIdx } = arcTagged[i];
+      const gIdx = eventGroupIdx[i];
       const onset = hapOnset(ev);
       const onsetKey = String(onset);
 
@@ -114,7 +141,7 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
       const subIdx = subIdxCounters.get(groupKey) ?? 0;
       subIdxCounters.set(groupKey, subIdx + 1);
 
-      const seed = hashStr(`${i}:${cycle}`);
+      const seed = hashStr(`${gIdx}:${cycle}`);
       const seededState = state.setControls({ randSeed: seed });
 
       const matching: any[] = [];
@@ -126,7 +153,7 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
         result.push(
           target.withValue((v: any) => ({
             ...(Object(v) === v ? v : {}),
-            [iLabel]: i,
+            [iLabel]: gIdx,
             [countLabel]: count,
           })),
         );
