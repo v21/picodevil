@@ -82,13 +82,13 @@ describe("*To field operators", () => {
     expect(evs.length).toBeGreaterThan(2);
   });
 
-  it("addTo with Pattern key (double-quote transpiler footgun) warns and returns original", () => {
-    const pat = mini("0 1").fmap((v: number) => ({ x: v }));
-    const patternKey = mini("x"); // simulates what the transpiler does to "x"
-    const result = (pat as any).addTo(patternKey, 0.5);
-    // should return original pattern unchanged, not crash
-    const v = queryObj(result, 0);
-    expect(v?.x).toBeCloseTo(0); // unchanged
+  it("addTo with pattern key: mini('x y') alternates target field each cycle", () => {
+    const pat = mini("1").fmap((_v: number) => ({ x: 0.2, y: 0.3 }));
+    // key pattern alternates between "x" and "y" each cycle
+    const result = (pat as any).addTo(mini("x y"), 0.1);
+    expect(queryObj(result, 0.1)?.x).toBeCloseTo(0.3);  // first half: key="x", adds to x
+    expect(queryObj(result, 0.6)?.y).toBeCloseTo(0.4);  // second half: key="y", adds to y
+    expect(queryObj(result, 0.6)?.x).toBeCloseTo(0.2);  // x unchanged in second half
   });
 
   it("subTo subtracts from a specific key", () => {

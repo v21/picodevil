@@ -420,28 +420,53 @@ const _toOps: Record<string, (a: number, b: number) => number | string> = {
 /**
  * Apply an arithmetic operation to a specific named field of the value object,
  * using mix (appBoth) combining so the amount pattern's rhythm is interleaved.
+ * The key itself can be a pattern, allowing the target field to vary over time.
  *
  * Available variants: `addTo`, `subTo`, `mulTo`, `divTo`, `modTo`, `powTo`, `setTo`
  *
- * **Use single quotes for the key argument** — double-quoted strings are wrapped
- * in `mini()` by the transpiler, which would break the key lookup.
+ * **Use single quotes for literal key strings** — double-quoted strings are wrapped
+ * in `mini()` by the transpiler.
  *
- * @param {string} key field name to operate on (use single quotes: `'x'`)
+ * @param {string | Pattern} key field name to operate on, or pattern of field names
  * @param {number | Pattern} amount value or pattern to combine with
  * @returns {Pattern}
  * @example
- * $: s("clip.mp4").x("-.1 .1").addTo('x', "<.2 .5>")   // shift x by .2 or .5 each cycle
- * $: s("clip.mp4").alpha(".5 1").mulTo('alpha', ".8 1")  // multiply alpha field
+ * $: s("clip.mp4").x("-.1 .1").addTo('x', "<.2 .5>")        // shift x by .2 or .5 each cycle
+ * $: s("clip.mp4").x(".2").y(".3").addTo("x y", ".1")        // alternate: add to x, then y
+ * $: s("clip.mp4").alpha(".5 1").mulTo('alpha', ".8 1")       // multiply alpha field
  */
 for (const [name, op] of Object.entries(_toOps)) {
   PatternProto[`${name}To`] = function (key: any, amount: any) {
-    if (typeof key !== "string") {
-      warn(`${name}To: key must be a plain string (use single quotes). Got: ${typeof key}. Hint: 'x' not "x"`);
-      return this;
-    }
-    return this._opMix(reify(amount), (a: any) => (b: number) => ({
-      ...a,
-      [key]: op(a[key] ?? 0, b),
-    }));
+    const keyPat = reify(key);
+    const amountPat = reify(amount);
+    const src = this;
+    return new CorePattern((state: any) => {
+      const srcHaps = src.query(state);
+      const keyHaps = keyPat.query(state);
+      const amtHaps = amountPat.query(state);
+      const results: any[] = [];
+      for (const sh of srcHaps) {
+        for (const kh of keyHaps) {
+          const kPart = sh.part.intersection(kh.part);
+          if (!kPart) continue;
+          const k = kh.value;
+          if (typeof k !== "string") {
+            warn(`${name}To: key pattern produced non-string value: ${typeof k}`);
+            continue;
+          }
+          for (const ah of amtHaps) {
+            const aPart = kPart.intersection(ah.part);
+            if (!aPart) continue;
+            results.push(new Hap(
+              sh.whole,
+              aPart,
+              { ...sh.value, [k]: op(sh.value?.[k] ?? 0, ah.value) },
+              sh.context,
+            ));
+          }
+        }
+      }
+      return results;
+    });
   };
 }
