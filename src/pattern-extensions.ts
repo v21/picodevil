@@ -401,3 +401,47 @@ PatternProto.spline = function (tension: any = 0.5) {
     return [new Hap(undefined, state.span, val)];
   });
 };
+
+// ─── *To field operators ────────────────────────────────────────────────────
+// Variants of the Strudel compose operators (add, sub, mul, div, mod, pow, set)
+// that target a specific key within object values, using mix (appBoth) combining.
+// e.g. pat.x(".5 .1").addTo("x", "-.5 0 .5") adds the amount pattern to the x field.
+
+const _toOps: Record<string, (a: number, b: number) => number | string> = {
+  set: (_a, b) => b,
+  add: (a, b) => a + b,
+  sub: (a, b) => a - b,
+  mul: (a, b) => a * b,
+  div: (a, b) => a / b,
+  mod: (a, b) => ((a % b) + b) % b,
+  pow: (a, b) => Math.pow(a, b),
+};
+
+/**
+ * Apply an arithmetic operation to a specific named field of the value object,
+ * using mix (appBoth) combining so the amount pattern's rhythm is interleaved.
+ *
+ * Available variants: `addTo`, `subTo`, `mulTo`, `divTo`, `modTo`, `powTo`, `setTo`
+ *
+ * **Use single quotes for the key argument** — double-quoted strings are wrapped
+ * in `mini()` by the transpiler, which would break the key lookup.
+ *
+ * @param {string} key field name to operate on (use single quotes: `'x'`)
+ * @param {number | Pattern} amount value or pattern to combine with
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x("-.1 .1").addTo('x', "<.2 .5>")   // shift x by .2 or .5 each cycle
+ * $: s("clip.mp4").alpha(".5 1").mulTo('alpha', ".8 1")  // multiply alpha field
+ */
+for (const [name, op] of Object.entries(_toOps)) {
+  PatternProto[`${name}To`] = function (key: any, amount: any) {
+    if (typeof key !== "string") {
+      warn(`${name}To: key must be a plain string (use single quotes). Got: ${typeof key}. Hint: 'x' not "x"`);
+      return this;
+    }
+    return this._opMix(reify(amount), (a: any) => (b: number) => ({
+      ...a,
+      [key]: op(a[key] ?? 0, b),
+    }));
+  };
+}

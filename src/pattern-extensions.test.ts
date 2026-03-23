@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
 import "./pattern-extensions";
 
-function queryVal(pat: any, t: number): number {
+function queryVal(pat: any, t: number): number | undefined {
   const evs = pat.queryArc(t, t);
   return evs.length ? evs[0].value : undefined;
 }
@@ -44,5 +44,56 @@ describe("spline with pattern params", () => {
     const v = queryVal(pat, 0);
     expect(v).toBeTypeOf("number");
     expect(v).not.toBeNaN();
+  });
+});
+
+describe("*To field operators", () => {
+  function queryObj(pat: any, t: number): any {
+    const evs = pat.queryArc(t, t);
+    return evs.length ? evs[0].value : undefined;
+  }
+
+  it("addTo adds to a specific key, preserving others", () => {
+    const pat = mini("0 1").fmap((v: number) => ({ x: v, s: "a" }));
+    const result = (pat as any).addTo("x", 0.5);
+    expect(queryObj(result, 0)?.x).toBeCloseTo(0.5);
+    expect(queryObj(result, 0.5)?.x).toBeCloseTo(1.5);
+    expect(queryObj(result, 0)?.s).toBe("a");
+  });
+
+  it("mulTo multiplies a specific key", () => {
+    const pat = mini("0.5 1").fmap((v: number) => ({ x: v }));
+    const result = (pat as any).mulTo("x", 2);
+    expect(queryObj(result, 0)?.x).toBeCloseTo(1.0);
+    expect(queryObj(result, 0.5)?.x).toBeCloseTo(2.0);
+  });
+
+  it("setTo replaces a specific key", () => {
+    const pat = mini("0 1").fmap((v: number) => ({ x: v, y: 0.5 }));
+    const result = (pat as any).setTo("y", 0.9);
+    expect(queryObj(result, 0)?.y).toBeCloseTo(0.9);
+    expect(queryObj(result, 0)?.x).toBeCloseTo(0);
+  });
+
+  it("addTo with mix combining: 2-step source + 3-step amount = more events per cycle", () => {
+    const pat = mini("0 1").fmap((v: number) => ({ x: v }));
+    const result = (pat as any).addTo("x", mini("0 .1 .2"));
+    const evs = result.queryArc(0, 1);
+    expect(evs.length).toBeGreaterThan(2);
+  });
+
+  it("addTo with Pattern key (double-quote transpiler footgun) warns and returns original", () => {
+    const pat = mini("0 1").fmap((v: number) => ({ x: v }));
+    const patternKey = mini("x"); // simulates what the transpiler does to "x"
+    const result = (pat as any).addTo(patternKey, 0.5);
+    // should return original pattern unchanged, not crash
+    const v = queryObj(result, 0);
+    expect(v?.x).toBeCloseTo(0); // unchanged
+  });
+
+  it("subTo subtracts from a specific key", () => {
+    const pat = mini("1").fmap((v: number) => ({ x: v }));
+    const result = (pat as any).subTo("x", 0.3);
+    expect(queryObj(result, 0)?.x).toBeCloseTo(0.7);
   });
 });

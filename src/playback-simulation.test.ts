@@ -471,3 +471,49 @@ describe("equivalence class testing", () => {
     assertTracesMatch(traceBase, traceAlpha, "loopAt(4) vs loopAt(4).alpha(0.5)");
   });
 });
+
+// ─── addTo position tests ────────────────────────────────────────────────────
+
+function queryAt(pat: any, t: number) {
+  const haps = pat.queryArc(t, t + 0.0001);
+  return haps.length ? haps[0].value : undefined;
+}
+
+describe("addTo / *To operators affect rendered position", () => {
+  it("addTo shifts x from base value", () => {
+    const pat = (video("test.mp4") as any).x(0.5).addTo("x", 0.2);
+    const v = queryAt(pat, 0.1);
+    expect(v?.x).toBeCloseTo(0.7);
+  });
+
+  it("addTo with mini amount: 2-step x + 2-step amount = correct values at each half", () => {
+    const pat = (video("test.mp4") as any).x(mini("0.2 0.8")).addTo("x", mini("0.1 -0.1"));
+    expect(queryAt(pat, 0.1)?.x).toBeCloseTo(0.3);
+    expect(queryAt(pat, 0.6)?.x).toBeCloseTo(0.7);
+  });
+
+  it("addTo preserves other value fields (src, etc.)", () => {
+    const pat = (video("test.mp4") as any).x(0.5).addTo("x", 0.1);
+    const v = queryAt(pat, 0.1);
+    expect(v?.src).toBe("test.mp4");
+    expect(v?.x).toBeCloseTo(0.6);
+  });
+
+  it("mulTo scales x from base value", () => {
+    const pat = (video("test.mp4") as any).x(0.4).mulTo("x", 2);
+    expect(queryAt(pat, 0.1)?.x).toBeCloseTo(0.8);
+  });
+
+  it("setTo replaces x regardless of base value", () => {
+    const pat = (video("test.mp4") as any).x(0.4).setTo("x", 0.9);
+    expect(queryAt(pat, 0.1)?.x).toBeCloseTo(0.9);
+  });
+
+  it("addTo x with mix: 2-step source + 3-step amount creates finer-grained events", () => {
+    const pat = (video("test.mp4") as any).x(mini("0.2 0.8")).addTo("x", mini("0 .1 .2"));
+    const evs = pat.queryArc(0, 1);
+    expect(evs.length).toBeGreaterThan(2);
+    // every event should have a numeric x
+    for (const e of evs) expect(e.value?.x).toBeTypeOf("number");
+  });
+});
