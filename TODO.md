@@ -390,12 +390,13 @@ wait, can we use the existing random seed also as an input to the random seed? t
 scale after grid mod should scale the grid? no, actually scale doesn't operate on that, it's on videos
 
 
-add rotateX, rotateY, rotateZ
-operates on turns
+/ add rotateX, rotateY, rotateZ
+/ operates on turns
 
 
 
-## Strudel methods don't use setMixParam - this might be surprising?
+Strudel methods don't use setMixParam - this might be surprising?
+check how Strudel methods compose now we're using out own custom combinator.
 
 
 /support chop
@@ -421,26 +422,111 @@ if we hit an error, keep running the old code!
 play audio
 
 
-change sync to set offset in fractions of the video (or absolute times)
+/ change sync to set offset in fractions of the video (or absolute times)
 
 /allow searching the reference, and make the text bigger!
 
 
+/ add a function to load a video to the library from code
 change examples to use stuff from the library
-add a function to load a video to the library from code
 then add to examples, to make them self contained
 
 
-move webcam & screen buttons
+move webcam & screen buttons to next line.
 
 
 
 / a bunch of errors to do with set.mix clipping stuff to a single cycle rather than allowing it to be more than one cycle long. can we change this behaviour fundamentally?
 
 
-instead of querying a small span, can we query at a single instant?
+/ instead of querying a small span, can we query at a single instant? yes. implement this.
 
 
 change tests to not download from YT - should run faster? or i guess they're hitting the media server cache, so this shouldn't actually be an issue
 
-can we remove _onset entirely?
+/ can we remove _onset entirely? yes
+
+
+
+
+
+after playing for a while, running `$: s("snowball").chop(8).alpha(0.5)` gives a white flash and a pulse out of position between each chop. doesn't seem to recur on refresh
+
+`$: s("snowball").slow(8).chop(8).scrub(sine)` does not scrub within each slice - only shows single frame for each
+
+`$: s("snowball").scrub(sine).chop(8)` also only shows a single frame (the same as `$: s("snowball").scrub(0.5)`)
+
+when i run 
+```
+$: s("snowball").begin(.5).end(.6).fit()
+$: s("snowball").begin(.5).end(.6).fit().chop(8).blend("difference")
+```
+i can see little ghosts from minor differences between the two outcomes. shouldn't they be coming from the same video element?
+
+
+can we make it so `$: s("snowball").slow(4).sync().speed("1 2")` makes it so that the speed changes, but it continues from the current play position as it does so? like, sync() should compose on top of existing pattern modifiers. this might be a bigger design task, to understand how that should work at an underlying level.
+
+loopAt(2).slow(4) should differ from slow(4).loopAt(2) - i think. first should play the whole video in 8 cycles, second should fit the whole video into 2 cycles
+maybe not - we do our loopAt differently to Strudel, they have a unit system and we don't. let's check on their unit system
+
+
+write an explanation of createMixParam. give examples of it working on: single values, discrete patterns (of cycle length 0, 1/3, 1/2, 1, 2, 16), signals, random values. for both sides of the operator. all the combinations of those values.
+
+/ add slider()
+
+
+
+
+
+.tile() - like grid but it places every stacked pattern in it's own cell, varying the number of elements in a row to achieve this
+
+.stackFlat() - flatten nested stacked patterns
+
+.shuffleStack("1 2 3 4") - randomise order of stacked patterns - uses pattern as seeds for randomisation, and pattern for when rand events span - so "1 2 3 4" changes 4 times a cycle, and repeats random pattern every cycle. without any arg, randomises once per cycle.
+
+
+`$: s("snowball").sync().begin(saw).speed(1)` - flickers
+
+/ can we unify some of the inverted range handling code? it seems like it's spread across a bunch of places, when it should all behave the same
+
+
+
+
+
+
+nested grids
+
+what if... gridMod and grid and all the rest also set some `nesting` param? or maybe we even have some valur which represents nesting of patterns, visually. like, `screen` gives all screens an id, and then we can set a `parent` value which refers to one of those when we do repeated gridMod or whatever calls? and then we use that parent value
+
+
+
+what if gridMod() etc overrode `i` when it did layout - but i guess two sibling gridMods wouldn't be able to coordinate on assigning `i`. 
+
+what if... gridMod gave all screens it was laying out a value like `layoutParent`: `uuid` (same uuid for each screen laid out with gridMod). then index and all similar `i` assigning functions logically groups all stacks with the same `uuid` set as a single child when assigning indexes? 
+
+i guess shuffleStack could be unaffected, it doesn't touch `i` or `count`. 
+
+this would be a lightweight way to get a scene graph type situation - but still functionally applying values at each step. the downside is the magic in gridMod and index etc. but that feels okay, if it operates a way that feels natural.
+
+maybe come up with several cases when evaluating options. we want:
+- nested grids
+- circle in a grid
+- fucking with a deeply nested screen within a grid-of-grids
+- animating everything positionally at the end
+- maybe others?
+
+
+---
+
+
+
+
+toOps -
+
+doesn't seem to be working
+make a function form
+add to sidebar ref
+mulTo("x", 2) when x isn't set will set to 0, but should set to 2 - identity for mul is 1, not 0
+
+
+

@@ -26,7 +26,10 @@ As said above, it extends Strudel. So many of the methods and conventions of Str
 
 ### First difference: Structure doesn't just come from the left
 
-In general, Strudel operates by setting the pattern of notes from the leftmost pattern, and then mapping the properties of subsequent patterns onto those. Uzuvid instead takes the intersection of the patterns. A practical example: In Strudel, if a note is playing and the gain is changed halfway through, the note will continue at the same volume, and subsequent notes will have their volume changed instead. In uzuvid, if a video is playing and the alpha of that video is changed halfway through, the change in alpha will take effect immediately.
+In general, Strudel operates by setting the pattern of notes from the leftmost pattern, and then mapping the properties of subsequent patterns onto those. Uzuvid instead %%% does something more complicated
+
+
+. A practical example: In Strudel, if a note is playing and the gain is changed halfway through, the note will continue at the same volume, and subsequent notes will have their volume changed instead. In uzuvid, if a video is playing and the alpha of that video is changed halfway through, the change in alpha will take effect immediately.
 
 There are some exceptions. Every time there is a new video event, we start from the `start` point. We don't want this to be reset whenever a different event occurs (not least because the way that Strudel handles events means that they won't last more than a cycle). So we store a special `_onset` value when a video event starts, and use that to calculate the offset instead.
 
@@ -34,13 +37,13 @@ There are some exceptions. Every time there is a new video event, we start from 
 
 ### Second difference: We render frames rather than events
 
-Strudel looks ahead and queues up notes with precise timing. Each note is sent as a new event, with it's timing information attached. uzuvid runs at the browser's preferred framerate (using `requestAnimationFrame`). We sample all the events playing at the current time, and we render those. If an event falls between frames, it won't be rendered. If two events are identical, and we miss the end of one and the beginning of another - it will be rendered exactly the same as if the event did not end and begin again. As you can imagine, this combines usefully with the first event
+Strudel looks ahead and queues up notes with precise timing. Each note is sent as a new event, with it's timing information attached. uzuvid runs at the browser's preferred framerate (using `requestAnimationFrame`). We sample all the events playing at the current instant, and we render those. If an event falls between frames, it won't be rendered. If two events are identical, and we miss the end of one and the beginning of another - it will be rendered exactly the same as if the event did not end and begin again. As you can imagine, this combines usefully with the first event
 
 ### Third difference: uzuvid is more interested in signals & continous events
 
 As we're sampling every frame, it becomes more natural to use continously changing parameters in more places. Varying something by sine makes more sense if you are going to be sampling a new value for sine every frame. 
 
-As such, we've added a few new functions for creating smooth signals - `lerp` and `spline`. These are inspired by `Hydra`'s `smooth` method - they allow you to convert a discrete pattern into a continous one.
+As such, we've added a few new functions for creating smooth signals - `lerp` and `spline`. These are inspired by `Hydra`'s `smooth`    method - they allow you to convert a discrete pattern into a continous one.
 
 ### Fourth difference: randomness
 
@@ -64,7 +67,10 @@ In practice, you don't always need to call `stackN` on videos to make them rende
 
 Which means that when we call `stackN` or `index`, we also set the seed for the random number generator differently, so that a grid of videos where each has `.speed(choose(.5, 1, 2))` applied won't all decide to halve the speed or double the speed in unison.
 
+We also allow shuffling the order that events are listed in with `shuffleStack` and `shuffleStackCycle`. When applied before `index()` or `stackN()`, this changes the order that events are iterated through.
+
 We also use Strudel's new snazzy `precise` RNG - just nicer than the old one, and we don't have backwards compatibility to worry about. 
+
 
 ### Sixth difference: I mean it's for rendering video
 
@@ -77,17 +83,19 @@ If you put a grid within another grid, it works! Similarly with adjusting `.x()`
 !!! Don't think this is yet true!
 
 ### i-frame encoding so that we can play videos backwards
+The server component will transcode Youtube videos into ones containing only i-frames. This improves the performance when playing videos backwards, or outside of natively supported play rates, or when jumping around a lot within the video file.
 
 ### It's 3D! I mean the browser is
 We're rendering a bunch of elements on the page, and these elements can move in 3D space. Because the browser context has full access to 3D rendering stuff. So we can apply perspective, we can rotate stuff, we can have things moving backwards and forwards.
 !!! don't think this is yet true
 
 ### Blend modes
-Aren't in yet, but are nice and small to add. Let's do that.
+We have blend modes! And alpha! `.blend()` and `.alpha()` respectively. This allows a lot of composition of video feeds.
 
 ### Rendered via canvas
 We composite everything via canvas. 
 !!! Can we write canvas code with patterns in? No, probably not. Also it would suck for livecoding.
 
 ### Live feeds - webcams and screen sharing
-Should work! Don't yet!
+We can also compose in screen sharing (`loadScreen`) and webcams (`loadCam`)
+

@@ -197,3 +197,22 @@ Event duration awareness: Knowing an event spans 0.5 cycles could drive effects 
 Fraction-based time: Using Strudel's fraction math for cycle position would eliminate any float-drift issues in long performances.
 Bind/patterns-of-patterns: Could enable meta-patterns like "this pattern determines which other pattern plays in this cell."
 ```
+
+
+
+
+# media library, transcoding & releasing
+
+this isn't as useful without the Youtube bit
+i can't host that publicly, it needs to be locally hosted
+so: it's a downloadable client, a standalone app, which runs the media bit
+and there's also a web version which doesn't talk to a server at all, and needs video URLs fed to it
+
+- both have an icon indicating whether the video file has every frame as an i-frame
+
+the standalone one:
+- also has a "upload video" button which selects from a local file source, uploads to the server, and transcodes
+- or drag, obv
+- and packages the server side within it
+- also you can click on non-iframe videos and it'll pass the url to the backend and transcode it, no matter where it's sourced from
+- also can we do youtube reels & tiktoks? why not
