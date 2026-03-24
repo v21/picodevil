@@ -7,7 +7,8 @@
  */
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
-import { sine } from "@strudel/core";
+import { sine, stack } from "@strudel/core";
+import { index } from "./index-patterns";
 import "./visual-controls";
 
 function query(pat: any, t: number) {
@@ -347,6 +348,52 @@ describe("visual controls via createMixParam", () => {
       const pat = src("x").alpha(0.5);
       const hap = queryHap(pat, 0.5);
       expect(wholeSpan(hap)).toEqual([0, 1]);
+    });
+  });
+
+  describe(".tile()", () => {
+    function queryAll(pat: any, t: number) {
+      return pat.queryArc(t, t).map((h: any) => h.value);
+    }
+
+    it("1 element fills full screen", () => {
+      const pat = index(src("a")).tile();
+      const vs = queryAll(pat, 0);
+      expect(vs).toHaveLength(1);
+      expect(vs[0]).toMatchObject({ x: 0, y: 0, width: 1, height: 1 });
+    });
+
+    it("4 elements → 2×2 uniform grid", () => {
+      const pat = index(src("a"), src("b"), src("c"), src("d")).tile();
+      const vs = queryAll(pat, 0).sort((a: any, b: any) => a.i - b.i);
+      expect(vs).toHaveLength(4);
+      expect(vs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+      expect(vs[1]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
+      expect(vs[2]).toMatchObject({ x: 0, y: 0.5, width: 0.5, height: 0.5 });
+      expect(vs[3]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+    });
+
+    it("7 elements → 3 rows, top row has 3, bottom two have 2", () => {
+      const pats = [src("a"), src("b"), src("c"), src("d"), src("e"), src("f"), src("g")];
+      const pat = index(...pats).tile();
+      const vs = queryAll(pat, 0).sort((a: any, b: any) => a.i - b.i);
+      expect(vs).toHaveLength(7);
+      // rows=3, distribution: 3,2,2
+      expect(vs[0].width).toBeCloseTo(1 / 3);
+      expect(vs[0]).toMatchObject({ y: 0, height: 1 / 3 });
+      expect(vs[3].width).toBeCloseTo(0.5);
+      expect(vs[3].y).toBeCloseTo(1 / 3);
+      expect(vs[5].width).toBeCloseTo(0.5);
+      expect(vs[5].y).toBeCloseTo(2 / 3);
+    });
+
+    it("9 elements → 3×3 uniform grid", () => {
+      const pats = Array.from({ length: 9 }, (_, i) => src(`${i}`));
+      const pat = index(...pats).tile();
+      const vs = queryAll(pat, 0);
+      expect(vs).toHaveLength(9);
+      expect(vs[0].width).toBeCloseTo(1 / 3);
+      expect(vs[0].height).toBeCloseTo(1 / 3);
     });
   });
 

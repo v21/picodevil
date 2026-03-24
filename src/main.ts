@@ -20,7 +20,7 @@ import {
   sometimesBy, sometimes, someCyclesBy, someCycles,
   often, rarely, almostNever, almostAlways, always, never,
 } from "./event-random";
-import { addTo, subTo, mulTo, divTo, modTo, powTo, setTo } from "./pattern-extensions";
+import { addOn, subOn, mulOn, divOn, modOn, powOn, setOn, mapOn } from "./pattern-extensions";
 import "./visual-controls";
 import { setupEditor } from "./editor";
 import { color } from "./color-pattern";
@@ -245,7 +245,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     const combNames = Object.keys(combinators);
     const setcps = setCps, setcpm = setCpm;
     const slider = sliderWidget;
-    const fieldOps = { addTo, subTo, mulTo, divTo, modTo, powTo, setTo };
+    const fieldOps = { addOn, subOn, mulOn, divOn, modOn, powOn, setOn, mapOn };
     const fieldOpNames = Object.keys(fieldOps);
     new Function("mini", "color", "video", "image", "screen", "s", "stackN", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", "slider", ...sigNames, ...modNames, ...combNames, ...fieldOpNames, transpiled)(
       mini, color, video, image, screen, s, stackN, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, slider, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators), ...Object.values(fieldOps),
@@ -304,11 +304,13 @@ const uzuMetrics = {
   freePoolSize: 0,              // free video pool size
   shareHits: 0,                 // times frameShareMap avoided a new element
   maxFrameTime: 0,              // worst frame time seen
+  xLog: [] as number[],         // x values seen in render loop (for testing)
   reset() {
     this.frameTimes = [];
     this.seekCount = 0;
     this.shareHits = 0;
     this.maxFrameTime = 0;
+    this.xLog = [];
   },
 };
 (window as any).uzuMetrics = uzuMetrics;
@@ -371,6 +373,24 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
   // Track expected times per assignment so sharing compares expected-to-expected
   // (not el.currentTime which may not have been seeked yet)
   const assignedExpected = new Map<string, { srcUrl: string; expected: number }>();
+
+  // Pre-pass: build the set of srcs needed at each draw position this frame.
+  // Free any active pool entries whose src won't match, so they're available
+  // in freeVideoPool for reuse at other positions (e.g. after a shuffle rearranges).
+  const neededSrc = new Map<string, string>();
+  for (const fe of frameEvents) {
+    if (fe.ev._type !== "video") continue;
+    const drawPos = `${fe.screenIndex}:${fe.eventIndex}`;
+    const base = fe.ev.urlBase ?? VIDEO_BASE;
+    neededSrc.set(drawPos, pool.resolveMediaUrl(fe.ev.src, base));
+  }
+  for (const [key, el] of pool.videoPool) {
+    const needed = neededSrc.get(key);
+    if (needed === undefined || el._state.srcUrl !== needed) {
+      pool.freeVideoEl(el);
+      pool.videoPool.delete(key);
+    }
+  }
 
   for (const fe of frameEvents) {
     if (fe.ev._type !== "video") continue;
@@ -436,6 +456,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
 
     // resolve position params
     const px = ev.x !== undefined ? Number(ev.x) : 0;
+    if (ev.x !== undefined) uzuMetrics.xLog.push(px);
     const py = ev.y !== undefined ? Number(ev.y) : 0;
     const pw = ev.width !== undefined ? Number(ev.width) : 1;
     const ph = ev.height !== undefined ? Number(ev.height) : 1;

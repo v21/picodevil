@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
+import { Pattern, Hap } from "@strudel/core";
 import "./pattern-extensions";
+import "./visual-controls";
+import { screen } from "./screen-pattern";
 
 function queryVal(pat: any, t: number): number | undefined {
   const evs = pat.queryArc(t, t);
@@ -55,7 +58,7 @@ describe("*To field operators", () => {
 
   it("addTo adds to a specific key, preserving others", () => {
     const pat = mini("0 1").fmap((v: number) => ({ x: v, s: "a" }));
-    const result = (pat as any).addTo("x", 0.5);
+    const result = (pat as any).addOn("x", 0.5);
     expect(queryObj(result, 0)?.x).toBeCloseTo(0.5);
     expect(queryObj(result, 0.5)?.x).toBeCloseTo(1.5);
     expect(queryObj(result, 0)?.s).toBe("a");
@@ -63,33 +66,33 @@ describe("*To field operators", () => {
 
   it("mulTo multiplies a specific key", () => {
     const pat = mini("0.5 1").fmap((v: number) => ({ x: v }));
-    const result = (pat as any).mulTo("x", 2);
+    const result = (pat as any).mulOn("x", 2);
     expect(queryObj(result, 0)?.x).toBeCloseTo(1.0);
     expect(queryObj(result, 0.5)?.x).toBeCloseTo(2.0);
   });
 
   it("mulTo with missing key uses identity 1, not 0", () => {
     const pat = mini("1").fmap((_v: number) => ({ s: "a" })); // no x
-    const result = (pat as any).mulTo("x", 2);
+    const result = (pat as any).mulOn("x", 2);
     expect(queryObj(result, 0)?.x).toBeCloseTo(2); // 1 * 2 = 2, not 0 * 2 = 0
   });
 
   it("addTo with missing key uses identity 0", () => {
     const pat = mini("1").fmap((_v: number) => ({ s: "a" }));
-    const result = (pat as any).addTo("x", 0.5);
+    const result = (pat as any).addOn("x", 0.5);
     expect(queryObj(result, 0)?.x).toBeCloseTo(0.5); // 0 + 0.5 = 0.5
   });
 
   it("setTo replaces a specific key", () => {
     const pat = mini("0 1").fmap((v: number) => ({ x: v, y: 0.5 }));
-    const result = (pat as any).setTo("y", 0.9);
+    const result = (pat as any).setOn("y", 0.9);
     expect(queryObj(result, 0)?.y).toBeCloseTo(0.9);
     expect(queryObj(result, 0)?.x).toBeCloseTo(0);
   });
 
   it("addTo with mix combining: 2-step source + 3-step amount = more events per cycle", () => {
     const pat = mini("0 1").fmap((v: number) => ({ x: v }));
-    const result = (pat as any).addTo("x", mini("0 .1 .2"));
+    const result = (pat as any).addOn("x", mini("0 .1 .2"));
     const evs = result.queryArc(0, 1);
     expect(evs.length).toBeGreaterThan(2);
   });
@@ -97,7 +100,7 @@ describe("*To field operators", () => {
   it("addTo with pattern key: mini('x y') alternates target field each cycle", () => {
     const pat = mini("1").fmap((_v: number) => ({ x: 0.2, y: 0.3 }));
     // key pattern alternates between "x" and "y" each cycle
-    const result = (pat as any).addTo(mini("x y"), 0.1);
+    const result = (pat as any).addOn(mini("x y"), 0.1);
     expect(queryObj(result, 0.1)?.x).toBeCloseTo(0.3);  // first half: key="x", adds to x
     expect(queryObj(result, 0.6)?.y).toBeCloseTo(0.4);  // second half: key="y", adds to y
     expect(queryObj(result, 0.6)?.x).toBeCloseTo(0.2);  // x unchanged in second half
@@ -105,7 +108,94 @@ describe("*To field operators", () => {
 
   it("subTo subtracts from a specific key", () => {
     const pat = mini("1").fmap((v: number) => ({ x: v }));
-    const result = (pat as any).subTo("x", 0.3);
+    const result = (pat as any).subOn("x", 0.3);
     expect(queryObj(result, 0)?.x).toBeCloseTo(0.7);
+  });
+});
+
+describe("mapOn", () => {
+  function queryObj(pat: any, t: number): any {
+    const evs = pat.queryArc(t, t);
+    return evs.length ? evs[0].value : undefined;
+  }
+
+  it("applies transform fn to a named field, returning a signal", () => {
+    // x steps between .1 and -.1; lerp() smooths the x field
+    const pat = mini("0 1").fmap((v: number) => ({ x: v === 0 ? 0.1 : -0.1, s: "a" }));
+    const result = (pat as any).mapOn("x", (xPat: any) => xPat.lerp());
+    // at t=0 it should be at 0.1 (start of lerp), mid-step it should be intermediate
+    const atStart = queryObj(result, 0.0)?.x;
+    const atMid = queryObj(result, 0.25)?.x;
+    const atHalf = queryObj(result, 0.5)?.x;
+    expect(atStart).toBeCloseTo(0.1, 3);
+    expect(atHalf).toBeCloseTo(-0.1, 3);
+    // mid-step value should be between the two extremes (lerped)
+    expect(atMid).toBeGreaterThan(-0.1);
+    expect(atMid).toBeLessThan(0.1);
+  });
+
+  it("preserves other fields in hap value", () => {
+    const pat = mini("1").fmap((_v: number) => ({ x: 0.5, s: "myfile" }));
+    const result = (pat as any).mapOn("x", (xPat: any) => xPat);
+    expect(queryObj(result, 0)?.s).toBe("myfile");
+    expect(queryObj(result, 0)?.x).toBeCloseTo(0.5);
+  });
+
+  it("is equivalent to applying the transform directly on the control pattern", () => {
+    // s("a").x(".1 -.1").mapOn("x", x=>x.lerp()) == s("a").x(".1 -.1".lerp())
+    // We can't easily test screen() here, so use fmap to set x from a lerp source
+    const raw = mini("0.1 -0.1").lerp();
+    // Build mapOn version: set x from steps, then mapOn lerp
+    const stepped = mini("0.1 -0.1").fmap((v: number) => ({ x: v, s: "a" }));
+    const mapped = (stepped as any).mapOn("x", (xp: any) => xp.lerp());
+    // Both should give identical values at several test points
+    for (const t of [0, 0.1, 0.25, 0.4, 0.6, 0.75, 0.9]) {
+      const rawVal = raw.queryArc(t, t)[0]?.value;
+      const mappedVal = queryObj(mapped, t)?.x;
+      expect(mappedVal).toBeCloseTo(rawVal, 4);
+    }
+  });
+
+  it("produces intermediate values when source has _type (like screen pattern haps)", () => {
+    // Simulates s("red").x(".1 -.1").mapOn("x", x => x.spline())
+    const base = mini("0.1 -0.1").fmap((v: number) => ({ x: v, _type: "color", color: "red" }));
+    const mapped = (base as any).mapOn("x", (xp: any) => xp.spline());
+    const atStart = queryObj(mapped, 0.0)?.x;
+    const atMid = queryObj(mapped, 0.25)?.x;
+    const atHalf = queryObj(mapped, 0.5)?.x;
+    expect(atStart).toBeCloseTo(0.1, 3);
+    expect(atHalf).toBeCloseTo(-0.1, 3);
+    expect(atMid).toBeGreaterThan(-0.1);
+    expect(atMid).toBeLessThan(0.1);
+  });
+
+  it("fieldPat.queryArc returns haps (not 0) — regression for browser failure", () => {
+    // In the browser, fieldPat.query(state) returned 6 haps but fieldPat.queryArc(0,2) returned 0.
+    // This test directly checks that queryArc works on the fieldPat built inside mapOn,
+    // by using screen() which wraps in a new PatternClass like the real app does.
+    const src = (screen("red") as any).x(mini(".1 -.1"));
+    const fieldPat = new (Pattern as any)((state: any) => {
+      return src.query(state).flatMap((hap: any) => {
+        const v = hap.value?.x;
+        if (v === undefined) return [];
+        return [new (Hap as any)(hap.part, hap.part, Number(v))];
+      });
+    });
+    const viaQueryArc = fieldPat.queryArc(0, 2);
+    expect(viaQueryArc.length).toBeGreaterThan(0);
+  });
+
+  it("produces intermediate values when source whole spans don't match part spans (addOn case)", () => {
+    // s("red").x(".1 -.1") goes through addOn which creates two events with
+    // whole=[0,1] (from the source) but parts [0,0.5] and [0.5,1].
+    // If fieldPat uses whole for timing, collectEvents sees both events at begin=0
+    // and deduplicates to a single point — no interpolation possible.
+    // Using part as the timing anchor fixes this.
+    const src = mini("red").fmap(() => ({ _type: "color", color: "red" }));
+    const withX = (src as any).addOn("x", mini("0.1 -0.1"));
+    const mapped = (withX as any).mapOn("x", (xp: any) => xp.spline());
+    const atMid = queryObj(mapped, 0.25)?.x;
+    expect(atMid).toBeGreaterThan(-0.1);
+    expect(atMid).toBeLessThan(0.1);
   });
 });

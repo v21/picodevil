@@ -481,39 +481,94 @@ function queryAt(pat: any, t: number) {
 
 describe("addTo / *To operators affect rendered position", () => {
   it("addTo shifts x from base value", () => {
-    const pat = (video("test.mp4") as any).x(0.5).addTo("x", 0.2);
+    const pat = (video("test.mp4") as any).x(0.5).addOn("x", 0.2);
     const v = queryAt(pat, 0.1);
     expect(v?.x).toBeCloseTo(0.7);
   });
 
   it("addTo with mini amount: 2-step x + 2-step amount = correct values at each half", () => {
-    const pat = (video("test.mp4") as any).x(mini("0.2 0.8")).addTo("x", mini("0.1 -0.1"));
+    const pat = (video("test.mp4") as any).x(mini("0.2 0.8")).addOn("x", mini("0.1 -0.1"));
     expect(queryAt(pat, 0.1)?.x).toBeCloseTo(0.3);
     expect(queryAt(pat, 0.6)?.x).toBeCloseTo(0.7);
   });
 
   it("addTo preserves other value fields (src, etc.)", () => {
-    const pat = (video("test.mp4") as any).x(0.5).addTo("x", 0.1);
+    const pat = (video("test.mp4") as any).x(0.5).addOn("x", 0.1);
     const v = queryAt(pat, 0.1);
     expect(v?.src).toBe("test.mp4");
     expect(v?.x).toBeCloseTo(0.6);
   });
 
   it("mulTo scales x from base value", () => {
-    const pat = (video("test.mp4") as any).x(0.4).mulTo("x", 2);
+    const pat = (video("test.mp4") as any).x(0.4).mulOn("x", 2);
     expect(queryAt(pat, 0.1)?.x).toBeCloseTo(0.8);
   });
 
   it("setTo replaces x regardless of base value", () => {
-    const pat = (video("test.mp4") as any).x(0.4).setTo("x", 0.9);
+    const pat = (video("test.mp4") as any).x(0.4).setOn("x", 0.9);
     expect(queryAt(pat, 0.1)?.x).toBeCloseTo(0.9);
   });
 
   it("addTo x with mix: 2-step source + 3-step amount creates finer-grained events", () => {
-    const pat = (video("test.mp4") as any).x(mini("0.2 0.8")).addTo("x", mini("0 .1 .2"));
+    const pat = (video("test.mp4") as any).x(mini("0.2 0.8")).addOn("x", mini("0 .1 .2"));
     const evs = pat.queryArc(0, 1);
     expect(evs.length).toBeGreaterThan(2);
     // every event should have a numeric x
     for (const e of evs) expect(e.value?.x).toBeTypeOf("number");
+  });
+});
+
+describe("mapOn simulation: s().x().mapOn() smooths x across time", () => {
+  // Helper: sample x from a pattern at many sub-cycle points starting at cycle offset
+  function sampleX(pat: any, cycleOffset: number): number[] {
+    const samples: number[] = [];
+    for (let i = 0; i <= 20; i++) {
+      const t = cycleOffset + i / 20;
+      const haps = pat.queryArc(t, t);
+      const x = haps.length ? haps[0].value?.x : undefined;
+      if (x !== undefined) samples.push(x);
+    }
+    return samples;
+  }
+
+  it("x values vary continuously within cycle 0", () => {
+    const pat = (screen("red") as any).x(mini(".1 -.1")).mapOn("x", (xp: any) => xp.spline());
+    const samples = sampleX(pat, 0);
+    const unique = new Set(samples.map(v => Math.round(v * 1000)));
+    expect(unique.size).toBeGreaterThan(2);
+    expect(samples[5]).toBeGreaterThan(-0.1);  // t=0.25, between the two steps
+    expect(samples[5]).toBeLessThan(0.1);
+  });
+
+  it("x values vary continuously within cycle 10 (matches render loop absolute time)", () => {
+    // The render loop runs at absolute cycle time (e.g. t=10.35), not t=0.35.
+    // This was broken: fieldPat used src.query(state) which doesn't cycle-split,
+    // returning no events for absolute-time spans.
+    const pat = (screen("red") as any).x(mini(".1 -.1")).mapOn("x", (xp: any) => xp.spline());
+    const samples = sampleX(pat, 10);
+    const unique = new Set(samples.map(v => Math.round(v * 1000)));
+    expect(unique.size).toBeGreaterThan(2);
+    expect(samples[5]).toBeGreaterThan(-0.1);  // t=10.25
+    expect(samples[5]).toBeLessThan(0.1);
+  });
+
+  it("srcHaps is non-empty at absolute time in merge step", () => {
+    // If src.query(state) returns 0 haps at absolute time, the merge passes through
+    // the unmodified original value. Test that the src pattern returns haps at t=10.
+    const src = (screen("red") as any).x(mini(".1 -.1"));
+    const hapsAt10 = src.queryArc(10.25, 10.25);
+    expect(hapsAt10.length).toBeGreaterThan(0);
+    expect(hapsAt10[0].value?.x).toBeDefined();
+  });
+
+  it("mapOn result matches direct spline application at absolute time", () => {
+    // s("red").x(".1 -.1").mapOn("x", x=>x.spline()) should equal s("red").x(".1 -.1".spline())
+    const viaMapOn = (screen("red") as any).x(mini(".1 -.1")).mapOn("x", (xp: any) => xp.spline());
+    const direct   = (screen("red") as any).x(mini(".1 -.1").spline());
+    for (const t of [10.1, 10.25, 10.4, 10.6, 10.75, 10.9]) {
+      const mapOnX = viaMapOn.queryArc(t, t)[0]?.value?.x;
+      const directX = direct.queryArc(t, t)[0]?.value?.x;
+      expect(mapOnX).toBeCloseTo(directX, 3);
+    }
   });
 });

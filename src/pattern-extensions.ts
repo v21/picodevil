@@ -402,10 +402,10 @@ PatternProto.spline = function (tension: any = 0.5) {
   });
 };
 
-// ─── *To field operators ────────────────────────────────────────────────────
+// ─── *On field operators ────────────────────────────────────────────────────
 // Variants of the Strudel compose operators (add, sub, mul, div, mod, pow, set)
 // that target a specific key within object values, using mix (appBoth) combining.
-// e.g. pat.x(".5 .1").addTo("x", "-.5 0 .5") adds the amount pattern to the x field.
+// e.g. pat.x(".5 .1").addOn("x", "-.5 0 .5") adds the amount pattern to the x field.
 
 const _toOps: Record<string, { op: (a: number, b: number) => number; identity: number }> = {
   set: { op: (_a, b) => b,              identity: 0 },
@@ -422,7 +422,7 @@ const _toOps: Record<string, { op: (a: number, b: number) => number; identity: n
  * using mix (appBoth) combining so the amount pattern's rhythm is interleaved.
  * The key itself can be a pattern, allowing the target field to vary over time.
  *
- * Available variants: `addTo`, `subTo`, `mulTo`, `divTo`, `modTo`, `powTo`, `setTo`
+ * Available variants: `addOn`, `subOn`, `mulOn`, `divOn`, `modOn`, `powOn`, `setOn`
  *
  * **Use single quotes for literal key strings** — double-quoted strings are wrapped
  * in `mini()` by the transpiler.
@@ -431,12 +431,12 @@ const _toOps: Record<string, { op: (a: number, b: number) => number; identity: n
  * @param {number | Pattern} amount value or pattern to combine with
  * @returns {Pattern}
  * @example
- * $: s("clip.mp4").x("-.1 .1").addTo('x', "<.2 .5>")        // shift x by .2 or .5 each cycle
- * $: s("clip.mp4").x(".2").y(".3").addTo("x y", ".1")        // alternate: add to x, then y
- * $: s("clip.mp4").alpha(".5 1").mulTo('alpha', ".8 1")       // multiply alpha field
+ * $: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")        // shift x by .2 or .5 each cycle
+ * $: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")        // alternate: add to x, then y
+ * $: s("clip.mp4").alpha(".5 1").mulOn('alpha', ".8 1")       // multiply alpha field
  */
 for (const [name, { op, identity }] of Object.entries(_toOps)) {
-  PatternProto[`${name}To`] = function (key: any, amount: any) {
+  PatternProto[`${name}On`] = function (key: any, amount: any) {
     const keyPat = reify(key);
     const amountPat = reify(amount);
     const src = this;
@@ -451,7 +451,7 @@ for (const [name, { op, identity }] of Object.entries(_toOps)) {
           if (!kPart) continue;
           const k = kh.value;
           if (typeof k !== "string") {
-            warn(`${name}To: key pattern produced non-string value: ${typeof k}`);
+            warn(`${name}On: key pattern produced non-string value: ${typeof k}`);
             continue;
           }
           for (const ah of amtHaps) {
@@ -476,27 +476,104 @@ for (const [name, { op, identity }] of Object.entries(_toOps)) {
  * Uses mix (appBoth) combining, so the amount pattern's rhythm interleaves with the source.
  * The key can be a pattern to vary the target field over time.
  * Use single quotes for literal key strings — double-quoted strings are wrapped in `mini()` by the transpiler.
- * Also available as a method: `pat.addTo(key, amount)`. Related: `subTo`, `mulTo`, `divTo`, `modTo`, `powTo`, `setTo`.
+ * Also available as a method: `pat.addOn(key, amount)`. Related: `subOn`, `mulOn`, `divOn`, `modOn`, `powOn`, `setOn`.
  *
  * @param {Pattern} pat source pattern
  * @param {string | Pattern} key field name to add to (use single quotes: `'x'`)
  * @param {number | Pattern} amount value or pattern to add
  * @returns {Pattern}
  * @example
- * $: s("clip.mp4").x("-.1 .1").addTo('x', "<.2 .5>")   // shift x by .2 or .5 each cycle
- * $: addTo(s("clip.mp4").x("-.1 .1"), 'x', "<.2 .5>")   // function form
- * $: s("clip.mp4").x(".2").y(".3").addTo("x y", ".1")    // alternate target field
+ * $: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")   // shift x by .2 or .5 each cycle
+ * $: addOn(s("clip.mp4").x("-.1 .1"), 'x', "<.2 .5>")   // function form
+ * $: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")    // alternate target field
  */
-export const addTo = (pat: any, key: any, amount: any) => pat.addTo(key, amount);
-/** Like addTo but subtracts. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".5").subTo('x', ".1 .2") */
-export const subTo = (pat: any, key: any, amount: any) => pat.subTo(key, amount);
-/** Like addTo but multiplies. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha("1").mulTo('alpha', ".5 .8") */
-export const mulTo = (pat: any, key: any, amount: any) => pat.mulTo(key, amount);
-/** Like addTo but divides. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".8").divTo('x', "2 4") */
-export const divTo = (pat: any, key: any, amount: any) => pat.divTo(key, amount);
-/** Like addTo but applies modulo. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x("0 .3 .6 .9").modTo('x', ".5") */
-export const modTo = (pat: any, key: any, amount: any) => pat.modTo(key, amount);
-/** Like addTo but raises to a power. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha(".5 1").powTo('alpha', "2") */
-export const powTo = (pat: any, key: any, amount: any) => pat.powTo(key, amount);
-/** Replaces a specific named field with the given value pattern. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".2").setTo('x', "<.5 .8>") */
-export const setTo = (pat: any, key: any, amount: any) => pat.setTo(key, amount);
+export const addOn = (pat: any, key: any, amount: any) => pat.addOn(key, amount);
+/** Like addOn but subtracts. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".5").subOn('x', ".1 .2") */
+export const subOn = (pat: any, key: any, amount: any) => pat.subOn(key, amount);
+/** Like addOn but multiplies. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha("1").mulOn('alpha', ".5 .8") */
+export const mulOn = (pat: any, key: any, amount: any) => pat.mulOn(key, amount);
+/** Like addOn but divides. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".8").divOn('x', "2 4") */
+export const divOn = (pat: any, key: any, amount: any) => pat.divOn(key, amount);
+/** Like addOn but applies modulo. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x("0 .3 .6 .9").modOn('x', ".5") */
+export const modOn = (pat: any, key: any, amount: any) => pat.modOn(key, amount);
+/** Like addOn but raises to a power. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha(".5 1").powOn('alpha', "2") */
+export const powOn = (pat: any, key: any, amount: any) => pat.powOn(key, amount);
+/** Replaces a specific named field with the given value pattern. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".2").setOn('x', "<.5 .8>") */
+export const setOn = (pat: any, key: any, amount: any) => pat.setOn(key, amount);
+
+/**
+ * Extracts a named field from the pattern's value objects, passes it as a numeric
+ * Pattern to the transform function, then writes the result back into the field.
+ * This lets you apply any pattern transformation (e.g. `.lerp()`, `.spline()`) to
+ * a specific control already set on the pattern.
+ *
+ * Use single quotes for literal key strings — double-quoted strings are wrapped in
+ * `mini()` by the transpiler.
+ *
+ * @param {string} key field name to transform (use single quotes: `'x'`)
+ * @param {(pat: Pattern) => Pattern} fn transform function receiving the field as a Pattern
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())   // smooth the x field
+ * $: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline())
+ */
+PatternProto.mapOn = function (key: any, fn: (p: any) => any) {
+  const src = this;
+  const keyPat = reify(key);
+  // Build a numeric pattern from the named field by replaying each source hap's
+  // field value over its part span. Using part (not whole) as the timing anchor
+  // ensures distinct time steps for collectEvents when haps share a whole span.
+  const fieldPat = new CorePattern((state: any) => {
+    const t0 = Number(state.span.begin);
+    const t1 = Number(state.span.end);
+    const resolvedKey = keyPat.queryArc(t0, t0)[0]?.value;
+    if (typeof resolvedKey !== 'string') return [];
+    const srcHaps = src.queryArc(t0, t1);
+    return srcHaps.flatMap((hap: any) => {
+      const fieldVal = hap.value?.[resolvedKey];
+      if (fieldVal === undefined) return [];
+      return [new Hap(hap.part, hap.part, Number(fieldVal), hap.context)];
+    });
+  });
+  const transformed = fn(fieldPat);
+  // Merge the transformed field back into the source hap values.
+  // Use queryArc (not query) for both src and transformed so that patterns built
+  // from mini() correctly cycle-split across absolute cycle times.
+  return new CorePattern((state: any) => {
+    const t0 = Number(state.span.begin);
+    const t1 = Number(state.span.end);
+    const resolvedKey = keyPat.queryArc(t0, t0)[0]?.value;
+    if (typeof resolvedKey !== 'string') return src.queryArc(t0, t1);
+    const srcHaps = src.queryArc(t0, t1);
+    const outHaps = transformed.queryArc(t0, t1);
+    return srcHaps.flatMap((hap: any) => {
+      if (hap.value?.[resolvedKey] === undefined) return [hap];
+      const matching = outHaps.filter((oh: any) => oh.part.intersection(hap.part));
+      if (!matching.length) return [hap];
+      return matching.map((oh: any) => {
+        const newPart = oh.part.intersection(hap.part);
+        if (!newPart) return null;
+        return new Hap(
+          hap.whole,
+          newPart,
+          { ...(typeof hap.value === 'object' && hap.value !== null ? hap.value : {}), [resolvedKey]: oh.value },
+          hap.context,
+        );
+      }).filter(Boolean);
+    });
+  });
+};
+
+/**
+ * Extracts a named field from the pattern's value objects, passes it as a numeric
+ * Pattern to the transform function, then writes the result back.
+ * Function form of the `.mapOn()` method.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string} key field name to transform (use single quotes: `'x'`)
+ * @param {(pat: Pattern) => Pattern} fn transform function
+ * @returns {Pattern}
+ * @example
+ * $: mapOn(s("clip.mp4").x(".1 -.1"), 'x', x => x.lerp())
+ */
+export const mapOn = (pat: any, key: string, fn: (p: any) => any) => pat.mapOn(key, fn);

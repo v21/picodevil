@@ -360,6 +360,15 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
     fc.integer({ min: 1, max: 4 }),
     fc.integer({ min: 0, max: 8 }),
   ).map(([r, c, i]) => ({ code: `.grid(${r}, ${c}, ${i})` })),
+  // mapOn: extract a field and apply lerp/spline to it
+  fc.tuple(
+    fc.constantFrom("'x'", "'y'", "'alpha'", "'width'", "'height'", "'rotateZ'"),
+    fc.oneof(
+      fc.constant("x => x.lerp()"),
+      fc.constantFrom(...EASING_CURVES).map(c => `x => x.lerp('${c}')`),
+      fc.constant("x => x.spline()"),
+    ),
+  ).map(([key, fn]) => ({ code: `.mapOn(${key}, ${fn})` })),
   strudelMethod.map(code => ({ code })),
   // Structural modifiers (per-hap probability filters)
   fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(p => ({ code: `.degradeBy(${p.toFixed(2)})` })),

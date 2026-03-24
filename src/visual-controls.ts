@@ -7,7 +7,7 @@
  */
 import { reify, Pattern, Hap } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
-import "./pattern-extensions"; // registers addTo on Pattern.prototype
+import "./pattern-extensions"; // registers addOn on Pattern.prototype
 import { resolveMedia } from "./media-registry";
 import { resolveValue } from "./resolve-pattern-value";
 import { getRuntimeCps } from "./config";
@@ -400,7 +400,7 @@ export const urlBase = createMixParam("urlBase");
  *    // shift inner group 0.1 units right within its outer cell
  *
  */
-// x and y are additive (use addTo / appBoth) rather than replacement (createMixParam / appLeft).
+// x and y are additive (use addOn / appBoth) rather than replacement (createMixParam / appLeft).
 // This lets .x(v) shift position relative to whatever the current x is — so nested grids
 // composed by gridMod() can be shifted as a unit: inner.gridMod().x(0.1) shifts the whole
 // inner group within its outer cell, rather than jumping to an absolute position.
@@ -419,7 +419,7 @@ function makeXY(field: 'x' | 'y') {
         return { ...base, [field]: (base[field] ?? 0) + ctrl };
       }).appLeft(valPat);
     }
-    return this.addTo(field, value);
+    return this.addOn(field, value);
   };
   (PatternProto as any)[field] = method;
 }
@@ -730,6 +730,56 @@ PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
       }
     }
     return results;
+  });
+};
+
+// ─── tile ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute tile cell position for element i out of count total.
+ * rows = round(sqrt(count)); front-loaded rows get one extra element.
+ * e.g. count=7 → rows=3, row sizes: [3, 2, 2]
+ */
+function tileCellPos(i: number, count: number): { x: number; y: number; width: number; height: number } {
+  const n = Math.max(1, count);
+  const rows = Math.max(1, Math.round(Math.sqrt(n)));
+  const rowHeight = 1 / rows;
+  const extra = n % rows; // first `extra` rows have one more element
+  // find which row element i is in
+  let row = 0;
+  let remaining = i;
+  for (let r = 0; r < rows; r++) {
+    const rowSize = Math.floor(n / rows) + (r < extra ? 1 : 0);
+    if (remaining < rowSize) { row = r; break; }
+    remaining -= rowSize;
+  }
+  const rowSize = Math.floor(n / rows) + (row < extra ? 1 : 0);
+  const col = remaining;
+  return { x: col / rowSize, y: row * rowHeight, width: 1 / rowSize, height: rowHeight };
+}
+
+/**
+ * Places each stacked pattern element in its own cell, automatically computing
+ * a layout based on the number of elements. The number of rows is
+ * `Math.round(Math.sqrt(N))`, and elements are distributed front-loaded across rows
+ * (e.g. 7 elements → rows of 3, 2, 2).
+ *
+ * @returns {Pattern} pattern with each element positioned in its tile cell
+ * @example
+ * $: stack(color("red"), color("blue"), color("green")).tile()
+ * $: stack(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4")).tile()
+ */
+PatternProto.tile = function () {
+  const self = this;
+  const layoutParent = ++_layoutParentCounter;
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    return self.withValue((v: any) => {
+      const val = Object(v) === v ? v : {};
+      const i = val.i ?? 0;
+      const count = val.count ?? 1;
+      return { ...composePos(val, tileCellPos(i, count)), layoutParent };
+    }).queryArc(begin, end);
   });
 };
 
