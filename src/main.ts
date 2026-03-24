@@ -1,34 +1,6 @@
-import { mini } from "@strudel/mini";
-import {
-  sine, sine2, cosine, cosine2,
-  saw, saw2, isaw, isaw2,
-  tri, tri2, itri, itri2,
-  square, square2,
-  perlin,
-  time, mouseX, mouseY,
-  run, chooseIn, chooseCycles,
-  signal, steady,
-  stack, cat, slowcat, fastcat, sequence, seq,
-  arrange, slowcatPrime, polymeter, stepcat,
-  silence, gap, nothing,
-  pure, reify,
-} from "@strudel/core";
-import {
-  rand, rand2, irand, brand, brandBy,
-  choose, wchoose, scramble,
-  degradeBy, degrade, undegradeBy, undegrade,
-  sometimesBy, sometimes, someCyclesBy, someCycles,
-  often, rarely, almostNever, almostAlways, always, never,
-} from "./event-random";
-import { addOn, subOn, mulOn, divOn, modOn, powOn, setOn, mapOn } from "./pattern-extensions";
+import { silence } from "@strudel/core";
 import "./visual-controls";
 import { setupEditor } from "./editor";
-import { color } from "./color-pattern";
-import { video } from "./video-pattern";
-import { image } from "./image-pattern";
-import { screen, s } from "./screen-pattern";
-import { stackN } from "./grid-stack";
-import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import "./shuffle-stack";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage } from "./media-registry";
@@ -39,6 +11,7 @@ import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
 import { createVideoPoolManager } from "./video-pool-manager";
 import { transpile, type WidgetCallInfo } from "./transpiler";
+import { runTranspiled } from "./eval-sandbox";
 import { slider as sliderWidget, resetWidgetCounter } from "./widgets";
 import { warn, flushWarnings, clearWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
@@ -223,33 +196,11 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
   cpsPattern = null;
   resetWidgetCounter();
   try {
-    const signals = {
-      sine, sine2, cosine, cosine2,
-      saw, saw2, isaw, isaw2,
-      tri, tri2, itri, itri2,
-      square, square2,
-      rand, rand2, irand, brand, brandBy,
-      perlin,
-      time, mouseX, mouseY,
-      run, choose, wchoose, scramble, chooseIn, chooseCycles,
-      signal, steady,
-    };
-    const structuralModifiers = {
-      degradeBy, degrade, undegradeBy, undegrade,
-      sometimesBy, sometimes, someCyclesBy, someCycles,
-      often, rarely, almostNever, almostAlways, always, never,
-    };
-    const sigNames = Object.keys(signals);
-    const modNames = Object.keys(structuralModifiers);
-    const combinators = { stack, cat, slowcat, fastcat, sequence, seq, arrange, slowcatPrime, polymeter, stepcat, silence, gap, nothing, pure, reify };
-    const combNames = Object.keys(combinators);
-    const setcps = setCps, setcpm = setCpm;
-    const slider = sliderWidget;
-    const fieldOps = { addOn, subOn, mulOn, divOn, modOn, powOn, setOn, mapOn };
-    const fieldOpNames = Object.keys(fieldOps);
-    new Function("mini", "color", "video", "image", "screen", "s", "stackN", "index", "indexCycle", "indexWith", "indexCycleWith", "setCps", "setCpm", "setcps", "setcpm", "hush", "useRNG", "loadVideo", "loadImage", "loadCamera", "loadScreen", "slider", ...sigNames, ...modNames, ...combNames, ...fieldOpNames, transpiled)(
-      mini, color, video, image, screen, s, stackN, index, indexCycle, indexWith, indexCycleWith, setCps, setCpm, setcps, setcpm, hush, useRNG, loadVideo, loadImage, loadCamera, loadScreen, slider, ...Object.values(signals), ...Object.values(structuralModifiers), ...Object.values(combinators), ...Object.values(fieldOps),
-    );
+    runTranspiled(transpiled, {
+      setCps, setCpm, setcps: setCps, setcpm: setCpm,
+      hush, loadVideo, loadImage, loadCamera, loadScreen,
+      slider: sliderWidget,
+    });
     // Collect $: registered patterns
     const pScreens = collectScreens();
     if (pScreens.length > 0) {
