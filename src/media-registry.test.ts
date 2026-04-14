@@ -453,4 +453,44 @@ describe("uploadToServer", () => {
     MockXHR.instance!.simulateLoad(200, JSON.stringify({ url: "http://localhost:3456/videos/deletedvid.mp4", ready: true }));
     await expect(p).resolves.toBeUndefined();
   });
+
+  it("stores pendingFile on entry so retry can re-upload without calling downloadYouTube", async () => {
+    const entry = addMedia("blob:fake", "retryvid");
+    const file = new File(["data"], "retryvid.mp4");
+    // Start upload and simulate network failure
+    const p = uploadToServer(entry.name, file).catch(() => {});
+    MockXHR.instance!.simulateError();
+    await p;
+    // Entry should have pendingFile so the retry path knows to call uploadToServer
+    const e = getAllEntries().find(x => x.name === "retryvid")!;
+    expect(e.error).toBeTruthy();
+    expect((e as any).pendingFile).toBe(file);
+  });
+
+  it("revokes the blob URL on successful upload", async () => {
+    const revokedUrls: string[] = [];
+    const origRevoke = URL.revokeObjectURL.bind(URL);
+    URL.revokeObjectURL = (url) => { revokedUrls.push(url); origRevoke(url); };
+    try {
+      const blobUrl = "blob:http://localhost:5173/fake-blob-123";
+      const entry = addMedia(blobUrl, "revokevid");
+      const file = new File(["data"], "revokevid.mp4");
+      const p = uploadToServer(entry.name, file);
+      MockXHR.instance!.simulateLoad(200, JSON.stringify({ url: "http://localhost:3456/videos/revokevid.mp4", ready: true }));
+      await p;
+      expect(revokedUrls).toContain(blobUrl);
+    } finally {
+      URL.revokeObjectURL = origRevoke;
+    }
+  });
+
+  it("clears pendingFile on successful upload", async () => {
+    const entry = addMedia("blob:fake", "clearvid");
+    const file = new File(["data"], "clearvid.mp4");
+    const p = uploadToServer(entry.name, file);
+    MockXHR.instance!.simulateLoad(200, JSON.stringify({ url: "http://localhost:3456/videos/clearvid.mp4", ready: true }));
+    await p;
+    const e = getAllEntries().find(x => x.name === "clearvid")!;
+    expect((e as any).pendingFile).toBeUndefined();
+  });
 });

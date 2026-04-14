@@ -15,6 +15,11 @@ export type MediaEntry = {
   uploading?: boolean;
   /** Upload phase progress 0–1 (undefined during transcode phase) */
   uploadProgress?: number;
+  /**
+   * The original File object for local uploads. Kept in memory (not persisted)
+   * so the retry button can re-upload without calling downloadYouTube.
+   */
+  pendingFile?: File;
   /** Error message from last download/upload attempt */
   error?: string;
   /** For stream entries: "webcam" or "screen" */
@@ -241,6 +246,7 @@ export function uploadToServer(name: string, file: File, serverBase = "http://lo
     entry.uploading = true;
     entry.uploadProgress = 0;
     entry.error = undefined;
+    entry.pendingFile = file;
     save();
 
     const safeName = name.replace(/[^a-zA-Z0-9_.-]/g, '_');
@@ -260,11 +266,14 @@ export function uploadToServer(name: string, file: File, serverBase = "http://lo
       if (!current) return resolve();
       if (xhr.status >= 200 && xhr.status < 300) {
         const data = JSON.parse(xhr.responseText);
+        const oldUrl = current.url;
         current.url = data.url;
         current.type = 'video';
         current.uploading = false;
         current.uploadProgress = undefined;
+        current.pendingFile = undefined;
         save();
+        if (oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
         generateThumbnail(current);
         resolve();
       } else {

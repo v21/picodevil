@@ -290,7 +290,11 @@ function makeRow(entry: MediaEntry): HTMLElement {
       retryBtn.style.cssText = "background:none;border:none;color:#f88;cursor:pointer;font-size:18px;flex-shrink:0;padding:0 2px;";
       retryBtn.addEventListener("click", () => {
         updateEntry(entry.name, { error: undefined });
-        downloadYouTube(entry.name);
+        if (entry.pendingFile) {
+          uploadToServer(entry.name, entry.pendingFile).catch(() => {/* error stored in entry */});
+        } else {
+          downloadYouTube(entry.name);
+        }
       });
       row.appendChild(retryBtn);
     }
