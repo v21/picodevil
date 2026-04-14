@@ -10,7 +10,8 @@
     "test:monkey": "tsx test/monkey-test.ts --rounds 20 --delay 1000 --headless",
     "test:monkey:replay": "tsx test/monkey-test.ts --replay --delay 1000 --headless",
     "test:stress": "tsx test/stress-test.ts",
-    "test:stress:headless": "tsx test/stress-test.ts --headless"
+    "test:stress:headless": "tsx test/stress-test.ts --headless",
+    "test:upload": "tsx test/upload-integration-test.ts --headless"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +33,7 @@
     "@vitest/browser-playwright": "^4.0.18",
     "fast-check": "^4.6.0",
     "playwright": "^1.58.2",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

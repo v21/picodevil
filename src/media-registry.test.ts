@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
-  loadVideo, loadImage,
+  loadVideo, loadImage, uploadToServer, setOnChange,
 } from "./media-registry";
 
 beforeEach(() => {
@@ -48,6 +48,29 @@ describe("media registry", () => {
     expect(addMedia("http://x/a.mp4").type).toBe("video");
     expect(addMedia("http://x/b.webm").type).toBe("video");
     expect(addMedia("http://x/c.mov").type).toBe("video");
+  });
+
+  it("does not persist blob URL entries to localStorage", () => {
+    addMedia("blob:http://localhost:5173/abc-123", "blobvid");
+    const saved = JSON.parse(localStorage.getItem("uzuvid-media-registry") ?? "[]") as { url: string }[];
+    expect(saved.some(e => e.url.startsWith("blob:"))).toBe(false);
+  });
+
+  it("discards blob URL entries when loading from localStorage", () => {
+    // Write stale blob entry directly to localStorage (simulating a previous session)
+    localStorage.setItem("uzuvid-media-registry", JSON.stringify([
+      { id: "1", name: "stale", url: "blob:http://localhost:5173/dead-123", type: "video" },
+      { id: "2", name: "good", url: "http://localhost:3456/videos/good.mp4", type: "video" },
+    ]));
+    // resolveMedia triggers load() when the registry is empty and the name is unknown
+    clearAll(); // clears registry but saves [] to localStorage — so re-set it
+    localStorage.setItem("uzuvid-media-registry", JSON.stringify([
+      { id: "1", name: "stale", url: "blob:http://localhost:5173/dead-123", type: "video" },
+      { id: "2", name: "good", url: "http://localhost:3456/videos/good.mp4", type: "video" },
+    ]));
+    resolveMedia("good"); // triggers load() since registry is empty
+    expect(resolveMedia("stale")).toBeUndefined();
+    expect(resolveMedia("good")).toBeDefined();
   });
 
   it("guesses image type from extension", () => {
@@ -315,5 +338,119 @@ describe("media registry", () => {
       // Not a hard failure - MediaRecorder might not work in headless
       expect(true).toBe(true);
     }
+  });
+});
+
+describe("uploadToServer", () => {
+  type XhrListener = (e: ProgressEvent) => void;
+
+  class MockXHR {
+    static instance: MockXHR | null = null;
+    url = "";
+    method = "";
+    headers: Record<string, string> = {};
+    sentBody: unknown = null;
+    upload = { onprogress: null as XhrListener | null };
+    onload: ((e: ProgressEvent) => void) | null = null;
+    onerror: (() => void) | null = null;
+    onabort: (() => void) | null = null;
+    status = 200;
+    responseText = "";
+
+    constructor() { MockXHR.instance = this; }
+    open(method: string, url: string) { this.method = method; this.url = url; }
+    setRequestHeader(k: string, v: string) { this.headers[k] = v; }
+    send(body: unknown) { this.sentBody = body; }
+
+    // Test helpers to simulate events
+    simulateProgress(loaded: number, total: number) {
+      this.upload.onprogress?.({ lengthComputable: true, loaded, total } as ProgressEvent);
+    }
+    simulateLoad(status: number, body: string) {
+      this.status = status;
+      this.responseText = body;
+      this.onload?.({} as ProgressEvent);
+    }
+    simulateError() { this.onerror?.(); }
+  }
+
+  const origXHR = (globalThis as any).XMLHttpRequest;
+
+  beforeEach(() => {
+    clearAll();
+    MockXHR.instance = null;
+    (globalThis as any).XMLHttpRequest = MockXHR;
+  });
+
+  afterEach(() => {
+    (globalThis as any).XMLHttpRequest = origXHR;
+  });
+
+  it("sets uploading=true and uploadProgress=0 immediately", () => {
+    const entry = addMedia("blob:fake", "myvid");
+    const file = new File(["data"], "myvid.mp4");
+    uploadToServer(entry.name, file); // don't await
+    const e = getAllEntries().find(x => x.name === "myvid")!;
+    expect(e.uploading).toBe(true);
+    expect(e.uploadProgress).toBe(0);
+  });
+
+  it("updates uploadProgress on XHR progress events", () => {
+    const changes: number[] = [];
+    setOnChange(() => {
+      const e = getAllEntries().find(x => x.name === "progvid");
+      if (e?.uploadProgress != null) changes.push(e.uploadProgress);
+    });
+    const entry = addMedia("blob:fake", "progvid");
+    const file = new File(["data"], "progvid.mp4");
+    uploadToServer(entry.name, file);
+    MockXHR.instance!.simulateProgress(50, 100);
+    MockXHR.instance!.simulateProgress(100, 100);
+    expect(changes).toContain(0.5);
+    expect(changes).toContain(1);
+    setOnChange(null);
+  });
+
+  it("updates entry.url and clears uploading on successful load", async () => {
+    const entry = addMedia("blob:fake", "successvid");
+    const file = new File(["data"], "successvid.mp4");
+    const p = uploadToServer(entry.name, file);
+    MockXHR.instance!.simulateLoad(200, JSON.stringify({ url: "http://localhost:3456/videos/successvid.mp4", ready: true }));
+    await p;
+    const e = getAllEntries().find(x => x.name === "successvid")!;
+    expect(e.url).toBe("http://localhost:3456/videos/successvid.mp4");
+    expect(e.uploading).toBeFalsy();
+    expect(e.uploadProgress).toBeUndefined();
+  });
+
+  it("sets entry.error and clears uploading on 4xx response", async () => {
+    const entry = addMedia("blob:fake", "errvid");
+    const file = new File(["data"], "errvid.mp4");
+    const p = uploadToServer(entry.name, file).catch(() => {});
+    MockXHR.instance!.simulateLoad(400, JSON.stringify({ error: "bad name" }));
+    await p;
+    const e = getAllEntries().find(x => x.name === "errvid")!;
+    expect(e.uploading).toBeFalsy();
+    expect(e.error).toMatch(/Upload failed/);
+  });
+
+  it("sets entry.error and clears uploading on XHR network error", async () => {
+    const entry = addMedia("blob:fake", "netvid");
+    const file = new File(["data"], "netvid.mp4");
+    const p = uploadToServer(entry.name, file).catch(() => {});
+    MockXHR.instance!.simulateError();
+    await p;
+    const e = getAllEntries().find(x => x.name === "netvid")!;
+    expect(e.uploading).toBeFalsy();
+    expect(e.error).toBeTruthy();
+  });
+
+  it("resolves cleanly if entry is deleted mid-upload", async () => {
+    const entry = addMedia("blob:fake", "deletedvid");
+    const file = new File(["data"], "deletedvid.mp4");
+    const p = uploadToServer(entry.name, file);
+    removeMedia("deletedvid");
+    MockXHR.instance!.simulateLoad(200, JSON.stringify({ url: "http://localhost:3456/videos/deletedvid.mp4", ready: true }));
+    await expect(p).resolves.toBeUndefined();
   });
 });

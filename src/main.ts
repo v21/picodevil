@@ -17,6 +17,7 @@ import { warn, flushWarnings, clearWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
 import { getStreamVideoEl, loadCamera, loadScreen } from "./stream-manager";
 
+
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
 

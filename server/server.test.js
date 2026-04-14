@@ -19,6 +19,41 @@ function fetch(url, opts = {}) {
   });
 }
 
+function options(url, requestHeaders = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = http.request({
+      hostname: u.hostname, port: u.port,
+      path: u.pathname + u.search, method: 'OPTIONS',
+      headers: requestHeaders,
+    }, res => {
+      let data = '';
+      res.on('data', d => data += d);
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function post(url, body = Buffer.alloc(0), headers = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+    const req = http.request({
+      hostname: u.hostname, port: u.port,
+      path: u.pathname + u.search, method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': buf.length, ...headers },
+    }, res => {
+      let data = '';
+      res.on('data', d => data += d);
+      res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body: data, json: () => JSON.parse(data) }));
+    });
+    req.on('error', reject);
+    req.end(buf);
+  });
+}
+
 function makeSpawn(exitCode, stderrData) {
   return (_cmd, _args) => {
     const proc = new EventEmitter();
@@ -319,5 +354,125 @@ describe('/videos serving', () => {
     await stopServer(server);
 
     assert.notEqual(res.status, 200);
+  });
+});
+
+describe('/upload', () => {
+  before(() => {
+    if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true });
+    fs.mkdirSync(TEST_DIR);
+  });
+
+  after(() => {
+    if (fs.existsSync(TEST_DIR)) fs.rmSync(TEST_DIR, { recursive: true });
+  });
+
+  it('responds to CORS preflight with allowed Content-Type header', async () => {
+    const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
+    const res = await options(`${baseURL}/upload`, {
+      'Origin': 'http://localhost:5173',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type',
+    });
+    await stopServer(server);
+    assert.equal(res.status, 204);
+    const allowed = res.headers['access-control-allow-headers'] ?? '';
+    assert.ok(
+      allowed.toLowerCase().includes('content-type') || allowed === '*',
+      `Access-Control-Allow-Headers should include content-type, got: "${allowed}"`
+    );
+  });
+
+  it('returns 400 when ?name= is missing', async () => {
+    const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
+    const res = await post(`${baseURL}/upload`, Buffer.from('fake video'));
+    await stopServer(server);
+    assert.equal(res.status, 400);
+  });
+
+  it('returns 400 for names with path traversal characters', async () => {
+    const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
+    const res = await post(`${baseURL}/upload?name=../../etc/passwd`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.equal(res.status, 400);
+  });
+
+  it('returns 400 for names with illegal characters', async () => {
+    const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
+    const res = await post(`${baseURL}/upload?name=bad%20name!`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.equal(res.status, 400);
+  });
+
+  it('returns { url, ready: true } on successful upload', async () => {
+    const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
+    const res = await post(`${baseURL}/upload?name=myclip.mp4`, Buffer.from('fake video data'));
+    await stopServer(server);
+    assert.equal(res.status, 200);
+    const data = res.json();
+    assert.equal(data.ready, true);
+    assert.match(data.url, /\/videos\/myclip\.mp4$/);
+  });
+
+  it('passes I-frame-only flags to ffmpeg', async () => {
+    let ffmpegArgs;
+    const execFileFn = (_cmd, args, _opts, cb) => {
+      ffmpegArgs = args;
+      fs.writeFileSync(args[args.length - 1], 'transcoded');
+      cb(null, '', '');
+    };
+    const { server, baseURL } = await startServer({ execFileFn });
+    await post(`${baseURL}/upload?name=iframetest.mp4`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.ok(ffmpegArgs.includes('keyint=1:min-keyint=1:scenecut=0'), 'should pass I-frame-only x264opts');
+    assert.equal(ffmpegArgs[ffmpegArgs.indexOf('-g') + 1], '1', 'should set -g 1');
+    assert.equal(ffmpegArgs[ffmpegArgs.indexOf('-c:a') + 1], 'copy', 'should copy audio');
+  });
+
+  it('deletes .orig file after successful transcode', async () => {
+    let origPath;
+    const execFileFn = (_cmd, args, _opts, cb) => {
+      origPath = args[args.indexOf('-i') + 1];
+      fs.writeFileSync(args[args.length - 1], 'transcoded');
+      cb(null, '', '');
+    };
+    const { server, baseURL } = await startServer({ execFileFn });
+    await post(`${baseURL}/upload?name=cleanup_ok.mp4`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.ok(origPath, 'should have captured orig path');
+    assert.equal(fs.existsSync(origPath), false, '.orig file should be deleted after transcode');
+  });
+
+  it('deletes .orig file and returns 500 when ffmpeg fails', async () => {
+    let origPath;
+    const execFileFn = (_cmd, args, _opts, cb) => {
+      origPath = args[args.indexOf('-i') + 1];
+      cb(new Error('codec not found'), '', 'codec not found');
+    };
+    const { server, baseURL } = await startServer({ execFileFn });
+    const res = await post(`${baseURL}/upload?name=cleanup_fail.mp4`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.equal(res.status, 500);
+    assert.ok(origPath, 'should have captured orig path');
+    assert.equal(fs.existsSync(origPath), false, '.orig file should be deleted even on failure');
+  });
+
+  it('returns existing file without re-transcoding (idempotent)', async () => {
+    fs.writeFileSync(path.join(TEST_DIR, 'existing.mp4'), 'already transcoded');
+    let execCalled = false;
+    const execFileFn = (_cmd, _args, _opts, cb) => { execCalled = true; cb(null, '', ''); };
+    const { server, baseURL } = await startServer({ execFileFn });
+    const res = await post(`${baseURL}/upload?name=existing.mp4`, Buffer.from('new data'));
+    await stopServer(server);
+    assert.equal(res.status, 200);
+    assert.equal(res.json().ready, true);
+    assert.equal(execCalled, false, 'should not re-transcode existing file');
+  });
+
+  it('sets CORS headers on response', async () => {
+    const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
+    const res = await post(`${baseURL}/upload?name=corstest.mp4`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.equal(res.headers['access-control-allow-origin'], '*');
   });
 });

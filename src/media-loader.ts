@@ -1,8 +1,9 @@
 import {
   getAllEntries, addMedia, removeMedia, renameMedia, updateUrl, updateEntry,
   isYouTubeUrl, downloadYouTube, exportAll, importAll, clearAll, setOnChange,
-  type MediaEntry,
+  uploadToServer, type MediaEntry,
 } from "./media-registry";
+import { SERVER_ENABLED } from "./config";
 import {
   startWebcam, startScreenCapture, stopStream, removeStream,
   isStreamActive, setStreamOnChange, reconnectStreams,
@@ -44,9 +45,12 @@ export function setupMediaLoader(el: HTMLElement) {
     // Try files first
     if (e.dataTransfer?.files.length) {
       for (const file of Array.from(e.dataTransfer.files)) {
-        const url = URL.createObjectURL(file);
+        const blobUrl = URL.createObjectURL(file);
         const name = file.name.replace(/\.[^.]+$/, "");
-        addMedia(url, name);
+        const entry = addMedia(blobUrl, name);
+        if (SERVER_ENABLED) {
+          uploadToServer(entry.name, file).catch(() => {/* error stored in entry */});
+        }
       }
       return;
     }
@@ -267,7 +271,14 @@ function makeRow(entry: MediaEntry): HTMLElement {
     row.appendChild(urlInput);
 
     // Status indicators
-    if (entry.downloading) {
+    if (entry.uploading) {
+      const indicator = document.createElement("span");
+      const pct = entry.uploadProgress != null ? Math.round(entry.uploadProgress * 100) : null;
+      indicator.textContent = pct != null && pct < 100 ? `↑${pct}%` : "⚙";
+      indicator.title = pct != null && pct < 100 ? "Uploading…" : "Transcoding…";
+      indicator.style.cssText = "flex-shrink:0;font-size:13px;color:#aaa;";
+      row.appendChild(indicator);
+    } else if (entry.downloading) {
       const spinner = document.createElement("span");
       spinner.textContent = "⏳";
       spinner.style.cssText = "flex-shrink:0;font-size:16px;";

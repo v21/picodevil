@@ -11,7 +11,11 @@ export type MediaEntry = {
   duration?: number;
   /** Set while a YouTube download is in progress */
   downloading?: boolean;
-  /** Error message from last download attempt */
+  /** Set while a local file upload+transcode is in progress */
+  uploading?: boolean;
+  /** Upload phase progress 0–1 (undefined during transcode phase) */
+  uploadProgress?: number;
+  /** Error message from last download/upload attempt */
   error?: string;
   /** For stream entries: "webcam" or "screen" */
   streamKind?: "webcam" | "screen";
@@ -23,7 +27,10 @@ const registry = new Map<string, MediaEntry>();
 let onChange: (() => void) | null = null;
 
 function save() {
-  const arr = Array.from(registry.values());
+  // Don't persist entries with blob URLs — they're session-scoped and dead after reload.
+  // Entries mid-upload will have their URL updated to the server URL before the session ends;
+  // if the page is reloaded before that happens, they're simply lost.
+  const arr = Array.from(registry.values()).filter(e => !e.url.startsWith("blob:"));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
   onChange?.();
 }
@@ -35,6 +42,7 @@ function load() {
     const arr: MediaEntry[] = JSON.parse(raw);
     registry.clear();
     for (const entry of arr) {
+      if (entry.url?.startsWith("blob:")) continue; // stale from a previous session
       if (!entry.id) entry.id = crypto.randomUUID(); // backfill old entries
       registry.set(entry.name, entry);
     }
@@ -221,6 +229,68 @@ export function clearAll() {
 
 export function setOnChange(cb: (() => void) | null) {
   onChange = cb;
+}
+
+/** Upload a local file to the server, re-encode as I-frame-only MP4, then update the entry URL. */
+export function uploadToServer(name: string, file: File, serverBase = "http://localhost:3456"): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const entry = registry.get(name);
+    if (!entry) return reject(new Error(`Entry not found: ${name}`));
+    const { id } = entry;
+
+    entry.uploading = true;
+    entry.uploadProgress = 0;
+    entry.error = undefined;
+    save();
+
+    const safeName = name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${serverBase}/upload?name=${encodeURIComponent(safeName)}`);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+    xhr.upload.onprogress = (e) => {
+      const current = getEntryById(id);
+      if (!current) return;
+      current.uploadProgress = e.lengthComputable ? e.loaded / e.total : undefined;
+      save();
+    };
+
+    xhr.onload = () => {
+      const current = getEntryById(id);
+      if (!current) return resolve();
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const data = JSON.parse(xhr.responseText);
+        current.url = data.url;
+        current.type = 'video';
+        current.uploading = false;
+        current.uploadProgress = undefined;
+        save();
+        generateThumbnail(current);
+        resolve();
+      } else {
+        current.uploading = false;
+        current.uploadProgress = undefined;
+        current.error = `Upload failed: ${xhr.status}`;
+        save();
+        reject(new Error(current.error));
+      }
+    };
+
+    const fail = () => {
+      const current = getEntryById(id);
+      if (current) {
+        current.uploading = false;
+        current.uploadProgress = undefined;
+        current.error = 'Upload failed';
+        save();
+      }
+      reject(new Error('Upload failed'));
+    };
+    xhr.onerror = fail;
+    xhr.onabort = fail;
+
+    xhr.send(file);
+  });
 }
 
 /** Try downloading a YouTube URL via the server. Updates entry in place. */

@@ -19,7 +19,7 @@ function parseURL(req, port) {
 
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
 function json(res, status, data) {
@@ -116,6 +116,51 @@ function handleDownload(req, res, { port, downloadDir, spawnFn, execFileFn }) {
   });
 }
 
+function handleUpload(req, res, { port, downloadDir, execFileFn }) {
+  const url = parseURL(req, port);
+  const rawName = url.searchParams.get('name');
+  if (!rawName) return json(res, 400, { error: 'Missing ?name= parameter' });
+  if (!/^[\w.-]+$/.test(rawName)) return json(res, 400, { error: 'Invalid name: use only letters, digits, underscores, hyphens, and dots' });
+
+  // Use the name as-is (with extension stripped) as the file stem
+  const stem = rawName.replace(/\.[^.]+$/, '');
+  const origPath = path.join(downloadDir, `${stem}.orig.mp4`);
+  const outPath = path.join(downloadDir, `${stem}.mp4`);
+  const fileURL = `http://localhost:${port}/videos/${stem}.mp4`;
+
+  if (fs.existsSync(outPath)) {
+    return json(res, 200, { url: fileURL, ready: true });
+  }
+
+  const writeStream = fs.createWriteStream(origPath);
+  req.pipe(writeStream);
+  writeStream.on('error', (err) => {
+    console.error(`[500] /upload write failed for ${stem}: ${err.message}`);
+    json(res, 500, { error: `Write failed: ${err.message}` });
+  });
+  writeStream.on('finish', () => {
+    console.log(`Transcoding uploaded ${stem} to I-frame-only...`);
+    execFileFn(ffmpegPath, [
+      '-i', origPath,
+      '-c:v', 'libx264',
+      '-x264opts', 'keyint=1:min-keyint=1:scenecut=0',
+      '-g', '1',
+      '-preset', 'ultrafast',
+      '-c:a', 'copy',
+      '-y',
+      outPath,
+    ], { timeout: 600000 }, (err) => {
+      fs.unlink(origPath, () => {});
+      if (err) {
+        console.error(`[500] /upload transcode failed for ${stem}: ${err.message}`);
+        return json(res, 500, { error: `Transcode failed: ${err.message}` });
+      }
+      console.log(`Transcoded uploaded ${stem}`);
+      json(res, 200, { url: fileURL, ready: true });
+    });
+  });
+}
+
 function handleServeVideo(req, res, { port, downloadDir }) {
   const url = parseURL(req, port);
   const filename = path.basename(url.pathname);
@@ -161,7 +206,12 @@ function createServer(opts = {}) {
   const ctx = { port, downloadDir, spawnFn, execFileFn };
 
   const server = http.createServer((req, res) => {
-    if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); return res.end(); }
+    if (req.method === 'OPTIONS') {
+      cors(res);
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.writeHead(204);
+      return res.end();
+    }
 
     const actualPort = server.address()?.port || port;
     ctx.port = actualPort;
@@ -169,6 +219,7 @@ function createServer(opts = {}) {
 
     if (req.method === 'GET' && url.pathname === '/url') return handleGetURL(req, res, ctx);
     if (req.method === 'GET' && url.pathname === '/download') return handleDownload(req, res, ctx);
+    if (req.method === 'POST' && url.pathname === '/upload') return handleUpload(req, res, ctx);
     if (req.method === 'GET' && url.pathname.startsWith('/videos/')) return handleServeVideo(req, res, ctx);
 
     json(res, 404, { error: 'Not found' });
