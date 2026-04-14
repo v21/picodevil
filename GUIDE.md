@@ -530,15 +530,46 @@ $: color("blue").alpha("1 0".lerp("sine", "inout"))
 
 ## Server
 
-The server downloads and serves videos. Run it separately:
+The server downloads, transcodes, and serves videos. Run it separately:
 
 ```sh
 cd server && npm install && npm start
 ```
 
-Download a YouTube video:
+All videos served by the server are re-encoded as **I-frame-only MP4**, which enables smooth reverse playback and arbitrary seeking.
+
+### YouTube videos
+
+Paste a YouTube URL into the video tab's input bar in the sidebar. The server downloads and transcodes the video in the background. A spinner appears while it's in progress.
+
+You can also call the endpoint directly:
 ```
 GET http://localhost:3456/download?v=YOUTUBE_URL
 ```
 
-Videos are then available at `http://localhost:3456/videos/ID.mp4`.
+### Local file drag-and-drop
+
+Drag a video file from your file system onto the sidebar video tab. The file is uploaded to the server, re-encoded as I-frame-only MP4, and added to the list.
+
+- The entry appears immediately with a temporary URL so you can start using it right away
+- `↑N%` shows upload progress; `⚙` shows that transcoding is in progress
+- Once complete, the URL switches to the server URL and a thumbnail is generated
+
+Supported formats: `.mp4`, `.mov`, `.webm`, `.mkv`, `.avi`
+
+### Using media in code
+
+Once added via the sidebar, reference videos and images by their name (not full URL):
+
+```js
+$: video("myclip")           // file added as "myclip"
+$: image("myphoto")
+$: screen("myclip")          // auto-detects type
+```
+
+Use `loadVideo` / `loadImage` to register media imperatively (e.g. in a persistent snippet):
+
+```js
+loadVideo("myclip", "http://localhost:3456/videos/ID.mp4")
+$: video("myclip")
+```
