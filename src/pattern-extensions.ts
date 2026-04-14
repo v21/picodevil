@@ -407,6 +407,10 @@ PatternProto.spline = function (tension: any = 0.5) {
 // that target a specific key within object values, using mix (appBoth) combining.
 // e.g. pat.x(".5 .1").addOn("x", "-.5 0 .5") adds the amount pattern to the x field.
 
+const _fieldAliases: Record<string, string> = {
+  w: 'width', h: 'height', dur: 'duration', left: 'x', top: 'y',
+};
+
 const _toOps: Record<string, { op: (a: number, b: number) => number; identity: number }> = {
   set: { op: (_a, b) => b,              identity: 0 },
   add: { op: (a, b) => a + b,           identity: 0 },
@@ -449,7 +453,7 @@ for (const [name, { op, identity }] of Object.entries(_toOps)) {
         for (const kh of keyHaps) {
           const kPart = sh.part.intersection(kh.part);
           if (!kPart) continue;
-          const k = kh.value;
+          const k = _fieldAliases[kh.value] ?? kh.value;
           if (typeof k !== "string") {
             warn(`${name}On: key pattern produced non-string value: ${typeof k}`);
             continue;
@@ -526,7 +530,8 @@ PatternProto.mapOn = function (key: any, fn: (p: any) => any) {
   const fieldPat = new CorePattern((state: any) => {
     const t0 = Number(state.span.begin);
     const t1 = Number(state.span.end);
-    const resolvedKey = keyPat.queryArc(t0, t0)[0]?.value;
+    const rawKey = keyPat.queryArc(t0, t0)[0]?.value;
+    const resolvedKey = _fieldAliases[rawKey] ?? rawKey;
     if (typeof resolvedKey !== 'string') return [];
     const srcHaps = src.queryArc(t0, t1);
     return srcHaps.flatMap((hap: any) => {
@@ -542,7 +547,8 @@ PatternProto.mapOn = function (key: any, fn: (p: any) => any) {
   return new CorePattern((state: any) => {
     const t0 = Number(state.span.begin);
     const t1 = Number(state.span.end);
-    const resolvedKey = keyPat.queryArc(t0, t0)[0]?.value;
+    const rawKey2 = keyPat.queryArc(t0, t0)[0]?.value;
+    const resolvedKey = _fieldAliases[rawKey2] ?? rawKey2;
     if (typeof resolvedKey !== 'string') return src.queryArc(t0, t1);
     const srcHaps = src.queryArc(t0, t1);
     const outHaps = transformed.queryArc(t0, t1);

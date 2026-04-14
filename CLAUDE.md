@@ -71,7 +71,7 @@ There is no class hierarchy. Everything is a Strudel `Pattern` with object-value
 
 Key controls (all on Pattern.prototype):
 - `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
-- `.x()` and `.y()` are **additive** (use `addTo` / appBoth) rather than replacement. This enables nested grid offset propagation: `inner.gridMod().x(0.1)` shifts the inner group within its outer cell. Exception: `_perEvent` controls (rand, irand, choose) fall back to appLeft for stable-per-onset sampling.
+- `.x()` and `.y()` are **additive** (use `addOn` / appBoth) rather than replacement. This enables nested grid offset propagation: `inner.gridMod().x(0.1)` shifts the inner group within its outer cell. Exception: `_perEvent` controls (rand, irand, choose) fall back to appLeft for stable-per-onset sampling.
 - `.grid(rows?, cols?, i?)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting
 - `.gridMod(rows?, cols?)` — assigns multiple grid cells to a child; all args can be patterns; stamps `layoutParent` on all output events
 - `.p(id)` — registers pattern for rendering (`$` = anonymous/stacking, `S` prefix = solo, `_` prefix/suffix = mute)

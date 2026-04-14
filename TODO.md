@@ -478,11 +478,18 @@ write an explanation of createMixParam. give examples of it working on: single v
 
 
 
-.tile() - like grid but it places every stacked pattern in it's own cell, varying the number of elements in a row to achieve this
+/ .tile() - like grid but it places every stacked pattern in it's own cell, varying the number of elements in a row to achieve this
 
-.stackFlat() - flatten nested stacked patterns
+how to determine layout:
+take the square root of the number of elements, round it - that's the number of rows & the max number of columns
+for 7 elements, we want 3 items in the top row and 2 in each of the bottom two rows.
 
-.shuffleStack("1 2 3 4") - randomise order of stacked patterns - uses pattern as seeds for randomisation, and pattern for when rand events span - so "1 2 3 4" changes 4 times a cycle, and repeats random pattern every cycle. without any arg, randomises once per cycle.
+
+
+
+! .stackFlat() - flatten nested stacked patterns. this isn't a thing!
+
+/ .shuffleStack("1 2 3 4") - randomise order of stacked patterns - uses pattern as seeds for randomisation, and pattern for when rand events span - so "1 2 3 4" changes 4 times a cycle, and repeats random pattern every cycle. without any arg, randomises once per cycle.
 
 
 `$: s("snowball").sync().begin(saw).speed(1)` - flickers
@@ -516,6 +523,8 @@ maybe come up with several cases when evaluating options. we want:
 - maybe others?
 
 
+is it better to not use addTo given the branching behaviour with perEvent stuff?
+
 ---
 
 
@@ -529,4 +538,16 @@ add to sidebar ref
 mulTo("x", 2) when x isn't set will set to 0, but should set to 2 - identity for mul is 1, not 0
 
 
+
+
+add decoration to patterns as they fire
+
+
+
+
+/ add tests which go through the transpiler, and which exercise main.ts
+
+
+allow clearing the pattern if it crashes the browser
+log pattern to console early, so we can get it even if we can't load the pattern (it crashes stuff)
 
