@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-03-13.
+> This file is machine-authored for use by coding agents. Last updated 2026-04-15.
 
 ## What is this?
 
@@ -28,7 +28,7 @@ uzuvid/
   src/
     main.ts               — core runtime: pattern state, video pool, render loop, eval bridge
     editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
-    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND
+    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, SERVER_ENABLED
     transpiler.ts         — $: label transpiler, double-quote mini() wrapping
     visual-controls.ts    — createMixParam, position/grid/speed/alpha controls on Pattern.prototype
     grid-stack.ts         — gridStack() and four() helpers using .gridModulo()
@@ -46,12 +46,13 @@ uzuvid/
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
     create-mix-param.ts   — createMixParam: custom combiner preserving whole spans
   test/
-    monkey-test.ts        — grammar-based random pattern generator + browser runner
-    regression-cases.json — saved regression cases for conformance replay
-    arbitraries.ts        — fast-check arbitraries for code generation
+    monkey-test.ts              — grammar-based random pattern generator + browser runner
+    regression-cases.json       — saved regression cases for conformance replay
+    arbitraries.ts              — fast-check arbitraries for code generation
+    upload-integration-test.ts  — end-to-end Playwright test for file drag-and-drop upload
   server/                 — standalone Node.js package (separate npm install)
-    server.js             — HTTP server: downloads YouTube videos via yt-dlp, serves MP4s
-    server.test.js        — tests (node --test), mocks spawn to avoid real downloads
+    server.js             — HTTP server: downloads YouTube videos via yt-dlp, serves MP4s; also accepts local file uploads
+    server.test.js        — tests (node --test), mocks spawn/execFile to avoid real downloads
     package.json          — deps: yt-dlp-wrap, ffmpeg-static
 ```
 
@@ -125,8 +126,32 @@ Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().
 The server (`server/`) is independent — separate package.json, separate `npm install`. It:
 - Auto-downloads the `yt-dlp` binary on first run
 - Bundles `ffmpeg-static` so no system ffmpeg is needed
-- `GET /download?v=YOUTUBE_URL` — downloads video, returns `{ url: "http://localhost:3456/videos/ID.mp4" }`
-- `GET /videos/ID.mp4` — serves cached videos with range request support
+- `GET /download?v=YOUTUBE_URL` — downloads video via yt-dlp, re-encodes as I-frame-only MP4, returns `{ url: "http://localhost:3456/videos/ID.mp4" }`
+- `POST /upload?name=foo.mp4` — accepts raw binary body, re-encodes as I-frame-only MP4, returns `{ url, ready: true }`. Used for local file drag-and-drop.
+- `GET /videos/ID.mp4` — serves cached/uploaded videos with range request support
+
+### SERVER_ENABLED flag
+
+`src/config.ts` exports `SERVER_ENABLED` (default `true`). When `false`:
+- Drag-and-drop files are registered as blob URLs only (no upload to server)
+- Intended for future public deployments where the Node server is not available
+- Set this to `false` before deploying without the server
+
+### Local file drag-and-drop upload
+
+When `SERVER_ENABLED=true`, dropping a video file onto the sidebar video tab:
+1. Adds the entry immediately with a blob URL (responsive — playable at once)
+2. Uploads the file to `POST /upload` with XHR (for upload progress events)
+3. Server re-encodes to I-frame-only MP4 via ffmpeg (same as YouTube downloads)
+4. Entry URL swaps from blob to the server URL; thumbnail regenerated
+5. Progress shown in the sidebar: `↑N%` during upload, `⚙` during transcode
+
+**`MediaEntry` fields relevant to uploads:**
+- `uploading?: boolean` — set while upload+transcode is in progress
+- `uploadProgress?: number` — 0–1 during upload phase; `undefined` during transcode
+- `error?: string` — set on failure (retry `↻` button appears)
+
+**Blob URLs are never persisted to localStorage** — they're session-scoped and dead after reload. Entries mid-upload that don't complete before the page is closed are simply lost.
 
 ## Running & testing
 
@@ -151,6 +176,9 @@ npm run test:monkey:replay
 npm run test:stress:headless
 # Or with visible browser:
 npm run test:stress
+
+# Upload integration test — end-to-end file drag-and-drop upload (requires port 3456 free)
+npm run test:upload
 ```
 
 ### Test suite overview
@@ -163,7 +191,8 @@ Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest
 - **Monkey testing** (`test/`):
   - `monkey-test.ts` — grammar-based random pattern generator, checks for crashes/errors
   - `regression-cases.json` — saved monkey failures for conformance replay
-- **Stress testing** (`test/`) - `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
+- **Stress testing** (`test/`) — `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
+- **Upload integration test** (`test/`) — `upload-integration-test.ts` — end-to-end Playwright test covering file drag-and-drop upload in both `SERVER_ENABLED=true` and `=false` modes. Catches CORS issues, XHR failures, and URL swap logic. Run with `npm run test:upload`.
 
 ## Documentation
 
