@@ -28,14 +28,14 @@ export type MediaEntry = {
   deviceId?: string;
 };
 
-const registry = new Map<string, MediaEntry>();
+const registry: MediaEntry[] = [];
 let onChange: (() => void) | null = null;
 
 function save() {
   // Don't persist entries with blob URLs — they're session-scoped and dead after reload.
   // Entries mid-upload will have their URL updated to the server URL before the session ends;
   // if the page is reloaded before that happens, they're simply lost.
-  const arr = Array.from(registry.values()).filter(e => !e.url.startsWith("blob:"));
+  const arr = registry.filter(e => !e.url.startsWith("blob:"));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
   onChange?.();
 }
@@ -45,11 +45,11 @@ function load() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const arr: MediaEntry[] = JSON.parse(raw);
-    registry.clear();
+    registry.length = 0;
     for (const entry of arr) {
       if (entry.url?.startsWith("blob:")) continue; // stale from a previous session
       if (!entry.id) entry.id = crypto.randomUUID(); // backfill old entries
-      registry.set(entry.name, entry);
+      registry.push(entry);
     }
   } catch { /* ignore corrupt data */ }
 }
@@ -75,9 +75,9 @@ function deriveNameFromUrl(url: string): string {
 }
 
 function uniqueName(base: string): string {
-  if (!registry.has(base)) return base;
+  if (!registry.some(e => e.name === base)) return base;
   let i = 2;
-  while (registry.has(`${base}${i}`)) i++;
+  while (registry.some(e => e.name === `${base}${i}`)) i++;
   return `${base}${i}`;
 }
 
@@ -86,15 +86,14 @@ export function isYouTubeUrl(url: string): boolean {
 }
 
 function getEntryById(id: string): MediaEntry | undefined {
-  for (const e of registry.values()) if (e.id === id) return e;
-  return undefined;
+  return registry.find(e => e.id === id);
 }
 
 export function addMedia(url: string, name?: string): MediaEntry {
   const baseName = name ?? deriveNameFromUrl(url);
   const finalName = uniqueName(baseName);
   const entry: MediaEntry = { id: crypto.randomUUID(), name: finalName, url, type: guessType(url) };
-  registry.set(finalName, entry);
+  registry.push(entry);
   save();
   if (!isYouTubeUrl(url)) generateThumbnail(entry);
   return entry;
@@ -107,30 +106,29 @@ export function addStream(kind: "webcam" | "screen", name?: string, deviceId?: s
     id: crypto.randomUUID(), name: finalName, url: "", type: "stream",
     streamKind: kind, deviceId,
   };
-  registry.set(finalName, entry);
+  registry.push(entry);
   save();
   return entry;
 }
 
 export function removeMedia(name: string) {
-  registry.delete(name);
+  const i = registry.findIndex(e => e.name === name);
+  if (i >= 0) registry.splice(i, 1);
   save();
 }
 
 export function renameMedia(oldName: string, newName: string): string | null {
-  const entry = registry.get(oldName);
+  const entry = registry.find(e => e.name === oldName);
   if (!entry) return null;
   if (oldName === newName) return newName;
   const finalName = uniqueName(newName);
-  registry.delete(oldName);
   entry.name = finalName;
-  registry.set(finalName, entry);
   save();
   return finalName;
 }
 
 export function updateUrl(name: string, url: string) {
-  const entry = registry.get(name);
+  const entry = registry.find(e => e.name === name);
   if (!entry) return;
   entry.url = url;
   entry.type = guessType(url);
@@ -140,7 +138,7 @@ export function updateUrl(name: string, url: string) {
 }
 
 export function updateEntry(name: string, updates: Partial<MediaEntry>) {
-  const entry = registry.get(name);
+  const entry = registry.find(e => e.name === name);
   if (!entry) return;
   Object.assign(entry, updates);
   save();
@@ -148,40 +146,32 @@ export function updateEntry(name: string, updates: Partial<MediaEntry>) {
 
 /** Look up cached duration by media URL. Returns undefined if not yet known. */
 export function getDurationByUrl(url: string): number | undefined {
-  for (const e of registry.values()) {
-    if (e.url === url && e.duration != null) return e.duration;
-  }
-  return undefined;
+  return registry.find(e => e.url === url && e.duration != null)?.duration;
 }
 
 /** Update duration for an entry by URL (called when video metadata loads in the pool). */
 export function setDurationByUrl(url: string, duration: number) {
-  for (const e of registry.values()) {
-    if (e.url === url && !e.duration) {
-      e.duration = duration;
-      save();
-      return;
-    }
-  }
+  const e = registry.find(e => e.url === url && !e.duration);
+  if (e) { e.duration = duration; save(); }
 }
 
 export function resolveMedia(name: string): MediaEntry | undefined {
-  let entry = registry.get(name);
-  if (!entry && registry.size === 0) {
+  let entry = registry.find(e => e.name === name);
+  if (!entry && registry.length === 0) {
     // Re-load from localStorage in case another module instance wrote to it (HMR)
     load();
-    entry = registry.get(name);
+    entry = registry.find(e => e.name === name);
   }
   return entry;
 }
 
 export function getAllEntries(): MediaEntry[] {
-  return Array.from(registry.values());
+  return registry.slice();
 }
 
 export function exportAll(): string {
   return JSON.stringify(
-    Array.from(registry.values()).map(({ name, url, type }) => ({ name, url, type })),
+    registry.map(({ name, url, type }) => ({ name, url, type })),
     null,
     2
   );
@@ -192,7 +182,7 @@ export function importAll(json: string) {
   for (const entry of arr) {
     if (entry.name && entry.url) {
       const name = uniqueName(entry.name);
-      registry.set(name, { id: entry.id ?? crypto.randomUUID(), ...entry, name });
+      registry.push({ id: entry.id ?? crypto.randomUUID(), ...entry, name });
     }
   }
   save();
@@ -228,7 +218,7 @@ export function loadImage(name: string, url: string): void {
 }
 
 export function clearAll() {
-  registry.clear();
+  registry.length = 0;
   save();
 }
 
@@ -239,7 +229,7 @@ export function setOnChange(cb: (() => void) | null) {
 /** Upload a local file to the server, re-encode as I-frame-only MP4, then update the entry URL. */
 export function uploadToServer(name: string, file: File, serverBase = "http://localhost:3456"): Promise<void> {
   return new Promise((resolve, reject) => {
-    const entry = registry.get(name);
+    const entry = registry.find(e => e.name === name);
     if (!entry) return reject(new Error(`Entry not found: ${name}`));
     const { id } = entry;
 
@@ -304,7 +294,7 @@ export function uploadToServer(name: string, file: File, serverBase = "http://lo
 
 /** Try downloading a YouTube URL via the server. Updates entry in place. */
 export async function downloadYouTube(name: string, serverBase = "http://localhost:3456") {
-  const entry = registry.get(name);
+  const entry = registry.find(e => e.name === name);
   if (!entry) {
     console.warn(`[downloadYouTube] entry not found for name="${name}"`);
     return;

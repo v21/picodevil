@@ -44,6 +44,15 @@ describe("media registry", () => {
     expect(resolveMedia("new")).toBeDefined();
   });
 
+  it("rename preserves list order", () => {
+    addMedia("http://example.com/a.mp4", "first");
+    addMedia("http://example.com/b.mp4", "second");
+    addMedia("http://example.com/c.mp4", "third");
+    renameMedia("second", "renamed");
+    const names = getAllEntries().map(e => e.name);
+    expect(names).toEqual(["first", "renamed", "third"]);
+  });
+
   it("guesses video type from extension", () => {
     expect(addMedia("http://x/a.mp4").type).toBe("video");
     expect(addMedia("http://x/b.webm").type).toBe("video");
