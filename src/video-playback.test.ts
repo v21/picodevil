@@ -91,6 +91,12 @@ describe("computeExpectedTime", () => {
     expect(computeExpectedTime({ ...defaults, currentCycle: 100, eventBegin: 0, speed: 0, loopStart: 3 })).toBeCloseTo(3);
   });
 
+  it("speed 0 with syncOffset holds at sync position, not loopStart", () => {
+    // 10s video, loopStart=0, loopEnd=10, syncOffset=3s
+    // speed=0 means no elapsed contribution; position should be loopStart + syncOffset = 3s
+    expect(computeExpectedTime({ ...defaults, currentCycle: 100, eventBegin: 0, speed: 0, syncOffset: 3 })).toBeCloseTo(3);
+  });
+
   it("syncOffset shifts playback position forward", () => {
     // 10s video, syncOffset = 3s (= 0.3 fraction × 10s duration)
     // At cycle 0 with eventBegin 0: elapsed = 0s, position = 0 + 3 = 3s
