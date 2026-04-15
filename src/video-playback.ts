@@ -34,14 +34,7 @@ export function computeLoopLen(loopStart: number, loopEnd: number, duration: num
 
 /** Compute expected video currentTime from pattern timing. Pure function. */
 export function computeExpectedTime(p: ExpectedTimeParams): number {
-  if (p.speed === 0) {
-    const loopLen = computeLoopLen(p.loopStart, p.loopEnd, p.duration);
-    if (loopLen <= 0) return p.loopStart;
-    const dist = (p.syncOffset ?? 0) + (p.distOffset ?? 0);
-    if (dist === 0) return p.loopStart;
-    const distInLoop = ((dist % loopLen) + loopLen) % loopLen;
-    return p.loopStart + distInLoop;
-  }
+  if (p.speed === 0) return p.loopStart;
   const elapsedSec = (p.currentCycle - p.eventBegin) / p.cps;
   // Inverted range (begin > end) means wrap through the video boundary:
   // e.g. begin=0.8, end=0.2 on a 10s video → play [8,10) then [0,2), loopLen=4
