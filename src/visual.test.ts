@@ -572,6 +572,35 @@ describe("visual rendering", () => {
       expect(canvas.toDataURL()).toMatchSnapshot();
     });
 
+    it("zoom(0) renders identically to no crop", () => {
+      const src = makeHalfRedBlue();
+      const { ctx: ctx1 } = makeCanvas();
+      const { ctx: ctx2 } = makeCanvas();
+      drawFit(ctx1, src, 100, 100, W, H, "fill");
+      drawFit(ctx2, src, 100, 100, W, H, "fill", 0, 0, 1, 1);
+      expect(pixel(ctx1, 50, 50)).toEqual(pixel(ctx2, 50, 50));
+    });
+
+    it("zoom(0.5) centred at left (cx=0.25): canvas is all red", () => {
+      // zoom(0.5, 0.25, 0.5) → cropx=0, cropw=0.5, crop covers only red half
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0.25, 0.5, 0.5);
+      const [r, , b] = pixel(ctx, 50, 50);
+      expect(r).toBeGreaterThan(200);
+      expect(b).toBeLessThan(50);
+    });
+
+    it("zoom(0.5) centred at right (cx=0.75): canvas is all blue", () => {
+      // cropx=0.5, cropw=0.5, crop covers only blue half
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0.5, 0.25, 0.5, 0.5);
+      const [r, , b] = pixel(ctx, 50, 50);
+      expect(b).toBeGreaterThan(200);
+      expect(r).toBeLessThan(50);
+    });
+
     it("golden snapshot: tiling crop", () => {
       const src = makeHalfRedBlue();
       const { canvas, ctx } = makeCanvas();

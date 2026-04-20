@@ -209,6 +209,35 @@ PatternProto.crop = function (x: any = 0, y: any = 0, w: any = 1, h: any = 1) {
 };
 
 /**
+ * Zooms into a point of the source. `intensity` 0 = no zoom (full source), 1 = single pixel.
+ * `cx` and `cy` set the zoom centre in normalised [0,1] source coordinates (default: 0.5, 0.5).
+ *
+ * Shorthand for `.cropw(1-i).croph(1-i).cropx(cx-(1-i)/2).cropy(cy-(1-i)/2)`.
+ * All arguments accept patterns and signals.
+ *
+ * @param {number | string | Pattern} [intensity=0] zoom amount (0–1)
+ * @param {number | string | Pattern} [cx=0.5] horizontal centre (0–1)
+ * @param {number | string | Pattern} [cy=0.5] vertical centre (0–1)
+ * @returns {Pattern} pattern with zoom applied
+ * @example
+ * $: video("clip.mp4").zoom(0.5)                  // 2× zoom into centre
+ * $: video("clip.mp4").zoom(0.8, 0.25, 0.5)       // zoom into left side
+ * $: video("clip.mp4").zoom(sine.range(0, 0.8))   // pulsing zoom
+ * $: video("clip.mp4").zoom(0.5, mouseX, mouseY)  // zoom follows cursor
+ *
+ */
+PatternProto.zoom = function (intensity: any = 0, cx: any = 0.5, cy: any = 0.5) {
+  const iP = reify(intensity);
+  const cxP = reify(cx);
+  const cyP = reify(cy);
+  // Clamp to a tiny minimum so zoom(1) samples a point rather than drawing nothing
+  const wP = iP.fmap((v: any) => Math.max(1e-4, 1 - Number(v)));
+  const xP = cxP.sub(wP.div(2));
+  const yP = cyP.sub(wP.div(2));
+  return this.cropw(wP).croph(wP).cropx(xP).cropy(yP);
+};
+
+/**
  * Sets the CSS blend mode for compositing this pattern onto the canvas.
  * Uses canvas globalCompositeOperation values (same as CSS mix-blend-mode).
  *

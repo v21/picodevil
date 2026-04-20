@@ -183,6 +183,19 @@ $: video("clip.mp4").cropx("0 0.5").cropw("0.5 0.5")         // alternating halv
 $: video("clip.mp4").crop(-0.1, 0, 1.2, 1).objectfit("fill")  // slight tile wrap at edges
 ```
 
+### Zoom
+
+`.zoom(intensity, cx, cy)` is a shorthand for crop that zooms into a point. `intensity` 0 = no zoom (full source), 1 = single pixel. `cx`/`cy` set the zoom centre in normalized [0,1] source coordinates (default: 0.5, 0.5).
+
+```js
+$: video("clip.mp4").zoom(0.5)                  // 2× zoom into centre
+$: video("clip.mp4").zoom(0.8, 0.25, 0.5)       // zoom into left side
+$: video("clip.mp4").zoom(sine.range(0, 0.8))   // pulsing zoom
+$: video("clip.mp4").zoom(0.5, mouseX, mouseY)  // zoom follows cursor
+```
+
+All arguments accept patterns and signals.
+
 ### Video speed
 
 ```js
@@ -453,6 +466,18 @@ Round-robins between arguments. Arrays advance their own position; single patter
 cycle([video("a.mp4"), video("b.mp4")], video("c.mp4"))
 // yields: a, c, b, c, a, c, ...
 ```
+
+### `.cropStack(rows, cols?)`
+
+Slices the source frame into a `rows × cols` spatial grid and stacks all tiles simultaneously. Each tile gets its crop coordinates set automatically, plus `i`, `count`, `rows`, `cols` — so `.gridMod()` (with no arguments) reassembles them into the original layout.
+
+```js
+$: s("clip.mp4").cropStack(2).gridMod()             // 2×2 grid, looks like original
+$: s("clip.mp4").cropStack(2, 3).gridMod()           // 2 rows, 3 columns
+$: s("clip.mp4").cropStack(2).alpha("1 0.5 1 0.5").gridMod()  // dim alternate cells
+```
+
+`cols` defaults to `rows` (square grid). Unlike `.chopStack()` which slices temporally (begin/end), `.cropStack()` slices spatially (crop region). The tiles share the same playback position so they're perfectly in sync.
 
 ### `.iteratorWith(fn)` / `.iterator()`
 

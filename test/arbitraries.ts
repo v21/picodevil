@@ -351,6 +351,11 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.tuple(cropArg, cropArg, cropDimArg, cropDimArg).map(([x, y, w, h]) => ({
     code: `.crop(${x}, ${y}, ${w}, ${h})`,
   })),
+  // zoom shorthand
+  cropDimArg.map(a => ({ code: `.zoom(${a})` })),
+  fc.tuple(cropDimArg, cropArg, cropArg).map(([i, cx, cy]) => ({
+    code: `.zoom(${i}, ${cx}, ${cy})`,
+  })),
 );
 
 const videoChain: fc.Arbitrary<string> = fc.array(videoMethod, { minLength: 0, maxLength: 5 })
@@ -377,6 +382,10 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   cropDimArg.map(a => ({ code: `.croph(${a})` })),
   fc.tuple(cropArg, cropArg, cropDimArg, cropDimArg).map(([x, y, w, h]) => ({
     code: `.crop(${x}, ${y}, ${w}, ${h})`,
+  })),
+  cropDimArg.map(a => ({ code: `.zoom(${a})` })),
+  fc.tuple(cropDimArg, cropArg, cropArg).map(([i, cx, cy]) => ({
+    code: `.zoom(${i}, ${cx}, ${cy})`,
   })),
   posArg.map(a => ({ code: `.x(${a})` })),
   posArg.map(a => ({ code: `.y(${a})` })),
@@ -776,6 +785,23 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const cols = Math.ceil(Math.sqrt(n));
       return {
         code: `${cpsCode}${label}: ${child.code}.syncStack(${n}).rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // cropStack + gridMod (reassembles source frame)
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      screenExpr,
+      fc.integer({ min: 1, max: 3 }),
+      fc.integer({ min: 1, max: 3 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, child, rows, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      return {
+        code: `${cpsCode}${label}: ${child.code}.cropStack(${rows}, ${cols}).gridMod()${chain}`,
       };
     })
   },

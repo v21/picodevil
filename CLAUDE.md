@@ -104,13 +104,14 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`
 - Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.fit()`, `.urlBase()`
 - Crop: `.cropx(n)`, `.cropy(n)`, `.cropw(n)`, `.croph(n)`, `.crop(x, y, w, h)` — all normalized [0,1] source coords; crop outside [0,1] tiles the source
+- Zoom: `.zoom(intensity, cx?, cy?)` — shorthand for crop; 0=no zoom, 1=single pixel; centre defaults to (0.5, 0.5)
 - Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
 - Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
 - Circle placement: `.circle(radius?, startOffset?, circleCount?, i?)`, `.circleMod(radius?, startOffset?, circleCount?)`
 - Iteration: `.iteratorWith(fn)`, `.iterator()`
 - Stack shuffling: `.shuffleStack(seed?)`, `.shuffleStackCycle(seed?)`
-- Slice stacking: `.chopStack(n)`, `.syncStack(n)`
+- Slice stacking: `.chopStack(n)`, `.syncStack(n)`, `.cropStack(rows, cols?)` — spatial frame-slicing into rows×cols tiles
 - Field transforms: `.mapOn(key, fn)`, `.addOn(key, amt)`, `.subOn(key, amt)`, `.mulOn(key, amt)`, `.divOn(key, amt)`, `.modOn(key, amt)`, `.powOn(key, amt)`, `.setOn(key, amt)` — extract/transform/write back a named field; function forms also available: `mapOn(pat, key, fn)`, `addOn(pat, key, amt)`, etc.
 - Misc: `.mapWithVal(fn)`, `.stackN(n)`
 
@@ -123,10 +124,15 @@ Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
 Example: `$: s("clip.mp4").chopStack(4).rowscols(2).gridMod()` — 4 simultaneous slices tiled in a 2×2 grid
 Example: `$: stack(s("a.mp4"), s("b.mp4")).chopStack(4).index().rowscols(2).gridMod()` — chopStack on stacked sources; index() re-numbers all slices 0..7
 Example: `$: s("clip.mp4").syncStack(4).rowscols(2).gridMod().rolling()` — 4 phase-offset copies (sync 0, 0.25, 0.5, 0.75) tiled in a grid
+Example: `$: s("clip.mp4").cropStack(2).gridMod()` — slice frame into 2×2 tiles, reassembled into grid
+Example: `$: s("clip.mp4").cropStack(2, 3).gridMod()` — 2 rows, 3 columns
 Example: `$: s("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)` — render center quarter of source, stretched to fill cell
 Example: `$: s("clip.mp4").cropw(0.5).objectfit("contain")` — left half of source, letterboxed
 Example: `$: s("clip.mp4").cropx(sine.range(0, 0.5)).cropw(0.5)` — sliding crop window
 Example: `$: s("clip.mp4").crop(-0.1, 0, 1.2, 1)` — slightly wider than source; edges tile
+Example: `$: s("clip.mp4").zoom(0.5)` — 2× zoom into centre
+Example: `$: s("clip.mp4").zoom(sine.range(0, 0.8))` — pulsing zoom
+Example: `$: s("clip.mp4").zoom(0.5, mouseX, mouseY)` — zoom follows cursor
 Example: `$: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())` — smoothly interpolate the x field between values
 Example: `$: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline())` — spline-interpolate the alpha field
 Example: `$: s("clip.mp4").speed("1 2").mulOn('speed', 0.5)` — halve the speed field arithmetically
