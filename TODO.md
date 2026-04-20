@@ -11,6 +11,27 @@
 sync resets to 0 pos if the speed is ever set to 0
 
 
+first, revert 3b0fe34d043ac9724cc67502441e4eaf3368322e
+
+cases we should test:
+$: video("dvsa1").speed("0 1").sync()
+$: video("dvsa1").speed("0").sync()
+$: video("dvsa1").speed("1 -1 -1 1").sync() //(ie, can we transit the loop point of the video in both directions)
+$: video("dvsa1").speed(sine).sync() //how does this work with signals rather than discrete events
+$: video("dvsa1").speed("0.5 1 2").sync() //boring but forwards at varying speeds should continue to work
+$: video("dvsa1").speed("0.005 1000").sync() //boring but forwards at varying speeds - including ones that don't play back naturally
+$: video("dvsa1").speed("-1 0").sync()
+
+
+hm - my understanding of sync is wrong.
+
+but i do also want the old behaviour of sync
+
+can i add a new mode? like, there's 
+- sync, which works with the global clock
+- default, which works relative to the cycle
+- rolling, which doesn't reset positions when speed changes, but continues from the current place
+
 
 
 ---

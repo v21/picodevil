@@ -98,7 +98,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
 - Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
-- Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.urlBase()`
+- Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.urlBase()`
 - Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
 - Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
@@ -120,6 +120,14 @@ Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().
 - Native HTML5 playback rates (0.0625–16.0) use `el.playbackRate` directly
 - Rates outside this range (including negative/reverse) use manual seeking
 - `setPlaybackRate()` in `src/playback-rate.ts` catches `NotSupportedError` to prevent the render loop from breaking
+
+## Continuous playback modes: sync() vs rolling()
+
+- **`.sync()`** — position is a pure function of elapsed clock time + speed. On re-eval, the video re-syncs to its clock position. Speed=0 snaps to `loopStart` (there is no "correct" clock position for a paused video).
+- **`.rolling()`** — position is stateful and preserved across re-evals and speed changes. Speed=0 freezes the video at its current position; resuming continues from there. Implemented via `syncDistOffset` on the video element state.
+- Both use `eventBeginFromHap` returning 0, and both use `computeSyncDistOffset` for speed/range-change continuity. The difference is that rolling skips the `syncDistOffset` reset on `isNewEvent`.
+- `isNewEvent` in sync/rolling mode only fires on the **first frame after a fresh pool element is assigned** (not on new cycles) — because `eventBegin` is always 0, `lastEventBegin=0` persists across re-evals of the same element.
+- `computeSyncDistOffset` in `src/sync-continuity.ts` handles speed=0 transitions: `oldSpeed=0` recovers frozen position from `syncOffset + oldDistOffset`; `newSpeed=0` returns `targetDistInLoop - syncOffset` to encode the freeze position as `distOffset`.
 
 ## Server component
 

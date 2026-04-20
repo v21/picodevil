@@ -83,14 +83,16 @@ If you put a grid within another grid, it works! Similarly with adjusting `.x()`
 !!! Don't think this is yet true!
 
 ### i-frame encoding so that we can play videos backwards
-The server component will transcode Youtube videos into ones containing only i-frames. This improves the performance when playing videos backwards, or outside of natively supported play rates, or when jumping around a lot within the video file.
+The server component will transcode videos into ones containing only i-frames. This improves the performance when playing videos backwards, or outside of natively supported play rates, or when jumping around a lot within the video file.
+
+You can add videos by dragging files onto the videos sidebar. Or you can enter a Youtube URL. Both cause the server to download, transcode, and host the video.
 
 ### It's 3D! I mean the browser is
 We're rendering a bunch of elements on the page, and these elements can move in 3D space. Because the browser context has full access to 3D rendering stuff. So we can apply perspective, we can rotate stuff, we can have things moving backwards and forwards.
 !!! don't think this is yet true
 
 ### Blend modes
-We have blend modes! And alpha! `.blend()` and `.alpha()` respectively. This allows a lot of composition of video feeds.
+We have blend modes! And alpha! `.blend()` and `.alpha()` respectively. This allows a lot of composition of video feeds. 
 
 ### Rendered via canvas
 We composite everything via canvas. 
@@ -99,3 +101,9 @@ We composite everything via canvas.
 ### Live feeds - webcams and screen sharing
 We can also compose in screen sharing (`loadScreen`) and webcams (`loadCam`)
 
+### .sync() and rolling()
+By default, timings come from the pattern, with each event resetting the playhead to the start. This matches up with how Strudel deals with sounds. But can be a little unsatisfying for videos.
+
+Alternatively, you can use `sync()` to cue the position of the videos to the global time, rather than cycle time. This means that `s("<a b">)` will alternate between sources `a` and `b`, but keep playing through both, rather only ever playing the start of both.
+
+And you can also do `rolling()` so that a playing video element won't reset it's position when it's speed is changed. So you can do `s("a").speed("1 0")` to play, then pause, then keep playing, etc.

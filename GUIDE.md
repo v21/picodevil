@@ -178,6 +178,33 @@ $: video("clip.mp4").start(mini("5").sec())     // start at 5 seconds
 $: video("clip.mp4").duration(mini("500").ms())  // play 500ms
 ```
 
+### Continuous playback: sync() and rolling()
+
+By default, each cycle a video restarts from the beginning (or from `.start()`). Two modes let you play continuously:
+
+**`.sync()`** — plays relative to the global clock, ignoring cycle boundaries. Position is a pure function of elapsed time and speed, so re-evaluating code resyncs the video to where it "should" be at that moment.
+
+```js
+$: video("clip.mp4").sync()              // plays continuously from cycle 0
+$: video("clip.mp4").sync(0.5)           // phase-shifted: starts 50% through the video
+$: video("clip.mp4").speed(2).sync()     // double speed, continuous
+```
+
+**`.rolling()`** — position is preserved across re-evals and speed changes. Speed=0 freezes in place; resuming continues from the frozen position. Use this when you want manual, history-dependent control over playback.
+
+```js
+$: video("clip.mp4").rolling()              // continues from wherever it was
+$: video("clip.mp4").speed("0 1").rolling() // freeze half-cycle, advance half-cycle
+$: video("clip.mp4").speed("-1 0").rolling() // reverse then freeze in place
+$: video("clip.mp4").speed(sine).rolling()  // smooth continuous speed modulation
+```
+
+Combining both: `rolling()` takes precedence for a playing video; `sync()` initialises a freshly-loaded one.
+
+```js
+$: video("clip.mp4").sync().rolling()  // sync on first load, rolling thereafter
+```
+
 ### URL base
 
 Change where media files are loaded from:
