@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-04-20.
+> This file is machine-authored for use by coding agents. Last updated 2026-04-21.
 
 ## What is this?
 
@@ -73,7 +73,7 @@ There is no class hierarchy. Everything is a Strudel `Pattern` with object-value
 Key controls (all on Pattern.prototype):
 - `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.fit()`, `.blend()`
 - `.x()` and `.y()` are **additive** (use `addOn` / appBoth) rather than replacement. This enables nested grid offset propagation: `inner.gridMod().x(0.1)` shifts the inner group within its outer cell. Exception: `_perEvent` controls (rand, irand, choose) fall back to appLeft for stable-per-onset sampling.
-- `.grid(rows?, cols?, i?)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting
+- `.grid(rows?, cols?, i?)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting; `i` wraps with modulo so values >= rows×cols cycle back through the grid
 - `.gridMod(rows?, cols?)` — assigns multiple grid cells to a child; all args can be patterns; stamps `layoutParent` on all output events
 - `.p(id)` — registers pattern for rendering (`$` = anonymous/stacking, `S` prefix = solo, `_` prefix/suffix = mute)
 
@@ -88,6 +88,10 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 **Layout:** `gridStack(children, cols, rows)`, `stackN(n, ...patterns)`, `cycle(...args)`
 
 **Indexing:** `index(...patterns)`, `indexCycle(...patterns)`, `indexWith(iLabel, countLabel, ...patterns)`, `indexCycleWith(iLabel, countLabel, ...patterns)`, `autoseed(...patterns)`
+
+**Randomness (per-event stable):** `rand`, `rand2`, `irand(n)`, `brand`, `brandBy(p)`, `choose(...xs)`, `chooseWith(pat, xs)`, `wchoose(...pairs)`, `scramble(n)` / `.scramble(n)` — all stable for the duration of each hap, not per-frame flickering
+
+**Strudel pattern transforms (re-exported):** `degradeBy(p)`, `degrade`, `undegradeBy(p)`, `undegrade`, `sometimesBy(p, fn)`, `sometimes(fn)`, `someCyclesBy(p, fn)`, `someCycles(fn)`, `often(fn)`, `rarely(fn)`, `almostNever(fn)`, `almostAlways(fn)`, `always(fn)`, `never(fn)`
 
 **Media loading (imperative, idempotent):** `loadVideo(name, url)`, `loadImage(name, url)`, `loadCamera(name)`, `loadScreen(name)`
 
@@ -105,6 +109,8 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - Circle placement: `.circle(radius?, startOffset?, circleCount?, i?)`, `.circleMod(radius?, startOffset?, circleCount?)`
 - Iteration: `.iteratorWith(fn)`, `.iterator()`
 - Stack shuffling: `.shuffleStack(seed?)`, `.shuffleStackCycle(seed?)`
+- Slice stacking: `.chopStack(n)`, `.syncStack(n)`
+- Field transforms: `.mapOn(key, fn)`, `.addOn(key, amt)`, `.subOn(key, amt)`, `.mulOn(key, amt)`, `.divOn(key, amt)`, `.modOn(key, amt)`, `.powOn(key, amt)`, `.setOn(key, amt)` — extract/transform/write back a named field; function forms also available: `mapOn(pat, key, fn)`, `addOn(pat, key, amt)`, etc.
 - Misc: `.mapWithVal(fn)`, `.stackN(n)`
 
 Example: `$: video("clip1.mp4 clip2.mp4").speed("0.5 1 -1").fit("contain")`
@@ -113,6 +119,12 @@ Example: `$: index(color("red"), color("blue")).rowscols(2).gridMod()`
 Example: `$: video("a.mp4").i("0 1 2 3").rowscols(2).grid()`
 Example: `$: stack(color("red"), color("blue"), color("green")).shuffleStack(42).index().rowscols(2).gridMod()`
 Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
+Example: `$: s("clip.mp4").chopStack(4).rowscols(2).gridMod()` — 4 simultaneous slices tiled in a 2×2 grid
+Example: `$: stack(s("a.mp4"), s("b.mp4")).chopStack(4).index().rowscols(2).gridMod()` — chopStack on stacked sources; index() re-numbers all slices 0..7
+Example: `$: s("clip.mp4").syncStack(4).rowscols(2).gridMod().rolling()` — 4 phase-offset copies (sync 0, 0.25, 0.5, 0.75) tiled in a grid
+Example: `$: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())` — smoothly interpolate the x field between values
+Example: `$: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline())` — spline-interpolate the alpha field
+Example: `$: s("clip.mp4").speed("1 2").mulOn('speed', 0.5)` — halve the speed field arithmetically
 Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod(), color("red")).index().rowscols(2).gridMod()`
 
 ## Video playback speed

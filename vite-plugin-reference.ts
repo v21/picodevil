@@ -134,6 +134,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Layout", "src/shuffle-stack.ts"],
     ["Indexing", "src/index-patterns.ts"],
     ["Iteration", "src/iterators.ts"],
+    ["Randomness", "src/event-random.ts"],
   ];
 
   const catMap = new Map<string, RefEntry[]>();
@@ -177,10 +178,9 @@ function buildReferenceData(root: string): RefCategory[] {
     "saw", "saw2", "isaw", "isaw2",
     "tri", "tri2", "itri", "itri2",
     "square", "square2",
-    "rand", "rand2", "irand", "brand", "brandBy",
     "perlin",
     "time", "mouseX", "mouseY",
-    "run", "choose", "chooseIn", "chooseCycles",
+    "run", "chooseIn", "chooseCycles",
     "signal", "steady", "useRNG",
   ]);
 
