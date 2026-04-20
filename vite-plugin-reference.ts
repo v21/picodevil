@@ -135,6 +135,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Indexing", "src/index-patterns.ts"],
     ["Iteration", "src/iterators.ts"],
     ["Randomness", "src/event-random.ts"],
+    ["Signals", "src/strudel-globals.ts"],
   ];
 
   const catMap = new Map<string, RefEntry[]>();
