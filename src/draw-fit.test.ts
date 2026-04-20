@@ -158,6 +158,55 @@ describe("drawFit", () => {
     });
   });
 
+  describe("crop (negative = flip)", () => {
+    it("cropw=-1: uses negative destW (horizontal flip), source full width", () => {
+      const ctx = mockCtx();
+      drawFit(ctx, dummySource, 100, 50, 200, 200, "fill", 0, 0, -1, 1);
+      expect(ctx.drawImage).toHaveBeenCalledOnce();
+      const [, sx, sy, sw, sh, dx, dy, dw, dh] = (ctx.drawImage as any).mock.calls[0];
+      expect(sw).toBe(100); expect(sh).toBe(50); // full source
+      expect(sx).toBe(0);   expect(sy).toBe(0);
+      // dest: dx shifted right by dw, dw negative
+      expect(dw).toBe(-200);
+      expect(dx).toBe(200); // dx + |dw| = 200+(-(-200)) = original dx(0) + 200
+      expect(dy).toBe(0);   expect(dh).toBe(200);
+    });
+
+    it("croph=-1: uses negative destH (vertical flip)", () => {
+      const ctx = mockCtx();
+      drawFit(ctx, dummySource, 100, 50, 200, 200, "fill", 0, 0, 1, -1);
+      expect(ctx.drawImage).toHaveBeenCalledOnce();
+      const [, , , , , dx, dy, dw, dh] = (ctx.drawImage as any).mock.calls[0];
+      expect(dh).toBe(-200);
+      expect(dy).toBe(200); // dy + |dh|
+      expect(dx).toBe(0);   expect(dw).toBe(200);
+    });
+
+    it("cropw=-0.5: half width, flipped — dest width is half of canvas", () => {
+      const ctx = mockCtx();
+      // left half of 100x100 source, flipped, fill into 200x200 — dest is full 200x200
+      drawFit(ctx, dummySource, 100, 100, 200, 200, "fill", 0, 0, -0.5, 1);
+      const [, sx, sy, sw, sh, dx, dy, dw, dh] = (ctx.drawImage as any).mock.calls[0];
+      expect(sw).toBe(50); expect(sh).toBe(100);
+      expect(sx).toBe(0);  expect(sy).toBe(0);
+      expect(dw).toBe(-200);
+      expect(dx).toBe(200);
+      expect(dh).toBe(200); expect(dy).toBe(0);
+    });
+
+    it("fit calculation uses |cropw| for aspect ratio (contain, negative cropw)", () => {
+      const ctx = mockCtx();
+      // |cropw|=0.5, croph=1 on 100x100 source → effective 50x100 → portrait
+      // contain into 200x200: scale=min(200/50, 200/100)=2 → dw=100, dh=200
+      drawFit(ctx, dummySource, 100, 100, 200, 200, "contain", 0, 0, -0.5, 1);
+      const [, , , , , dx, , dw, dh] = (ctx.drawImage as any).mock.calls[0];
+      expect(Math.abs(dw)).toBe(100);
+      expect(Math.abs(dh)).toBe(200);
+      expect(dw).toBe(-100); // flipped
+      expect(dx).toBe(50 + 100); // original dx(50) + |dw|(100) = 150
+    });
+  });
+
   describe("crop (tiling)", () => {
     it("uses fillRect (not drawImage) when crop extends beyond [0,1]", () => {
       const ctx = mockCtx();

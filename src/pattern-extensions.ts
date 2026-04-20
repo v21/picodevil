@@ -140,6 +140,59 @@ PatternProto.syncStack = function (nArg: any) {
   });
 };
 
+/**
+ * Slices the source frame into a rows×cols spatial grid and stacks all tiles simultaneously.
+ * Each tile gets `cropx`/`cropy`/`cropw`/`croph` set to its cell, plus `i`, `count`, `rows`,
+ * `cols` — so `.gridMod()` (with no arguments) tiles them back into the original layout.
+ *
+ * Use this when you want to treat separate regions of the source as independent cells,
+ * apply per-cell effects, then reassemble. Because the tiles share the same video element
+ * and the same playback position they are perfectly in sync.
+ *
+ * @param {number} rowsArg number of rows (default 2)
+ * @param {number} [colsArg] number of columns (default = rows)
+ * @returns {Pattern} pattern with rows×cols simultaneous spatially-cropped sub-events
+ * @example
+ * $: s("clip.mp4").cropStack(2).gridMod()                    // 2×2 grid, reassembled
+ * $: s("clip.mp4").cropStack(2, 3).gridMod()                 // 2 rows, 3 columns
+ * $: s("clip.mp4").cropStack(2).alpha("1 0.5 1 0.5").gridMod()  // alternating cell opacity
+ */
+PatternProto.cropStack = function (rowsArg: any = 2, colsArg?: any) {
+  warnIfSignal(this, "cropStack");
+  const pat = this;
+  return new CorePattern((state: any) => {
+    const rows = typeof rowsArg === "number"
+      ? rowsArg
+      : Math.round(Number(reify(rowsArg).queryArc(state.span.begin, state.span.end)[0]?.value ?? 2));
+    const cols = colsArg !== undefined
+      ? (typeof colsArg === "number"
+        ? colsArg
+        : Math.round(Number(reify(colsArg).queryArc(state.span.begin, state.span.end)[0]?.value ?? rows)))
+      : rows;
+    const n = rows * cols;
+    return pat.queryArc(state.span.begin, state.span.end).flatMap((hap: any) =>
+      Array.from({ length: n }, (_, i) => {
+        const r = Math.floor(i / cols);
+        const c = i % cols;
+        return hap.withValue((v: any) => {
+          const val = Object(v) === v ? v : {};
+          return {
+            ...val,
+            cropx: c / cols,
+            cropy: r / rows,
+            cropw: 1 / cols,
+            croph: 1 / rows,
+            i,
+            count: n,
+            rows,
+            cols,
+          };
+        });
+      })
+    );
+  });
+};
+
 // ─── JSDoc stubs for Strudel builtins (so the reference plugin picks them up) ──
 
 const _origRev = PatternProto.rev;
@@ -368,6 +421,13 @@ function toNumEvent(ev: any): NumEvent | null {
 // Return deduplicated events (by begin time) from a cycle-range query around t.
 // Using a cycle-range query (not a point) ensures fieldPat in mapOn returns
 // events with proper non-zero spans.
+//
+// Stacked haps (simultaneous events sharing the same begin time, e.g. from
+// stack() or syncStack()) are deduplicated down to one entry — the first one
+// encountered after sorting by begin. This means lerp/spline see only a single
+// value for that time step and cannot distinguish between the simultaneous events.
+// As a result, interpolating transforms (lerp, spline) applied via mapOn to a
+// stacked pattern will silently collapse to one tile's value for all tiles.
 function eventsInCycle(src: any, t: number): NumEvent[] {
   const cycle = Math.floor(t);
   const raw = src.queryArc(cycle, cycle + 1);
@@ -402,6 +462,10 @@ function nearestOnset(src: any, targetBegin: number): NumEvent | null {
 // Collect [prev, cur, next, next2] events around t by:
 // 1. Cycle-range querying to find cur (so fieldPat events have proper spans)
 // 2. Chaining from cur's boundaries to find neighbours (so slow patterns work)
+//
+// Because eventsInCycle deduplicates by begin time, stacked haps at the same
+// onset collapse to one entry here too. lerp and spline only ever see one value
+// per onset — they cannot interpolate across simultaneous (stacked) events.
 function collectEvents(src: any, t: number): NumEvent[] {
   // Find current event via cycle-range query
   const cycleEvs = eventsInCycle(src, t);

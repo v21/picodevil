@@ -338,3 +338,82 @@ describe("syncStack", () => {
     }
   });
 });
+
+describe("cropStack", () => {
+  it("produces rows*cols simultaneous haps", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 2).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+  });
+
+  it("default cols = rows (square grid)", () => {
+    const evs = (video("a.mp4") as any).cropStack(2).queryArc(0, 1);
+    expect(evs).toHaveLength(4); // 2x2
+  });
+
+  it("sets correct cropx/cropy/cropw/croph for 2x2", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 2).queryArc(0, 1);
+    const crops = evs.map((e: any) => ({
+      cropx: e.value.cropx,
+      cropy: e.value.cropy,
+      cropw: e.value.cropw,
+      croph: e.value.croph,
+    }));
+    expect(crops[0]).toEqual({ cropx: 0, cropy: 0, cropw: 0.5, croph: 0.5 }); // top-left
+    expect(crops[1]).toEqual({ cropx: 0.5, cropy: 0, cropw: 0.5, croph: 0.5 }); // top-right
+    expect(crops[2]).toEqual({ cropx: 0, cropy: 0.5, cropw: 0.5, croph: 0.5 }); // bottom-left
+    expect(crops[3]).toEqual({ cropx: 0.5, cropy: 0.5, cropw: 0.5, croph: 0.5 }); // bottom-right
+  });
+
+  it("sets correct crop for 1x2 (two rows, one column)", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 1).queryArc(0, 1);
+    expect(evs).toHaveLength(2);
+    expect(evs[0].value).toMatchObject({ cropx: 0, cropy: 0, cropw: 1, croph: 0.5 });
+    expect(evs[1].value).toMatchObject({ cropx: 0, cropy: 0.5, cropw: 1, croph: 0.5 });
+  });
+
+  it("sets correct crop for 1 row, 2 cols", () => {
+    const evs = (video("a.mp4") as any).cropStack(1, 2).queryArc(0, 1);
+    expect(evs).toHaveLength(2);
+    expect(evs[0].value).toMatchObject({ cropx: 0, cropy: 0, cropw: 0.5, croph: 1 });
+    expect(evs[1].value).toMatchObject({ cropx: 0.5, cropy: 0, cropw: 0.5, croph: 1 });
+  });
+
+  it("sets i, count, rows, cols on each slice", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 2).queryArc(0, 1);
+    expect(evs.map((e: any) => e.value.i)).toEqual([0, 1, 2, 3]);
+    expect(evs.map((e: any) => e.value.count)).toEqual([4, 4, 4, 4]);
+    expect(evs.map((e: any) => e.value.rows)).toEqual([2, 2, 2, 2]);
+    expect(evs.map((e: any) => e.value.cols)).toEqual([2, 2, 2, 2]);
+  });
+
+  it("all haps share the same whole/part spans as the original", () => {
+    const orig = video("a.mp4").queryArc(0, 1)[0];
+    const evs = (video("a.mp4") as any).cropStack(2, 2).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(Number(ev.whole.begin)).toBeCloseTo(Number(orig.whole.begin));
+      expect(Number(ev.whole.end)).toBeCloseTo(Number(orig.whole.end));
+    }
+  });
+
+  it("preserves _type and src", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 2).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value._type).toBe("video");
+      expect(ev.value.src).toBe("a.mp4");
+    }
+  });
+
+  it("does not set layoutParent", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 2).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value.layoutParent).toBeUndefined();
+    }
+  });
+
+  it("works on a stack of sources", () => {
+    const pat = (video("a.mp4") as any).stack(video("b.mp4")).cropStack(1, 2);
+    const evs = pat.queryArc(0, 1);
+    // 2 sources × 2 slices = 4 events
+    expect(evs).toHaveLength(4);
+  });
+});

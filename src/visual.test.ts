@@ -572,6 +572,53 @@ describe("visual rendering", () => {
       expect(canvas.toDataURL()).toMatchSnapshot();
     });
 
+    it("cropw=-1: horizontally flipped — left pixel is blue, right pixel is red", () => {
+      const src = makeHalfRedBlue(); // left=red, right=blue
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, -1, 1);
+      // After flip: left canvas = blue, right canvas = red
+      const [r1, , b1] = pixel(ctx, 5, 50);
+      expect(b1).toBeGreaterThan(200); // left is now blue
+      expect(r1).toBeLessThan(50);
+      const [r2, , b2] = pixel(ctx, 95, 50);
+      expect(r2).toBeGreaterThan(200); // right is now red
+      expect(b2).toBeLessThan(50);
+    });
+
+    it("croph=-1: vertically flipped — top/bottom swap", () => {
+      // Make a top-red/bottom-blue canvas
+      const src = document.createElement("canvas");
+      src.width = 100; src.height = 100;
+      const sctx = src.getContext("2d")!;
+      sctx.fillStyle = "red";  sctx.fillRect(0, 0, 100, 50);
+      sctx.fillStyle = "blue"; sctx.fillRect(0, 50, 100, 50);
+
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, 1, -1);
+      // After vertical flip: top is blue, bottom is red
+      const [r1, , b1] = pixel(ctx, 50, 5);
+      expect(b1).toBeGreaterThan(200); // top is now blue
+      const [r2, , b2] = pixel(ctx, 50, 95);
+      expect(r2).toBeGreaterThan(200); // bottom is now red
+    });
+
+    it("cropw=-0.5: left half flipped — entire canvas shows red (left half reversed)", () => {
+      const src = makeHalfRedBlue(); // left=red
+      const { ctx } = makeCanvas();
+      // cropw=-0.5, cropx=0 → take left half (red), flip it → still all red
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, -0.5, 1);
+      const [r, , b] = pixel(ctx, 50, 50);
+      expect(r).toBeGreaterThan(200);
+      expect(b).toBeLessThan(50);
+    });
+
+    it("golden snapshot: horizontal flip", () => {
+      const src = makeHalfRedBlue();
+      const { canvas, ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, -1, 1);
+      expect(canvas.toDataURL()).toMatchSnapshot();
+    });
+
     it("zoom(0) renders identically to no crop", () => {
       const src = makeHalfRedBlue();
       const { ctx: ctx1 } = makeCanvas();
