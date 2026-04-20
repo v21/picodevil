@@ -226,6 +226,26 @@ export function setOnChange(cb: (() => void) | null) {
   onChange = cb;
 }
 
+function pollTranscodeReady(entryId: string, stem: string, serverBase: string, interval = 2000) {
+  const timer = setInterval(async () => {
+    try {
+      const res = await fetch(`${serverBase}/ready/${encodeURIComponent(stem)}`);
+      const data = await res.json() as { ready: boolean; error?: string };
+      const current = getEntryById(entryId);
+      if (!current) { clearInterval(timer); return; }
+      if (data.ready || data.error) {
+        clearInterval(timer);
+        current.uploading = false;
+        if (data.error) current.error = `Transcode failed: ${data.error}`;
+        else generateThumbnail(current);
+        save();
+      }
+    } catch {
+      // server not reachable yet, keep polling
+    }
+  }, interval);
+}
+
 /** Upload a local file to the server, re-encode as I-frame-only MP4, then update the entry URL. */
 export function uploadToServer(name: string, file: File, serverBase = "http://localhost:3456"): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -259,12 +279,20 @@ export function uploadToServer(name: string, file: File, serverBase = "http://lo
         const oldUrl = current.url;
         current.url = data.url;
         current.type = 'video';
-        current.uploading = false;
         current.uploadProgress = undefined;
         current.pendingFile = undefined;
-        save();
-        if (oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
-        generateThumbnail(current);
+        if (data.ready) {
+          current.uploading = false;
+          save();
+          if (oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+          generateThumbnail(current);
+        } else {
+          // Transcoding in progress — keep uploading=true (shows ⚙), poll for completion
+          save();
+          if (oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
+          const stem = data.url.split('/').pop()?.replace(/\.mp4$/, '') ?? '';
+          pollTranscodeReady(id, stem, serverBase);
+        }
         resolve();
       } else {
         current.uploading = false;
