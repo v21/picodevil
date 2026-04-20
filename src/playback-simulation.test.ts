@@ -77,19 +77,22 @@ function simulateTrace(pat: any, cycles: number, duration: number): TracePoint[]
     const loopEnd = endVal * duration;
     const loopLen = computeLoopLen(loopStart, loopEnd, duration);
     const synced = ev.sync != null;
+    const rolling = ev.rolling != null;
     const syncOffset = synced && ev.sync !== true ? Number(ev.sync) * duration : 0;
 
     // Reset state on new event (mirrors updateVideoPlayback isNewEvent logic)
     if (lastEventBegin !== eventBegin) {
       lastEventBegin = eventBegin;
-      lastSyncSpeed = undefined;
-      lastSyncBegin = undefined;
-      lastSyncEnd = undefined;
-      syncDistOffset = 0;
+      if (!rolling) {
+        lastSyncSpeed = undefined;
+        lastSyncBegin = undefined;
+        lastSyncEnd = undefined;
+        syncDistOffset = 0;
+      }
     }
 
-    // Sync continuity: recompute distOffset when speed/begin/end change
-    if (synced && loopLen > 0) {
+    // Sync/rolling continuity: recompute distOffset when speed/begin/end change
+    if ((synced || rolling) && loopLen > 0) {
       const speedChanged = lastSyncSpeed != null && lastSyncSpeed !== speed;
       const beginChanged = lastSyncBegin != null && lastSyncBegin !== beginVal;
       const endChanged = lastSyncEnd != null && lastSyncEnd !== endVal;
@@ -111,6 +114,7 @@ function simulateTrace(pat: any, cycles: number, duration: number): TracePoint[]
           syncOffset,
           oldDistOffset: syncDistOffset,
           duration,
+          rolling,
         });
       }
 
@@ -124,7 +128,7 @@ function simulateTrace(pat: any, cycles: number, duration: number): TracePoint[]
       syncDistOffset = 0;
     }
 
-    const distOffset = synced ? syncDistOffset : 0;
+    const distOffset = (synced || rolling) ? syncDistOffset : 0;
     const expected = computeExpectedTime({
       currentCycle: cycle, eventBegin, cps: CPS,
       speed, loopStart, loopEnd, duration, syncOffset, distOffset,
@@ -236,6 +240,14 @@ describe("playback simulation", () => {
     'screen("<test.mp4 other.mp4>").sync()',
     'screen("<test.mp4 other.mp4>").sync().speed("1 2 3")',
     'video("test.mp4").sync().scrub(0.5)',
+    // Rolling mode
+    'video("test.mp4").rolling()',
+    'video("test.mp4").speed("0 1").rolling()',
+    'video("test.mp4").speed("-1 0").rolling()',
+    'video("test.mp4").speed("1 -1 -1 1").rolling()',
+    'video("test.mp4").speed("0.5 1 2").rolling()',
+    'video("test.mp4").speed("0.005 1000").rolling()',
+    'video("test.mp4").speed(sine).rolling()',
     // loopAt combinations
     'video("test.mp4").loopAt(4)',
     'video("test.mp4").loopAt(4).speed(2)',

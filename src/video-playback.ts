@@ -34,7 +34,14 @@ export function computeLoopLen(loopStart: number, loopEnd: number, duration: num
 
 /** Compute expected video currentTime from pattern timing. Pure function. */
 export function computeExpectedTime(p: ExpectedTimeParams): number {
-  if (p.speed === 0) return p.loopStart;
+  if (p.speed === 0) {
+    const loopLen = computeLoopLen(p.loopStart, p.loopEnd, p.duration);
+    if (loopLen <= 0) return p.loopStart;
+    const dist = (p.syncOffset ?? 0) + (p.distOffset ?? 0);
+    if (dist === 0) return p.loopStart;
+    const distInLoop = ((dist % loopLen) + loopLen) % loopLen;
+    return p.loopStart + distInLoop;
+  }
   const elapsedSec = (p.currentCycle - p.eventBegin) / p.cps;
   // Inverted range (begin > end) means wrap through the video boundary:
   // e.g. begin=0.8, end=0.2 on a 10s video → play [8,10) then [0,2), loopLen=4
@@ -161,8 +168,9 @@ export function renderVideoFrame(c: VideoFrameContext): void {
   }
 
   const synced = c.ev.sync != null;
+  const rolling = c.ev.rolling != null;
   const syncOffset = synced && c.ev.sync !== true ? Number(c.ev.sync) * c.el.duration : 0;
-  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset, synced);
+  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset, synced, rolling);
 }
 
 function updateVideoPlayback(
@@ -175,13 +183,17 @@ function updateVideoPlayback(
   cps: number,
   syncOffset: number = 0,
   synced: boolean = false,
+  rolling: boolean = false,
 ): void {
   const dur = el.duration;
   const loopStart = beginVal * dur;
   const loopEnd = endVal * dur;
   const loopLen = computeLoopLen(loopStart, loopEnd, dur);
 
-  // Detect event boundary: new event means force-seek to expected position
+  // Detect event boundary.
+  // In sync/rolling mode, eventBegin is always 0, so isNewEvent only fires on the first
+  // frame after a fresh video element is assigned from the pool (when lastEventBegin=undefined).
+  // It is NOT "new cycle" — re-eval with the same element has lastEventBegin=0 already.
   const st = el._state;
   const isNewEvent = st.lastEventBegin !== eventBegin;
   if (isNewEvent) {
@@ -189,15 +201,29 @@ function updateVideoPlayback(
     // Reset rate tracking so a position jump from a new event doesn't look like a moving window
     st.lastExpected = undefined;
     st.lastExpectedWall = undefined;
-    // Reset sync continuity state for fresh events
-    st.lastSyncSpeed = undefined;
-    st.lastSyncBegin = undefined;
-    st.lastSyncEnd = undefined;
-    st.syncDistOffset = 0;
+    if (!rolling) {
+      // Reset sync continuity state. For sync: re-syncs to clock on new element.
+      // For non-rolling/non-sync: restarts from loopStart each event.
+      st.lastSyncSpeed = undefined;
+      st.lastSyncBegin = undefined;
+      st.lastSyncEnd = undefined;
+      st.syncDistOffset = 0;
+    } else if (loopLen > 0 && isFinite(el.currentTime)) {
+      // Rolling: seed syncDistOffset from el.currentTime so computeExpectedTime
+      // returns the actual current position on this first frame.
+      // (speed-change detection won't run since lastSyncSpeed=undefined on a fresh element)
+      const clampedTime = Math.max(loopStart, Math.min(loopEnd - 1e-9, el.currentTime));
+      const targetDistInLoop = speed >= 0 ? clampedTime - loopStart : loopEnd - clampedTime;
+      const elapsedSec = (currentCycle - eventBegin) / (cps || 0.5);
+      const baseDist = speed !== 0 ? elapsedSec * Math.abs(speed) + syncOffset : syncOffset;
+      st.syncDistOffset = speed !== 0
+        ? targetDistInLoop - (((baseDist % loopLen) + loopLen) % loopLen)
+        : targetDistInLoop - syncOffset;
+    }
   }
 
-  // Sync continuity: recompute distance offset when speed/begin/end change
-  if (synced && loopLen > 0) {
+  // Sync/rolling continuity: recompute distance offset when speed/begin/end change
+  if ((synced || rolling) && loopLen > 0) {
     const speedChanged = st.lastSyncSpeed != null && st.lastSyncSpeed !== speed;
     const beginChanged = st.lastSyncBegin != null && st.lastSyncBegin !== beginVal;
     const endChanged = st.lastSyncEnd != null && st.lastSyncEnd !== endVal;
@@ -219,6 +245,7 @@ function updateVideoPlayback(
         syncOffset,
         oldDistOffset: st.syncDistOffset,
         duration: dur,
+        rolling,
       });
     }
 
@@ -226,14 +253,14 @@ function updateVideoPlayback(
     st.lastSyncBegin = beginVal;
     st.lastSyncEnd = endVal;
   } else {
-    // Not in sync mode — reset continuity tracking
+    // Not in sync/rolling mode — reset continuity tracking
     st.lastSyncSpeed = undefined;
     st.lastSyncBegin = undefined;
     st.lastSyncEnd = undefined;
     st.syncDistOffset = 0;
   }
 
-  const distOffset = synced ? st.syncDistOffset : 0;
+  const distOffset = (synced || rolling) ? st.syncDistOffset : 0;
   const expected = computeExpectedTime({
     currentCycle, eventBegin, cps: cps || 0.5,
     speed, loopStart, loopEnd, duration: dur, syncOffset, distOffset,

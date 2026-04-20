@@ -6,6 +6,6 @@
  * Falls back to the current cycle time `t` when whole is missing (e.g. signal sources).
  */
 export function eventBeginFromHap(ev: any, hap: any, t: number): number {
-  if (ev.sync != null) return 0;
+  if (ev.sync != null || ev.rolling != null) return 0;
   return Number(hap?.whole?.begin ?? t);
 }

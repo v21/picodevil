@@ -205,6 +205,27 @@ PatternProto.sync = function (value?: any) {
   return sync(value, this);
 };
 
+export const rolling = createMixParam("rolling");
+/**
+ * Enables continuous playback where position is preserved across re-evals and speed changes.
+ * Unlike sync(), position is not reset to a clock-synchronized value — the video continues
+ * from wherever it was. Speed=0 freezes in place; resuming continues from the frozen position.
+ *
+ * Combined with sync(): rolling takes precedence for an existing video element;
+ * sync initializes a fresh element to the clock-synchronized position.
+ *
+ * @returns {Pattern} pattern with rolling enabled
+ * @example
+ * $: video("clip.mp4").rolling()              // plays continuously, position preserved across re-evals
+ * $: video("clip.mp4").speed("0 1").rolling() // freeze half-cycle, advance half-cycle, repeat
+ * $: video("clip.mp4").speed("-1 0").rolling() // reverse then freeze in place
+ * $: video("clip.mp4").speed(sine).rolling()  // smooth speed modulation, never resets
+ */
+PatternProto.rolling = function (value?: any) {
+  if (value === undefined) value = true;
+  return rolling(value, this);
+};
+
 /**
  * Sets the start position within a video (0–1, where 0 = beginning, 1 = end).
  * Uses Strudel's `begin` property, so it composes with .chop(), .slice(), etc.

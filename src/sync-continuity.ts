@@ -26,6 +26,12 @@ export interface SyncDistOffsetParams {
   oldDistOffset: number;
   /** Video duration in seconds (needed for inverted range wrapping). */
   duration?: number;
+  /**
+   * When true, speed=0 freezes at the current position (rolling mode).
+   * When false (sync mode), speed=0 returns 0 so computeExpectedTime snaps to loopStart —
+   * the correct behaviour for a pure clock-based position function.
+   */
+  rolling?: boolean;
 }
 
 /** Positive-modulo helper: always returns a value in [0, m). */
@@ -46,7 +52,15 @@ export function computeSyncDistOffset(p: SyncDistOffsetParams): number {
   // 1. Compute old position (mirrors computeExpectedTime logic)
   let oldPos: number;
   if (p.oldSpeed === 0 || p.oldLoopLen <= 0) {
-    oldPos = p.oldBegin;
+    if (p.rolling && p.oldLoopLen > 0) {
+      // Rolling: frozen position is encoded in syncOffset + oldDistOffset
+      const frozenDist = p.syncOffset + p.oldDistOffset;
+      const frozenDistInLoop = frozenDist === 0 ? 0 : posMod(frozenDist, p.oldLoopLen);
+      oldPos = p.oldBegin + frozenDistInLoop;
+    } else {
+      // Sync: speed=0 is defined as loopStart (pure clock function, no history)
+      oldPos = p.oldBegin;
+    }
   } else {
     const oldDist = p.elapsedSec * Math.abs(p.oldSpeed) + p.syncOffset + p.oldDistOffset;
     const oldDistInLoop = posMod(oldDist, p.oldLoopLen);
@@ -83,7 +97,7 @@ export function computeSyncDistOffset(p: SyncDistOffsetParams): number {
   //    For inverted ranges, distInLoop wraps through the video boundary.
   let targetDistInLoop: number;
   if (newInverted && dur < Infinity) {
-    if (p.newSpeed > 0) {
+    if (p.newSpeed > 0 || (p.newSpeed === 0 && p.rolling)) {
       targetDistInLoop = clampedPos >= p.newBegin
         ? clampedPos - p.newBegin
         : clampedPos + (dur - p.newBegin);
@@ -93,13 +107,17 @@ export function computeSyncDistOffset(p: SyncDistOffsetParams): number {
         : p.newEnd + (dur - clampedPos);
     }
   } else {
-    targetDistInLoop = p.newSpeed > 0
+    targetDistInLoop = (p.newSpeed > 0 || (p.newSpeed === 0 && p.rolling))
       ? clampedPos - p.newBegin
       : p.newEnd - clampedPos;
   }
 
   // 4. Compute new base distInLoop (without any offset)
-  if (p.newSpeed === 0) return 0;
+  if (p.newSpeed === 0) {
+    // Rolling: encode clampedPos as distOffset so computeExpectedTime(speed=0) freezes there.
+    // Sync: return 0 so distOffset=0 and computeExpectedTime snaps to loopStart (pure clock behaviour).
+    return p.rolling ? targetDistInLoop - p.syncOffset : 0;
+  }
   const newBaseDist = p.elapsedSec * Math.abs(p.newSpeed) + p.syncOffset;
   const newBaseDistInLoop = posMod(newBaseDist, p.newLoopLen);
 

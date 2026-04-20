@@ -231,30 +231,110 @@ describe("computeSyncDistOffset", () => {
       expect(newPos).toBeCloseTo(0, 6);
     });
 
-    it("speed 1→0→1: resumes from where speed=0 started", () => {
-      const cycle = 3; // elapsed = 6s, speed=1 → pos = 6s
+    // sync mode: speed=0 snaps to loopStart (pure clock function, no history)
+    it("sync: speed 1→0 snaps to loopStart", () => {
+      const offset = computeSyncDistOffset({
+        elapsedSec: 3 / CPS,
+        oldSpeed: 1, newSpeed: 0,
+        oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
+        oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: 0,
+      });
+      const pos = posAt({ currentCycle: 3, cps: CPS, speed: 0, loopStart: 0, loopEnd: DUR, distOffset: offset });
+      expect(pos).toBeCloseTo(0, 6); // loopStart
+    });
+
+    // rolling mode: speed=0 freezes at current position
+    it("rolling: speed 1→0 freezes at current position", () => {
+      const cycle = 3; // elapsed=6s, speed=1 → pos=6s
+      const posBeforeStop = posAt({ currentCycle: cycle, cps: CPS, speed: 1, loopStart: 0, loopEnd: DUR });
+      expect(posBeforeStop).toBeCloseTo(6, 5);
+
+      const offset = computeSyncDistOffset({
+        elapsedSec: cycle / CPS,
+        oldSpeed: 1, newSpeed: 0,
+        oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
+        oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: 0,
+        rolling: true,
+      });
+
+      const frozenPos = posAt({ currentCycle: cycle, cps: CPS, speed: 0, loopStart: 0, loopEnd: DUR, distOffset: offset });
+      expect(frozenPos).toBeCloseTo(6, 5);
+
+      const frozenPosLater = posAt({ currentCycle: 10, cps: CPS, speed: 0, loopStart: 0, loopEnd: DUR, distOffset: offset });
+      expect(frozenPosLater).toBeCloseTo(6, 5);
+    });
+
+    it("rolling: speed 1→0→1 resumes from frozen position", () => {
+      const cycle = 3; // elapsed=6s → pos=6s
       const posBeforeStop = posAt({ currentCycle: cycle, cps: CPS, speed: 1, loopStart: 0, loopEnd: DUR });
 
-      // Change to speed 0
       const offset1 = computeSyncDistOffset({
         elapsedSec: cycle / CPS,
         oldSpeed: 1, newSpeed: 0,
         oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
         oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: 0,
+        rolling: true,
       });
-      // speed=0 always returns loopStart — that's the position at speed=0
 
-      // Later, change back to speed 1 — should resume from loopStart (where speed=0 left it)
       const laterCycle = 10;
       const offset2 = computeSyncDistOffset({
         elapsedSec: laterCycle / CPS,
         oldSpeed: 0, newSpeed: 1,
         oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
         oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: offset1,
+        rolling: true,
       });
 
       const resumePos = posAt({ currentCycle: laterCycle, cps: CPS, speed: 1, loopStart: 0, loopEnd: DUR, distOffset: offset2 });
-      expect(resumePos).toBeCloseTo(0, 6); // resumes from loopStart
+      expect(resumePos).toBeCloseTo(posBeforeStop, 5); // resumes from 6s
+    });
+
+    it("rolling: speed -1→0 freezes at position reached by reverse", () => {
+      const cycle = 1; // elapsed=2s, speed=-1 → pos = loopEnd - 2 = 8s
+      const posBeforeStop = posAt({ currentCycle: cycle, cps: CPS, speed: -1, loopStart: 0, loopEnd: DUR });
+      expect(posBeforeStop).toBeCloseTo(8, 5);
+
+      const offset = computeSyncDistOffset({
+        elapsedSec: cycle / CPS,
+        oldSpeed: -1, newSpeed: 0,
+        oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
+        oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: 0,
+        rolling: true,
+      });
+
+      const frozenPos = posAt({ currentCycle: cycle, cps: CPS, speed: 0, loopStart: 0, loopEnd: DUR, distOffset: offset });
+      expect(frozenPos).toBeCloseTo(8, 5);
+    });
+
+    it("rolling: speed 0→1→0→1 alternating freeze-advance", () => {
+      const R = { rolling: true as const };
+      // Cycle 0.5 (0→1, elapsed=1s): was frozen at loopStart → start from 0
+      const offset1 = computeSyncDistOffset({
+        elapsedSec: 1, oldSpeed: 0, newSpeed: 1,
+        oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
+        oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: 0, ...R,
+      });
+      const pos1 = posAt({ currentCycle: 0.5, cps: CPS, speed: 1, loopStart: 0, loopEnd: DUR, distOffset: offset1 });
+      expect(pos1).toBeCloseTo(0, 5);
+
+      // Cycle 1.0 (1→0, elapsed=2s): record where it is, freeze there
+      const posAtStop = posAt({ currentCycle: 1.0, cps: CPS, speed: 1, loopStart: 0, loopEnd: DUR, distOffset: offset1 });
+      const offset2 = computeSyncDistOffset({
+        elapsedSec: 2, oldSpeed: 1, newSpeed: 0,
+        oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
+        oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: offset1, ...R,
+      });
+      const frozenPos = posAt({ currentCycle: 1.0, cps: CPS, speed: 0, loopStart: 0, loopEnd: DUR, distOffset: offset2 });
+      expect(frozenPos).toBeCloseTo(posAtStop, 5);
+
+      // Cycle 1.5 (0→1, elapsed=3s): resume from frozenPos
+      const offset3 = computeSyncDistOffset({
+        elapsedSec: 3, oldSpeed: 0, newSpeed: 1,
+        oldBegin: 0, newBegin: 0, oldEnd: DUR, newEnd: DUR,
+        oldLoopLen: DUR, newLoopLen: DUR, syncOffset: 0, oldDistOffset: offset2, ...R,
+      });
+      const resumePos = posAt({ currentCycle: 1.5, cps: CPS, speed: 1, loopStart: 0, loopEnd: DUR, distOffset: offset3 });
+      expect(resumePos).toBeCloseTo(frozenPos, 5);
     });
 
     it("with syncOffset: offset is preserved across speed change", () => {
