@@ -287,28 +287,72 @@ function getEase(curve: string, direction: string): (t: number) => number {
 
 interface NumEvent { begin: number; end: number; value: number }
 
-function collectEvents(src: any, t: number, padding = 1): NumEvent[] {
+function toNumEvent(ev: any): NumEvent | null {
+  if (!ev.whole) return null;
+  return { begin: Number(ev.whole.begin), end: Number(ev.whole.end), value: Number(ev.value) };
+}
+
+// Return deduplicated events (by begin time) from a cycle-range query around t.
+// Using a cycle-range query (not a point) ensures fieldPat in mapOn returns
+// events with proper non-zero spans.
+function eventsInCycle(src: any, t: number): NumEvent[] {
   const cycle = Math.floor(t);
-  const evs = src.queryArc(cycle - padding, cycle + 1 + padding);
+  const raw = src.queryArc(cycle, cycle + 1);
   const result: NumEvent[] = [];
-  for (const ev of evs) {
-    if (ev.whole) {
-      result.push({
-        begin: Number(ev.whole.begin),
-        end: Number(ev.whole.end),
-        value: Number(ev.value),
-      });
-    }
+  for (const ev of raw) {
+    const ne = toNumEvent(ev);
+    if (ne) result.push(ne);
   }
-  // deduplicate by begin time (queryArc can return overlapping cycles)
   result.sort((a, b) => a.begin - b.begin);
   const deduped: NumEvent[] = [];
-  for (const ev of result) {
-    if (!deduped.length || Math.abs(ev.begin - deduped[deduped.length - 1].begin) > 0.0001) {
-      deduped.push(ev);
+  for (const ne of result) {
+    if (!deduped.length || Math.abs(ne.begin - deduped[deduped.length - 1].begin) > 0.0001) {
+      deduped.push(ne);
     }
   }
   return deduped;
+}
+
+// Find the event whose begin is nearest to targetBegin, by querying the cycle
+// that contains targetBegin. Works for patterns with arbitrarily long spans.
+function nearestOnset(src: any, targetBegin: number): NumEvent | null {
+  const evs = eventsInCycle(src, targetBegin);
+  let best: NumEvent | null = null;
+  for (const ne of evs) {
+    if (!best || Math.abs(ne.begin - targetBegin) < Math.abs(best.begin - targetBegin)) {
+      best = ne;
+    }
+  }
+  return best;
+}
+
+// Collect [prev, cur, next, next2] events around t by:
+// 1. Cycle-range querying to find cur (so fieldPat events have proper spans)
+// 2. Chaining from cur's boundaries to find neighbours (so slow patterns work)
+function collectEvents(src: any, t: number): NumEvent[] {
+  // Find current event via cycle-range query
+  const cycleEvs = eventsInCycle(src, t);
+  let cur: NumEvent | null = null;
+  for (const ne of cycleEvs) {
+    if (ne.begin <= t + 0.0001 && ne.end > t - 0.0001) {
+      if (!cur || ne.begin > cur.begin) cur = ne;
+    }
+  }
+  if (!cur) return [];
+
+  const EPS = 0.00001;
+  // Chain forward from cur's end to find next events
+  const next  = nearestOnset(src, cur.end);
+  const next2 = next ? nearestOnset(src, next.end) : null;
+  // Chain backward: query just before cur starts to land in the previous event
+  const prev  = nearestOnset(src, cur.begin - EPS);
+
+  const result: NumEvent[] = [];
+  if (prev  && Math.abs(prev.begin  - cur.begin) > 0.0001) result.push(prev);
+  result.push(cur);
+  if (next  && Math.abs(next.begin  - cur.begin) > 0.0001) result.push(next);
+  if (next2 && next && Math.abs(next2.begin - next.begin) > 0.0001) result.push(next2);
+  return result;
 }
 
 function findCurrentIndex(evs: NumEvent[], t: number): number {

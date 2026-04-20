@@ -35,6 +35,43 @@ describe("lerp with pattern params", () => {
   });
 });
 
+describe('lerp with slow alternation: "<1 10>/10".lerp()', () => {
+  // "<1 10>/10" produces two events over 20 cycles:
+  //   [0, 10) → value 1
+  //   [10, 20) → value 10
+  // lerp() interpolates from cur.value to next.value over the current event's span.
+  // collectEvents uses padding=1 (window of ~3 cycles), so when in the [10,20) span
+  // the next event (value=1 at cycle 20) is out of the query window and next = cur.
+  // Expected: ramps 1→10 over cycles 0–9, then holds flat at 10 over cycles 10–19.
+
+  const pat = () => mini("<1 10>/10").lerp();
+
+  it("starts at 1 at t=0", () => {
+    expect(queryVal(pat(), 0)).toBeCloseTo(1, 3);
+  });
+
+  it("is midway between 1 and 10 at t=5", () => {
+    const v = queryVal(pat(), 5);
+    expect(v).toBeCloseTo(5.5, 1);
+  });
+
+  it("approaches 10 near the end of the first span (t=9.9)", () => {
+    const v = queryVal(pat(), 9.9)!;
+    expect(v).toBeGreaterThan(9);
+    expect(v).toBeLessThanOrEqual(10);
+  });
+
+  it("is at 10 at t=10 (start of second span)", () => {
+    expect(queryVal(pat(), 10)).toBeCloseTo(10, 3);
+  });
+
+  it("ramps back toward 1 at t=15 (mid second span)", () => {
+    const v = queryVal(pat(), 15)!;
+    // lerps from 10 → 1 over cycles 10–19; midpoint = 5.5
+    expect(v).toBeCloseTo(5.5, 1);
+  });
+});
+
 describe("spline with pattern params", () => {
   it("accepts literal number (existing behavior)", () => {
     const pat = mini("0 0.5 1").spline(0.5);
