@@ -273,6 +273,21 @@ const dimArg: fc.Arbitrary<string> = fc.oneof(
   { weight: 7, arbitrary: miniArb(["0.25", "0.5", "0.75", "1"], 1).map(m => `"${m}"`) },
 );
 
+/** Crop coordinate argument: normalized [0,1] with a few edge cases outside the range. */
+const cropArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 5, arbitrary: miniArb(["0", "0.25", "0.5", "0.75", "1"], 1).map(m => `"${m}"`) },
+  { weight: 2, arbitrary: continuousSignal },
+  // Edge cases: values outside [0,1] trigger tiling
+  { weight: 1, arbitrary: miniArb(["-0.1", "-0.25", "1.1", "1.25", "1.5"], 1).map(m => `"${m}"`) },
+);
+
+/** Crop width/height argument: positive fractions, occasionally > 1 for tiling. */
+const cropDimArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 6, arbitrary: miniArb(["0.25", "0.5", "0.75", "1"], 1).map(m => `"${m}"`) },
+  { weight: 2, arbitrary: continuousSignal },
+  { weight: 1, arbitrary: miniArb(["1.1", "1.25", "1.5", "2"], 1).map(m => `"${m}"`) },
+);
+
 // ============================================================
 // Strudel pattern method arbitraries
 // ============================================================
@@ -328,6 +343,14 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotateZ(${a})` })),
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
+  // crop controls
+  cropArg.map(a => ({ code: `.cropx(${a})` })),
+  cropArg.map(a => ({ code: `.cropy(${a})` })),
+  cropDimArg.map(a => ({ code: `.cropw(${a})` })),
+  cropDimArg.map(a => ({ code: `.croph(${a})` })),
+  fc.tuple(cropArg, cropArg, cropDimArg, cropDimArg).map(([x, y, w, h]) => ({
+    code: `.crop(${x}, ${y}, ${w}, ${h})`,
+  })),
 );
 
 const videoChain: fc.Arbitrary<string> = fc.array(videoMethod, { minLength: 0, maxLength: 5 })
@@ -347,6 +370,14 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotateZ(${a})` })),
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
+  // crop controls
+  cropArg.map(a => ({ code: `.cropx(${a})` })),
+  cropArg.map(a => ({ code: `.cropy(${a})` })),
+  cropDimArg.map(a => ({ code: `.cropw(${a})` })),
+  cropDimArg.map(a => ({ code: `.croph(${a})` })),
+  fc.tuple(cropArg, cropArg, cropDimArg, cropDimArg).map(([x, y, w, h]) => ({
+    code: `.crop(${x}, ${y}, ${w}, ${h})`,
+  })),
   posArg.map(a => ({ code: `.x(${a})` })),
   posArg.map(a => ({ code: `.y(${a})` })),
   posArg.map(a => ({ code: `.left(${a})` })),

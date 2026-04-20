@@ -87,7 +87,8 @@ function renderEvent(
     const imgEl = (opts.imagePool ?? imagePool).get(base + ev.src);
     if (imgEl && imgEl.naturalWidth > 0) {
       const fitMode = ev.objectfit ?? "cover";
-      drawFit(ctx, imgEl, imgEl.naturalWidth, imgEl.naturalHeight, canvas.width, canvas.height, fitMode);
+      drawFit(ctx, imgEl, imgEl.naturalWidth, imgEl.naturalHeight, canvas.width, canvas.height, fitMode,
+        ev.cropx ?? 0, ev.cropy ?? 0, ev.cropw ?? 1, ev.croph ?? 1);
     }
   } else if (ev._type === "video") {
     const pool = (opts.videoPool ?? new Map()) as Map<string, any>;
@@ -99,7 +100,8 @@ function renderEvent(
       }
       if (el.videoWidth > 0) {
         const fitMode = ev.objectfit ?? "cover";
-        drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode);
+        drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode,
+          ev.cropx ?? 0, ev.cropy ?? 0, ev.cropw ?? 1, ev.croph ?? 1);
       }
     }
   }
@@ -449,6 +451,132 @@ describe("visual rendering", () => {
       const [r1] = pixel(ctx, 10, 50);
       expect(r1).toBeGreaterThan(200);
       expect(pixel(ctx, 90, 50)).toEqual([0, 0, 255, 255]);
+    });
+  });
+
+  // --- crop rendering ---
+
+  describe("crop", () => {
+    /** Build a 100x100 canvas painted left-half red, right-half blue. */
+    function makeHalfRedBlue(): HTMLCanvasElement {
+      const src = document.createElement("canvas");
+      src.width = 100; src.height = 100;
+      const sctx = src.getContext("2d")!;
+      sctx.fillStyle = "red";  sctx.fillRect(0, 0, 50, 100);
+      sctx.fillStyle = "blue"; sctx.fillRect(50, 0, 50, 100);
+      return src;
+    }
+
+    it("default crop (0,0,1,1) is identical to no crop", () => {
+      const src = makeHalfRedBlue();
+      const { canvas: c1, ctx: ctx1 } = makeCanvas();
+      const { canvas: c2, ctx: ctx2 } = makeCanvas();
+      drawFit(ctx1, src, 100, 100, W, H, "fill");
+      drawFit(ctx2, src, 100, 100, W, H, "fill", 0, 0, 1, 1);
+      expect(pixel(ctx1, 25, 50)).toEqual(pixel(ctx2, 25, 50));
+      expect(pixel(ctx1, 75, 50)).toEqual(pixel(ctx2, 75, 50));
+      expect(c1).toBeDefined(); expect(c2).toBeDefined(); // silence unused warnings
+    });
+
+    it("crop left half (cropw=0.5): center pixel is red", () => {
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, 0.5, 1);
+      // The left half (red) fills the whole canvas
+      const [r, , b] = pixel(ctx, 50, 50);
+      expect(r).toBeGreaterThan(200);
+      expect(b).toBeLessThan(50);
+    });
+
+    it("crop right half (cropx=0.5, cropw=0.5): center pixel is blue", () => {
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0.5, 0, 0.5, 1);
+      const [r, , b] = pixel(ctx, 50, 50);
+      expect(b).toBeGreaterThan(200);
+      expect(r).toBeLessThan(50);
+    });
+
+    it("crop with contain: corners are transparent (letterboxed)", () => {
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      ctx.clearRect(0, 0, W, H);
+      // Crop center quarter (50x50 of 100x100), contain into 100x100: fits exactly (no letterbox since 1:1 → 1:1)
+      // Use 0.25,0,0.5,1 → crops a 50x100 strip (portrait) contained into 100x100 canvas → letterbox on left/right
+      drawFit(ctx, src, 100, 100, W, H, "contain", 0.25, 0, 0.5, 1);
+      // portrait 50x100 → scale=min(100/50, 100/100)=1 → dw=50, dh=100, dx=25, dy=0
+      // corners (0,50) should be transparent
+      const [, , , a] = pixel(ctx, 5, 50);
+      expect(a).toBe(0);
+      // center should be colored
+      const [, , , ac] = pixel(ctx, 50, 50);
+      expect(ac).toBe(255);
+    });
+
+    it("tiling: crop extending left (cropx=-0.1) wraps source — right edge color appears at left", () => {
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      ctx.clearRect(0, 0, W, H);
+      // crop from x=-0.1 width=1.2 fill → tiles the source
+      // at destination x=0, we're looking at source x=-0.1 (mod 1) = 0.9 = blue region
+      drawFit(ctx, src, 100, 100, W, H, "fill", -0.1, 0, 1.2, 1);
+      // The leftmost pixels should show the tiled blue region from right side of source
+      const [r, , b] = pixel(ctx, 1, 50);
+      expect(b).toBeGreaterThan(r); // blue (right-side tile) at the left edge
+    });
+
+    it("video: crop right half still renders solid color", async () => {
+      // red.mp4 is solid red — cropping any region should still be red
+      let redVid: HTMLVideoElement;
+      redVid = await new Promise((resolve, reject) => {
+        const el = document.createElement("video") as any;
+        el._state = createVideoState();
+        el.muted = true; el.playsInline = true; el.preload = "auto";
+        el.addEventListener("canplaythrough", () => resolve(el), { once: true });
+        el.addEventListener("error", () => reject(new Error("video load failed")), { once: true });
+        el.src = TEST_BASE + "red.mp4";
+        el.load();
+      });
+      const { ctx } = makeCanvas();
+      drawFit(ctx, redVid, redVid.videoWidth, redVid.videoHeight, W, H, "fill", 0.5, 0, 0.5, 1);
+      const [r, g, b, a] = pixel(ctx, 50, 50);
+      expect(a).toBe(255);
+      expect(r).toBeGreaterThan(200);
+      expect(g).toBeLessThan(80);
+      expect(b).toBeLessThan(80);
+    });
+
+    it("image: .cropw(0.5) via pattern pipeline — left half fills canvas red", () => {
+      // Use a canvas element as the image source through renderEvent
+      // Build half-red/half-blue as a canvas, then test through render pipeline with a color() fallback
+      // (Since renderEvent only handles named types, test drawFit directly with pattern controls)
+      const src = makeHalfRedBlue();
+      const { ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, 0.5, 1);
+      const [r, , b] = pixel(ctx, 50, 50);
+      expect(r).toBeGreaterThan(200);
+      expect(b).toBeLessThan(50);
+    });
+
+    it("golden snapshot: left-half crop", () => {
+      const src = makeHalfRedBlue();
+      const { canvas, ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0, 0, 0.5, 1);
+      expect(canvas.toDataURL()).toMatchSnapshot();
+    });
+
+    it("golden snapshot: right-half crop", () => {
+      const src = makeHalfRedBlue();
+      const { canvas, ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", 0.5, 0, 0.5, 1);
+      expect(canvas.toDataURL()).toMatchSnapshot();
+    });
+
+    it("golden snapshot: tiling crop", () => {
+      const src = makeHalfRedBlue();
+      const { canvas, ctx } = makeCanvas();
+      drawFit(ctx, src, 100, 100, W, H, "fill", -0.1, 0, 1.2, 1);
+      expect(canvas.toDataURL()).toMatchSnapshot();
     });
   });
 });

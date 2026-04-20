@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-04-21.
+> This file is machine-authored for use by coding agents. Last updated 2026-04-20.
 
 ## What is this?
 
@@ -103,6 +103,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
 - Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`
 - Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.fit()`, `.urlBase()`
+- Crop: `.cropx(n)`, `.cropy(n)`, `.cropw(n)`, `.croph(n)`, `.crop(x, y, w, h)` — all normalized [0,1] source coords; crop outside [0,1] tiles the source
 - Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
 - Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
@@ -122,6 +123,10 @@ Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
 Example: `$: s("clip.mp4").chopStack(4).rowscols(2).gridMod()` — 4 simultaneous slices tiled in a 2×2 grid
 Example: `$: stack(s("a.mp4"), s("b.mp4")).chopStack(4).index().rowscols(2).gridMod()` — chopStack on stacked sources; index() re-numbers all slices 0..7
 Example: `$: s("clip.mp4").syncStack(4).rowscols(2).gridMod().rolling()` — 4 phase-offset copies (sync 0, 0.25, 0.5, 0.75) tiled in a grid
+Example: `$: s("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)` — render center quarter of source, stretched to fill cell
+Example: `$: s("clip.mp4").cropw(0.5).objectfit("contain")` — left half of source, letterboxed
+Example: `$: s("clip.mp4").cropx(sine.range(0, 0.5)).cropw(0.5)` — sliding crop window
+Example: `$: s("clip.mp4").crop(-0.1, 0, 1.2, 1)` — slightly wider than source; edges tile
 Example: `$: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())` — smoothly interpolate the x field between values
 Example: `$: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline())` — spline-interpolate the alpha field
 Example: `$: s("clip.mp4").speed("1 2").mulOn('speed', 0.5)` — halve the speed field arithmetically
@@ -216,12 +221,12 @@ Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest
 
 ## Documentation
 
-User-facing functions and methods should have JSDoc comments in their source files. These are automatically extracted by `vite-plugin-reference.ts` and displayed in the sidebar reference tab.
+When adding or changing user-facing features, update the following:
+1. **CLAUDE.md** — a quick mention of functionality and where to look for it
+1. **`GUIDE.md`** — the human-readable user guide. Add a section or update the relevant section with examples, a parameter table, and behaviour notes.
+2. **JSDoc in the source file** — automatically extracted by `vite-plugin-reference.ts` and displayed in the sidebar reference tab.
 
-- The plugin scans source files listed in `buildReferenceData()` in `vite-plugin-reference.ts` — add new files there when creating new user-facing modules.
-- It matches `/** ... */ export function name` and `/** ... */ PatternProto.name =` patterns.
-- Use `@param` for parameters and `@example` for usage examples in JSDoc blocks.
-- Categories are defined in the `fileMap` array (e.g. "Sources", "Controls", "Layout", "Indexing").
+The plugin scans source files listed in `buildReferenceData()` in `vite-plugin-reference.ts` — add new files there when creating new user-facing modules. It matches `/** ... */ export function name` and `/** ... */ PatternProto.name =` patterns. Use `@param` for parameters and `@example` for usage examples. Categories are defined in the `fileMap` array (e.g. "Sources", "Controls", "Layout", "Indexing").
 
 ## Git commit style
 

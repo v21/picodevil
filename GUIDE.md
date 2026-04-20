@@ -149,6 +149,40 @@ $: video("clip.mp4").fit("cover contain")  // alternates
 - **fill** — stretches to fill exactly (may distort)
 - **none** — draws at native resolution, centered
 
+### Crop
+
+Crop the source to a rectangle defined in normalized [0,1] source coordinates, then fit the cropped region into the cell using the current `objectfit` mode.
+
+```js
+$: video("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)  // center quarter, stretched to fill
+$: video("clip.mp4").cropw(0.5)                    // left half, stretched to fill
+$: video("clip.mp4").crop(0, 0, 0.5, 1).objectfit("contain")  // left half, letterboxed
+$: video("clip.mp4").cropx(0.5).cropw(0.5)        // right half
+```
+
+| Method         | Description                                         | Default |
+| -------------- | --------------------------------------------------- | ------- |
+| `.cropx(v)`    | Left edge of crop in source coords (0–1)            | 0       |
+| `.cropy(v)`    | Top edge of crop in source coords (0–1)             | 0       |
+| `.cropw(v)`    | Width of crop as fraction of source width (0–1)     | 1       |
+| `.croph(v)`    | Height of crop as fraction of source height (0–1)   | 1       |
+| `.crop(x,y,w,h)` | Shorthand for all four at once                   |         |
+
+All arguments accept patterns and signals:
+
+```js
+$: video("clip.mp4").cropx(sine.range(0, 0.5)).cropw(0.5)   // sliding window
+$: video("clip.mp4").cropx("0 0.5").cropw("0.5 0.5")         // alternating halves
+```
+
+**Aspect ratio**: the cropped region's own aspect ratio is what `objectfit` applies to. `.objectfit("contain")` letterboxes the crop; `.objectfit("fill")` stretches it (ignoring aspect ratio).
+
+**Tiling**: if the crop rectangle extends outside [0,1] — for example `cropx(-0.1).cropw(1.2)` — the source wraps/tiles to fill the region.
+
+```js
+$: video("clip.mp4").crop(-0.1, 0, 1.2, 1).objectfit("fill")  // slight tile wrap at edges
+```
+
 ### Video speed
 
 ```js

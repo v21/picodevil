@@ -138,6 +138,77 @@ export const scaleY = createMixParam("scaleY");
 export const objectfit = createMixParam("objectfit");
 
 /**
+ * Sets the left edge of the crop rectangle within the source, in normalized [0,1] coordinates.
+ * 0 = left edge of source. Use with `.cropy()`, `.cropw()`, `.croph()`, or the `.crop()` shorthand.
+ *
+ * @param {number | string | Pattern} value horizontal crop start (0–1, default 0)
+ * @returns {Pattern} pattern with cropx applied
+ * @example
+ * $: video("clip.mp4").cropx(0.25)       // start from 25% into the source
+ *
+ */
+export const cropx = createMixParam("cropx");
+
+/**
+ * Sets the top edge of the crop rectangle within the source, in normalized [0,1] coordinates.
+ *
+ * @param {number | string | Pattern} value vertical crop start (0–1, default 0)
+ * @returns {Pattern} pattern with cropy applied
+ * @example
+ * $: video("clip.mp4").cropy(0.25)       // start from 25% down the source
+ *
+ */
+export const cropy = createMixParam("cropy");
+
+/**
+ * Sets the width of the crop rectangle within the source, in normalized [0,1] coordinates.
+ * 1 = full source width, 0.5 = half. If the crop region extends outside [0,1], the source tiles.
+ *
+ * @param {number | string | Pattern} value crop width as fraction of source width (default 1)
+ * @returns {Pattern} pattern with cropw applied
+ * @example
+ * $: video("clip.mp4").cropw(0.5)        // use only left half of source, stretched to fill
+ * $: video("clip.mp4").cropw(1.5)        // wider than source — tiles horizontally
+ *
+ */
+export const cropw = createMixParam("cropw");
+
+/**
+ * Sets the height of the crop rectangle within the source, in normalized [0,1] coordinates.
+ *
+ * @param {number | string | Pattern} value crop height as fraction of source height (default 1)
+ * @returns {Pattern} pattern with croph applied
+ * @example
+ * $: video("clip.mp4").croph(0.5)        // use only top half of source
+ *
+ */
+export const croph = createMixParam("croph");
+
+/**
+ * Crops the source to the given rectangle in normalized [0,1] source coordinates.
+ * x/y set the top-left corner; w/h set the size. The cropped region is then fit
+ * into the cell using the current `objectfit` mode (default "cover").
+ *
+ * If the rectangle extends outside [0,1], the source tiles to fill the gap.
+ * Aspect ratio of the cropped region is preserved by `objectfit("contain")`.
+ *
+ * @param {number | string | Pattern} [x=0] left edge of crop (0–1)
+ * @param {number | string | Pattern} [y=0] top edge of crop (0–1)
+ * @param {number | string | Pattern} [w=1] width of crop (fraction of source width)
+ * @param {number | string | Pattern} [h=1] height of crop (fraction of source height)
+ * @returns {Pattern} pattern with crop applied
+ * @example
+ * $: video("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)   // center quarter
+ * $: video("clip.mp4").crop(0, 0, 0.5, 1)            // left half, stretched to fill
+ * $: video("clip.mp4").crop(0, 0, 0.5, 1).objectfit("contain")  // left half, letterboxed
+ * $: video("clip.mp4").crop(-0.1, 0, 1.2, 1)         // slightly wider than source, tiles edges
+ *
+ */
+PatternProto.crop = function (x: any = 0, y: any = 0, w: any = 1, h: any = 1) {
+  return this.cropx(x).cropy(y).cropw(w).croph(h);
+};
+
+/**
  * Sets the CSS blend mode for compositing this pattern onto the canvas.
  * Uses canvas globalCompositeOperation values (same as CSS mix-blend-mode).
  *
