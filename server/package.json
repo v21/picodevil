@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "node --test server.test.js"
+    "test": "node --test server.test.js",
+    "download": "node server.js download",
+    "add": "node server.js add",
+    "transcode": "node server.js transcode"
   },
   "keywords": [],
   "license": "ISC",
