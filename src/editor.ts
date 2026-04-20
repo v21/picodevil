@@ -1,5 +1,5 @@
 import { EditorView, keymap } from "@codemirror/view";
-import { EditorState, Prec, Transaction } from "@codemirror/state";
+import { EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
@@ -12,11 +12,13 @@ declare global {
   }
 }
 
-const STORAGE_KEY = "uzuvid:code";
-const defaultCode = `$: video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
-const savedCode = localStorage.getItem(STORAGE_KEY);
+export const defaultCode = `$: video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
 
-export function setupEditor(parent: HTMLElement): EditorView {
+export function setupEditor(
+  parent: HTMLElement,
+  initialCode: string = defaultCode,
+  onCodeChange?: (code: string) => void,
+): EditorView {
   const errorEl = document.createElement("div");
   errorEl.className = "uzu-error";
   parent.appendChild(errorEl);
@@ -66,11 +68,16 @@ export function setupEditor(parent: HTMLElement): EditorView {
       changes: { from: pos.valueArgStart, to: pos.valueArgEnd, insert: newText },
       annotations: Transaction.addToHistory.of(addToHistory),
     });
-    // Save to localStorage
-    localStorage.setItem(STORAGE_KEY, editorView.state.doc.toString());
+    onCodeChange?.(editorView.state.doc.toString());
   }
 
   const widgets = widgetExtension(handleSliderChange);
+
+  const changeListener: Extension = onCodeChange
+    ? EditorView.updateListener.of((update) => {
+        if (update.docChanged) onCodeChange(update.state.doc.toString());
+      })
+    : [];
 
   /** Eval code and push widget decorations into the editor. */
   function evalAndDecorate(editorView: EditorView, code: string) {
@@ -87,7 +94,7 @@ export function setupEditor(parent: HTMLElement): EditorView {
       key: "Ctrl-Enter",
       run(view: EditorView) {
         const code = view.state.doc.toString();
-        localStorage.setItem(STORAGE_KEY, code);
+        onCodeChange?.(code);
         evalAndDecorate(view, code);
         // flash effect
         const lines = view.dom.querySelectorAll(".cm-line");
@@ -106,8 +113,8 @@ export function setupEditor(parent: HTMLElement): EditorView {
   const view = new EditorView({
     parent,
     state: EditorState.create({
-      doc: savedCode ?? defaultCode,
-      extensions: [basicSetup, javascript(), evalKeymap, widgets],
+      doc: initialCode,
+      extensions: [basicSetup, javascript(), evalKeymap, widgets, changeListener],
     }),
   });
 
@@ -118,7 +125,7 @@ export function setupEditor(parent: HTMLElement): EditorView {
   };
 
   // evaluate initial code at startup
-  evalAndDecorate(view, savedCode ?? defaultCode);
+  evalAndDecorate(view, initialCode);
 
   return view;
 }

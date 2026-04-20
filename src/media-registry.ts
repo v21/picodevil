@@ -1,4 +1,4 @@
-const STORAGE_KEY = "uzuvid-media-registry";
+const THUMB_STORAGE_PREFIX = "uzuvid:thumb:";
 
 export type MediaEntry = {
   /** Stable identity — survives renames, persisted to localStorage */
@@ -30,31 +30,26 @@ export type MediaEntry = {
 
 const registry: MediaEntry[] = [];
 let onChange: (() => void) | null = null;
+const extraListeners: Set<() => void> = new Set();
 
 function save() {
-  // Don't persist entries with blob URLs — they're session-scoped and dead after reload.
-  // Entries mid-upload will have their URL updated to the server URL before the session ends;
-  // if the page is reloaded before that happens, they're simply lost.
-  const arr = registry.filter(e => !e.url.startsWith("blob:"));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+  onChange?.();
+  for (const fn of extraListeners) fn();
+}
+
+/**
+ * Initialise the registry from a decoded URL state (replaces any existing contents).
+ * Thumbnails are merged from localStorage by entry ID.
+ * Call this once at startup before any other registry operations.
+ */
+export function initRegistry(entries: { id: string; name: string; url: string; type: MediaEntry["type"]; duration?: number; streamKind?: MediaEntry["streamKind"]; deviceId?: string }[]) {
+  registry.length = 0;
+  for (const entry of entries) {
+    const thumb = localStorage.getItem(THUMB_STORAGE_PREFIX + entry.id) ?? undefined;
+    registry.push({ ...entry, ...(thumb ? { thumbnail: thumb } : {}) } as MediaEntry);
+  }
   onChange?.();
 }
-
-function load() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const arr: MediaEntry[] = JSON.parse(raw);
-    registry.length = 0;
-    for (const entry of arr) {
-      if (entry.url?.startsWith("blob:")) continue; // stale from a previous session
-      if (!entry.id) entry.id = crypto.randomUUID(); // backfill old entries
-      registry.push(entry);
-    }
-  } catch { /* ignore corrupt data */ }
-}
-
-load();
 
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi", "ogv"]);
 
@@ -156,13 +151,7 @@ export function setDurationByUrl(url: string, duration: number) {
 }
 
 export function resolveMedia(name: string): MediaEntry | undefined {
-  let entry = registry.find(e => e.name === name);
-  if (!entry && registry.length === 0) {
-    // Re-load from localStorage in case another module instance wrote to it (HMR)
-    load();
-    entry = registry.find(e => e.name === name);
-  }
-  return entry;
+  return registry.find(e => e.name === name);
 }
 
 export function getAllEntries(): MediaEntry[] {
@@ -224,6 +213,12 @@ export function clearAll() {
 
 export function setOnChange(cb: (() => void) | null) {
   onChange = cb;
+}
+
+/** Add an additional listener that is called alongside the primary onChange. */
+export function addOnChange(cb: () => void) {
+  extraListeners.add(cb);
+  return () => extraListeners.delete(cb); // returns an unsubscribe fn
 }
 
 function pollTranscodeReady(entryId: string, stem: string, serverBase: string, interval = 2000) {
@@ -365,7 +360,10 @@ function captureThumbnail(source: HTMLVideoElement | HTMLImageElement, entry: Me
     canvas.height = THUMB_H;
     const ctx = canvas.getContext("2d")!;
     ctx.drawImage(source, 0, 0, THUMB_W, THUMB_H);
-    entry.thumbnail = canvas.toDataURL("image/jpeg", 0.6);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    entry.thumbnail = dataUrl;
+    // Persist thumbnail separately by ID — registry state lives in the URL, not localStorage.
+    try { localStorage.setItem(THUMB_STORAGE_PREFIX + entry.id, dataUrl); } catch { /* storage full */ }
     save();
   } catch { /* tainted canvas or other failure, skip */ }
 }

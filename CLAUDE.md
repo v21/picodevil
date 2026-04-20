@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-04-15.
+> This file is machine-authored for use by coding agents. Last updated 2026-04-20.
 
 ## What is this?
 
@@ -71,7 +71,7 @@ uzuvid/
 There is no class hierarchy. Everything is a Strudel `Pattern` with object-valued events. Controls are added to `Pattern.prototype` via `createMixParam` (in `create-mix-param.ts`), which uses a custom combiner that queries both patterns at frame time (like appBoth) but preserves the source pattern's whole span (like appLeft). See `docs/combinators.md` for details.
 
 Key controls (all on Pattern.prototype):
-- `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
+- `.alpha()`, `.speed()`, `.x()`, `.y()`, `.width()`, `.height()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.fit()`, `.blend()`
 - `.x()` and `.y()` are **additive** (use `addOn` / appBoth) rather than replacement. This enables nested grid offset propagation: `inner.gridMod().x(0.1)` shifts the inner group within its outer cell. Exception: `_perEvent` controls (rand, irand, choose) fall back to appLeft for stable-per-onset sampling.
 - `.grid(rows?, cols?, i?)` — positions in a grid cell; all args can be patterns; composes with existing position for nesting
 - `.gridMod(rows?, cols?)` — assigns multiple grid cells to a child; all args can be patterns; stamps `layoutParent` on all output events
@@ -97,8 +97,8 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
-- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.fit()`, `.blend()`
-- Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.urlBase()`
+- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`
+- Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.fit()`, `.urlBase()`
 - Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
 - Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`

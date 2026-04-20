@@ -53,13 +53,13 @@ PatternProto.chop = function (...args: any[]) {
 };
 
 /**
- * Like chop, but plays all slices simultaneously overlaid rather than sequentially.
- * Each event gets a different begin/end slice, all starting at the same time.
+ * Like chop, but cycles through slices across multiple repetitions rather than within one cycle.
+ * Cuts each event into n slices and speeds up by n, so each repetition plays a successive slice.
  *
  * @param {number | Pattern} n number of slices
- * @returns {Pattern} pattern with n overlapping sub-events
+ * @returns {Pattern} pattern cycling through n slices across n repetitions
  * @example
- * $: s("clip.mp4").striate(4)                   // 4 overlapping slices
+ * $: s("clip.mp4").striate(4)                   // cycles through 4 slices across 4 repetitions
  *
  */
 PatternProto.striate = function (...args: any[]) {

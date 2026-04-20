@@ -3,7 +3,9 @@ import "./visual-controls";
 import { setupEditor } from "./editor";
 import "./shuffle-stack";
 import { VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, PREWARM_LOOKAHEAD_MS, setRuntimeCps } from "./config";
-import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage } from "./media-registry";
+import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
+import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
+import { defaultCode } from "./editor";
 import { renderVideoFrame } from "./video-playback";
 import { type VideoEl } from "./video-element-state";
 import { eventBeginFromHap } from "./event-begin";
@@ -646,6 +648,26 @@ function frame() {
 }
 requestAnimationFrame(frame);
 
+// --- URL state ---
+let currentCode = defaultCode;
+export function getCurrentCode(): string { return currentCode; }
+
+const urlState = loadFromUrl();
+if (urlState) {
+  initRegistry(urlState.media);
+  currentCode = urlState.code;
+}
+
+setUrlWarnCallback((msg) => { if (msg) warn(msg); });
+addOnChange(() => saveToUrl(currentCode, getAllEntries()));
+
 // --- editor ---
-setupEditor(document.getElementById("editor-wrap")!);
+setupEditor(
+  document.getElementById("editor-wrap")!,
+  currentCode,
+  (code) => {
+    currentCode = code;
+    saveToUrl(code, getAllEntries());
+  },
+);
 setupSidebar();

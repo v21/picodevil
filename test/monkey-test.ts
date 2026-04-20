@@ -153,6 +153,62 @@ async function runCase(
         break; // can't continue sequence after crash
       }
     }
+
+    // URL reload check: encode current state into URL, reload from it, verify no crash.
+    // Only run this for the last code in the sequence (after all evals complete without error).
+    if (caseErrors.length === 0) {
+      const lastCode = codes[codes.length - 1];
+      const reloadError = await page.evaluate(async (code: string) => {
+        try {
+          // Trigger the saveToUrl debounce immediately
+          const mod = await import("/src/url-state.ts");
+          const regMod = await import("/src/media-registry.ts");
+          const hash = mod.encodeUrlState(code, regMod.getAllEntries());
+          // Navigate to the URL with the encoded hash
+          window.location.hash = hash;
+          return null;
+        } catch (e: any) {
+          return e?.message || String(e);
+        }
+      }, lastCode);
+
+      if (reloadError) {
+        caseErrors.push(`[url-encode] ${reloadError}`);
+      } else {
+        // Reload the page using the hash we just set
+        const currentHash = await page.evaluate(() => window.location.hash);
+        await page.goto(url + currentHash);
+        await page.waitForFunction(
+          () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+        ).catch((e: any) => {
+          caseErrors.push(`[url-reload] page failed to load after URL restore: ${e.message}`);
+        });
+
+        const reloadAlive = await page.evaluate(() => {
+          return document.getElementById("c") !== null;
+        }).catch(() => false);
+
+        if (!reloadAlive) {
+          caseErrors.push("[url-reload] page crashed or became unresponsive after URL reload");
+        }
+
+        // Verify the restored code matches
+        const restoredCode = await page.evaluate(async () => {
+          const mod = await import("/src/url-state.ts");
+          return mod.loadFromUrl()?.code ?? null;
+        }).catch(() => null);
+
+        if (restoredCode !== lastCode) {
+          caseErrors.push(`[url-reload] code mismatch after URL reload (expected ${lastCode.length} chars, got ${restoredCode?.length ?? "null"} chars)`);
+        }
+
+        // Reload the page fresh (without hash) to restore clean state for next case
+        await page.goto(url);
+        await page.waitForFunction(
+          () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+        ).catch(() => {});
+      }
+    }
   } finally {
     page.off("console", onConsole);
     page.off("pageerror", onPageError);

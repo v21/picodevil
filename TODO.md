@@ -1,10 +1,10 @@
 
 - save pattern to url string, not local state
 - also video mapping
-- some kind of helper for re-encoding videos so they're all i frames - allowing drag and dropping videos onto the sidepane to add them to the server video thing, transcoded
+/ some kind of helper for re-encoding videos so they're all i frames - allowing drag and dropping videos onto the sidepane to add them to the server video thing, transcoded
 - 
 
-
+regen thumbnails
 
 
 

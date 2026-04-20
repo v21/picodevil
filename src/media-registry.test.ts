@@ -59,28 +59,6 @@ describe("media registry", () => {
     expect(addMedia("http://x/c.mov").type).toBe("video");
   });
 
-  it("does not persist blob URL entries to localStorage", () => {
-    addMedia("blob:http://localhost:5173/abc-123", "blobvid");
-    const saved = JSON.parse(localStorage.getItem("uzuvid-media-registry") ?? "[]") as { url: string }[];
-    expect(saved.some(e => e.url.startsWith("blob:"))).toBe(false);
-  });
-
-  it("discards blob URL entries when loading from localStorage", () => {
-    // Write stale blob entry directly to localStorage (simulating a previous session)
-    localStorage.setItem("uzuvid-media-registry", JSON.stringify([
-      { id: "1", name: "stale", url: "blob:http://localhost:5173/dead-123", type: "video" },
-      { id: "2", name: "good", url: "http://localhost:3456/videos/good.mp4", type: "video" },
-    ]));
-    // resolveMedia triggers load() when the registry is empty and the name is unknown
-    clearAll(); // clears registry but saves [] to localStorage — so re-set it
-    localStorage.setItem("uzuvid-media-registry", JSON.stringify([
-      { id: "1", name: "stale", url: "blob:http://localhost:5173/dead-123", type: "video" },
-      { id: "2", name: "good", url: "http://localhost:3456/videos/good.mp4", type: "video" },
-    ]));
-    resolveMedia("good"); // triggers load() since registry is empty
-    expect(resolveMedia("stale")).toBeUndefined();
-    expect(resolveMedia("good")).toBeDefined();
-  });
 
   it("guesses image type from extension", () => {
     expect(addMedia("http://x/a.jpg").type).toBe("image");
@@ -172,35 +150,6 @@ describe("media registry", () => {
     }
   });
 
-  it("clears downloading flag even when registry objects are replaced mid-download", async () => {
-    let resolveFetch!: (r: Response) => void;
-    const fetchPromise = new Promise<Response>(resolve => { resolveFetch = resolve; });
-    vi.stubGlobal("fetch", () => fetchPromise);
-
-    try {
-      const entry = addMedia("https://youtube.com/watch?v=reloadtest1");
-      const downloadPromise = downloadYouTube(entry.name);
-
-      // Simulate what load() does: capture saved state, clear registry, repopulate with new objects
-      // (this happens when resolveMedia is called with an unknown name, e.g. after a page reload)
-      const savedJson = localStorage.getItem("uzuvid-media-registry")!; // has { downloading: true }
-      clearAll(); // empties registry; overwrites localStorage with []
-      importAll(savedJson); // repopulates from saved state with NEW objects (same IDs)
-
-      resolveFetch(new Response(
-        JSON.stringify({ url: "http://localhost:3456/videos/reloadtest1.mp4", ready: true }),
-        { status: 200 },
-      ));
-      await downloadPromise;
-
-      const updated = resolveMedia("reloadtest1");
-      expect(updated, "entry should still exist").toBeDefined();
-      expect(updated!.downloading, "downloading should be false after registry reload + fetch").toBe(false);
-      expect(updated!.url).toBe("http://localhost:3456/videos/reloadtest1.mp4");
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
 
   describe("loadVideo", () => {
     it("creates a video entry", () => {

@@ -21,6 +21,7 @@ function classifyToken(v: string): object {
 /**
  * Auto-detecting source pattern. Resolves each token via the media registry,
  * then by file extension, then falls back to treating it as a CSS color.
+ * Also available as `s()`.
  *
  * @param {string | Pattern} pat mininotation string or Pattern of token values
  * @returns {Pattern} pattern of typed source objects

@@ -11,7 +11,8 @@
     "test:monkey:replay": "tsx test/monkey-test.ts --replay --delay 1000 --headless",
     "test:stress": "tsx test/stress-test.ts",
     "test:stress:headless": "tsx test/stress-test.ts --headless",
-    "test:upload": "tsx test/upload-integration-test.ts --headless"
+    "test:upload": "tsx test/upload-integration-test.ts --headless",
+    "test:url-state": "tsx test/url-state-integration.test.ts --headless"
   },
   "keywords": [],
   "author": "",
