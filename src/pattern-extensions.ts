@@ -67,6 +67,46 @@ PatternProto.striate = function (...args: any[]) {
   return _origStriate ? _origStriate.apply(this, args) : this;
 };
 
+/**
+ * Slices each event into n equal segments and stacks them simultaneously.
+ * All slices play at the same time, each covering a different 1/n region of the video.
+ * Sets `i` and `count` on each slice for direct use with `.gridMod()` / `.grid()`.
+ *
+ * Composes with `.begin()` / `.end()`: `.begin(0.25).end(0.75).chopStack(4)` chops within that region.
+ *
+ * @param {number} n number of slices
+ * @returns {Pattern} pattern with n simultaneous sub-events per original event
+ * @example
+ * $: s("clip.mp4").chopStack(4).rowscols(2).gridMod()
+ * $: s("clip.mp4").chopStack(4).fit().rowscols(2).gridMod()
+ */
+PatternProto.chopStack = function (nArg: any) {
+  warnIfSignal(this, "chopStack");
+  const pat = this;
+  return new CorePattern((state: any) => {
+    const n = typeof nArg === "number"
+      ? nArg
+      : Math.round(Number(reify(nArg).queryArc(state.span.begin, state.span.end)[0]?.value ?? 1));
+    return pat.queryArc(state.span.begin, state.span.end).flatMap((hap: any) =>
+      Array.from({ length: n }, (_, i) =>
+        hap.withValue((v: any) => {
+          const val = Object(v) === v ? v : {};
+          const oldBegin = val.begin ?? 0;
+          const oldEnd = val.end ?? 1;
+          const d = oldEnd - oldBegin;
+          return {
+            ...val,
+            begin: oldBegin + (i / n) * d,
+            end: oldBegin + ((i + 1) / n) * d,
+            i,
+            count: n,
+          };
+        })
+      )
+    );
+  });
+};
+
 // ─── JSDoc stubs for Strudel builtins (so the reference plugin picks them up) ──
 
 const _origRev = PatternProto.rev;

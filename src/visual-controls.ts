@@ -12,13 +12,9 @@ import { resolveMedia } from "./media-registry";
 import { resolveValue } from "./resolve-pattern-value";
 import { getRuntimeCps } from "./config";
 import { warn } from "./warnings";
+import { nextLayoutParent } from "./layout-counter";
 
 const PatternProto = Pattern.prototype as any;
-
-// Module-level counter for assigning unique layoutParent tokens to layout primitives.
-// Incremented at pattern construction time (closure-captured), stable across query frames.
-// Deterministic across synced clients: same code → same construction order → same values.
-let _layoutParentCounter = 0;
 
 /**
  * Sets the transparency of the pattern. 0 = fully transparent, 1 = fully opaque.
@@ -667,7 +663,7 @@ function composePos(value: any, outer: { x: number; y: number; width: number; he
  */
 PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
   const self = this;
-  const layoutParent = ++_layoutParentCounter;
+  const layoutParent = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
 
@@ -731,7 +727,7 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
  */
 PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
   const self = this;
-  const layoutParent = ++_layoutParentCounter;
+  const layoutParent = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const selfEvs = self.queryArc(begin, end);
@@ -792,7 +788,7 @@ function tileCellPos(i: number, count: number): { x: number; y: number; width: n
  */
 PatternProto.tile = function () {
   const self = this;
-  const layoutParent = ++_layoutParentCounter;
+  const layoutParent = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     return self.withValue((v: any) => {
@@ -826,7 +822,7 @@ function circleElementSize(n: number, r: number): number {
  */
 PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCountArg?: any, iArg?: any) {
   const self = this;
-  const layoutParent = ++_layoutParentCounter;
+  const layoutParent = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     return self.withValue((v: any) => {
@@ -853,7 +849,7 @@ PatternProto.circle = function (radiusArg?: any, startOffsetArg?: any, circleCou
  */
 PatternProto.circleMod = function (radiusArg?: any, startOffsetArg?: any, circleCountArg?: any) {
   const self = this;
-  const layoutParent = ++_layoutParentCounter;
+  const layoutParent = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const selfEvs = self.queryArc(begin, end);

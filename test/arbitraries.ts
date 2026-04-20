@@ -714,4 +714,38 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       };
     })
   },
+
+  // chopStack + gridMod
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      screenExpr,
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, child, n, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const cols = Math.ceil(Math.sqrt(n));
+      return {
+        code: `${cpsCode}${label}: ${child.code}.chopStack(${n}).rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // chopStack + fit + gridMod
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      screenExpr,
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, child, n, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const cols = Math.ceil(Math.sqrt(n));
+      return {
+        code: `${cpsCode}${label}: ${child.code}.chopStack(${n}).fit().rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
 );

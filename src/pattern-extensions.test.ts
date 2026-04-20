@@ -3,7 +3,9 @@ import { mini } from "@strudel/mini";
 import { Pattern, Hap } from "@strudel/core";
 import "./pattern-extensions";
 import "./visual-controls";
+import "./index-patterns";
 import { screen } from "./screen-pattern";
+import { video } from "./video-pattern";
 
 function queryVal(pat: any, t: number): number | undefined {
   const evs = pat.queryArc(t, t);
@@ -234,5 +236,67 @@ describe("mapOn", () => {
     const atMid = queryObj(mapped, 0.25)?.x;
     expect(atMid).toBeGreaterThan(-0.1);
     expect(atMid).toBeLessThan(0.1);
+  });
+});
+
+describe("chopStack", () => {
+  it("produces n simultaneous haps with correct begin/end", () => {
+    const evs = (video("a.mp4") as any).chopStack(4).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    const slices = evs.map((e: any) => ({ begin: e.value.begin, end: e.value.end }));
+    expect(slices[0]).toEqual({ begin: 0, end: 0.25 });
+    expect(slices[1]).toEqual({ begin: 0.25, end: 0.5 });
+    expect(slices[2]).toEqual({ begin: 0.5, end: 0.75 });
+    expect(slices[3]).toEqual({ begin: 0.75, end: 1 });
+  });
+
+  it("all haps share the same whole/part spans as the original", () => {
+    const orig = video("a.mp4").queryArc(0, 1)[0];
+    const evs = (video("a.mp4") as any).chopStack(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(Number(ev.whole.begin)).toBeCloseTo(Number(orig.whole.begin));
+      expect(Number(ev.whole.end)).toBeCloseTo(Number(orig.whole.end));
+      expect(Number(ev.part.begin)).toBeCloseTo(Number(orig.part.begin));
+      expect(Number(ev.part.end)).toBeCloseTo(Number(orig.part.end));
+    }
+  });
+
+  it("sets i and count on each slice", () => {
+    const evs = (video("a.mp4") as any).chopStack(4).queryArc(0, 1);
+    expect(evs.map((e: any) => e.value.i)).toEqual([0, 1, 2, 3]);
+    expect(evs.map((e: any) => e.value.count)).toEqual([4, 4, 4, 4]);
+  });
+
+  it("does not set layoutParent (slices are individually indexable)", () => {
+    const evs = (video("a.mp4") as any).chopStack(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value.layoutParent).toBeUndefined();
+    }
+  });
+
+  it("composes with prior begin/end", () => {
+    // .begin(0.5).end(1).chopStack(2) should slice within the 0.5–1.0 region
+    const evs = (video("a.mp4") as any).begin(0.5).end(1).chopStack(2).queryArc(0, 1);
+    expect(evs).toHaveLength(2);
+    expect(evs[0].value.begin).toBeCloseTo(0.5);
+    expect(evs[0].value.end).toBeCloseTo(0.75);
+    expect(evs[1].value.begin).toBeCloseTo(0.75);
+    expect(evs[1].value.end).toBeCloseTo(1.0);
+  });
+
+  it("preserves _type on video events", () => {
+    const evs = (video("a.mp4") as any).chopStack(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value._type).toBe("video");
+    }
+  });
+
+  it("index() after chopStack on a stack re-indexes all slices across sources", () => {
+    const pat = (video("a.mp4") as any).stack(video("b.mp4")).chopStack(4);
+    const evs = (pat as any).index().queryArc(0, 1);
+    expect(evs).toHaveLength(8);
+    const iVals = evs.map((e: any) => e.value.i).sort((a: number, b: number) => a - b);
+    expect(iVals).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(evs[0].value.count).toBe(8);
   });
 });
