@@ -300,3 +300,41 @@ describe("chopStack", () => {
     expect(evs[0].value.count).toBe(8);
   });
 });
+
+describe("syncStack", () => {
+  it("produces n simultaneous haps with sync set to i/n", () => {
+    const evs = (video("a.mp4") as any).syncStack(4).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    expect(evs.map((e: any) => e.value.sync)).toEqual([0, 0.25, 0.5, 0.75]);
+  });
+
+  it("sets i and count on each copy", () => {
+    const evs = (video("a.mp4") as any).syncStack(4).queryArc(0, 1);
+    expect(evs.map((e: any) => e.value.i)).toEqual([0, 1, 2, 3]);
+    expect(evs.map((e: any) => e.value.count)).toEqual([4, 4, 4, 4]);
+  });
+
+  it("all copies share the same whole/part spans", () => {
+    const orig = video("a.mp4").queryArc(0, 1)[0];
+    const evs = (video("a.mp4") as any).syncStack(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(Number(ev.whole.begin)).toBeCloseTo(Number(orig.whole.begin));
+      expect(Number(ev.whole.end)).toBeCloseTo(Number(orig.whole.end));
+    }
+  });
+
+  it("does not set layoutParent", () => {
+    const evs = (video("a.mp4") as any).syncStack(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value.layoutParent).toBeUndefined();
+    }
+  });
+
+  it("preserves existing event values", () => {
+    const evs = (video("a.mp4") as any).syncStack(4).queryArc(0, 1);
+    for (const ev of evs) {
+      expect(ev.value._type).toBe("video");
+      expect(ev.value.src).toBe("a.mp4");
+    }
+  });
+});

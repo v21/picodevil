@@ -208,9 +208,12 @@ function updateVideoPlayback(
       st.lastSyncBegin = undefined;
       st.lastSyncEnd = undefined;
       st.syncDistOffset = 0;
-    } else if (loopLen > 0 && isFinite(el.currentTime)) {
+    } else if (loopLen > 0 && isFinite(el.currentTime) && st.lastSyncOffset === syncOffset) {
       // Rolling: seed syncDistOffset from el.currentTime so computeExpectedTime
       // returns the actual current position on this first frame.
+      // Only applies when syncOffset matches what this element was last playing at —
+      // if syncOffset differs (e.g. syncStack reassigned to a different phase slot),
+      // fall through to reset so the desired phase takes effect instead.
       // (speed-change detection won't run since lastSyncSpeed=undefined on a fresh element)
       const clampedTime = Math.max(loopStart, Math.min(loopEnd - 1e-9, el.currentTime));
       const targetDistInLoop = speed >= 0 ? clampedTime - loopStart : loopEnd - clampedTime;
@@ -219,7 +222,15 @@ function updateVideoPlayback(
       st.syncDistOffset = speed !== 0
         ? targetDistInLoop - (((baseDist % loopLen) + loopLen) % loopLen)
         : targetDistInLoop - syncOffset;
+    } else {
+      // syncOffset changed or no valid currentTime — reset like non-rolling sync
+      // so the desired phase initialises correctly.
+      st.lastSyncSpeed = undefined;
+      st.lastSyncBegin = undefined;
+      st.lastSyncEnd = undefined;
+      st.syncDistOffset = 0;
     }
+    st.lastSyncOffset = syncOffset;
   }
 
   // Sync/rolling continuity: recompute distance offset when speed/begin/end change

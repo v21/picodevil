@@ -614,8 +614,10 @@ PatternProto.rowscols = function (value: any) {
 
 // Helper: compute {x, y, width, height} for cell index i in a cols×rows grid
 function cellPos(i: number, cols: number, rows: number) {
-  const col = i % cols;
-  const row = Math.floor(i / cols);
+  const total = cols * rows;
+  const wrapped = total > 0 ? ((i % total) + total) % total : 0;
+  const col = wrapped % cols;
+  const row = Math.floor(wrapped / cols);
   return { x: col / cols, y: row / rows, width: 1 / cols, height: 1 / rows };
 }
 

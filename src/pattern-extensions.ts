@@ -107,6 +107,39 @@ PatternProto.chopStack = function (nArg: any) {
   });
 };
 
+/**
+ * Stacks n copies of each event simultaneously, each phase-shifted by i/n via sync().
+ * All copies play the full video but offset from each other in time, creating a
+ * staggered round-robin effect. Sets `i` and `count` for use with `.gridMod()` / `.grid()`.
+ *
+ * @param {number} n number of copies
+ * @returns {Pattern} pattern with n simultaneous phase-shifted sub-events per original event
+ * @example
+ * $: s("clip.mp4").syncStack(4).rowscols(2).gridMod()
+ * $: stack(s("a.mp4"), s("b.mp4")).syncStack(4).index().rowscols(2).gridMod()
+ */
+PatternProto.syncStack = function (nArg: any) {
+  const pat = this;
+  return new CorePattern((state: any) => {
+    const n = typeof nArg === "number"
+      ? nArg
+      : Math.round(Number(reify(nArg).queryArc(state.span.begin, state.span.end)[0]?.value ?? 1));
+    return pat.queryArc(state.span.begin, state.span.end).flatMap((hap: any) =>
+      Array.from({ length: n }, (_, i) =>
+        hap.withValue((v: any) => {
+          const val = Object(v) === v ? v : {};
+          return {
+            ...val,
+            sync: i / n,
+            i,
+            count: n,
+          };
+        })
+      )
+    );
+  });
+};
+
 // ─── JSDoc stubs for Strudel builtins (so the reference plugin picks them up) ──
 
 const _origRev = PatternProto.rev;
