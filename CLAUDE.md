@@ -26,7 +26,7 @@ uzuvid/
   TODO.md                 — current task list
   README.md               - human-authored README file, explaining the architecture of the project
   src/
-    main.ts               — core runtime: pattern state, video pool, render loop, eval bridge
+    main.ts               — core runtime: pattern state, video pool, render loop, eval bridge; wires renderer backend
     editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
     config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, SERVER_ENABLED
     transpiler.ts         — $: label transpiler, double-quote mini() wrapping
@@ -37,7 +37,7 @@ uzuvid/
     video-pattern.ts      — video() function: wraps mini pattern with {src} values
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
     screen-pattern.ts     — screen()/s() function: auto-detects type per token (registry → extension → color fallback)
-    draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering, FitMode type
+    draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering in Canvas 2D; FitMode type
     video-playback.ts     — video frame rendering: playback update, seeking (computeExpectedTime, detectWindowMoving, renderVideoFrame)
     event-begin.ts        — eventBeginFromHap: derives playback start cycle from hap + event value
     video-pool.ts         — computeExpectedFromEvent, scoreFreeElement for video element pool
@@ -45,6 +45,11 @@ uzuvid/
     time-value.ts         — TimeValue type and parsing (relative, seconds, milliseconds)
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
     create-mix-param.ts   — createMixParam: custom combiner preserving whole spans
+    renderer-interface.ts — Renderer interface, TileParams, TileSource types
+    renderer.ts           — FrameRenderer: frame loop logic, event collection, video assignment, dispatches TileParams to backend
+    canvas2d-renderer.ts  — Canvas2DRenderer: Renderer impl using CanvasRenderingContext2D (fallback / dev reference)
+    webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2 (default); GPU texture upload, UV/fit on CPU, blend modes
+    texture-cache.ts      — TextureCache: manages WebGL textures; videos re-uploaded each frame, images/colors cached
   test/
     monkey-test.ts              — grammar-based random pattern generator + browser runner
     regression-cases.json       — saved regression cases for conformance replay
@@ -63,8 +68,28 @@ uzuvid/
 3. The render loop runs at requestAnimationFrame rate. Each frame it:
    - Computes cycle position from elapsed time and `cyclesPerSecond`
    - Queries each screen pattern with `queryArc(t, t)` (zero-width instant query)
-   - Draws each event: resolves position (x/y/width/height), alpha, blend mode, scale, fit, then renders color/video/image
+   - `FrameRenderer.render()` collects events, assigns video pool elements, then dispatches `TileParams` to the active `Renderer` backend
 4. `window.uzuEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
+
+## Renderer architecture
+
+Rendering is split into two layers:
+
+- **`FrameRenderer`** (`src/renderer.ts`) — frame-loop logic: event collection, video pool assignment, prewarm, building `TileParams` structs. Backend-agnostic.
+- **`Renderer` interface** (`src/renderer-interface.ts`) — `resize / beginFrame / drawTile(TileParams) / endFrame / dispose`. Backends plug in here.
+
+Two backends exist:
+
+- **`WebGLRenderer`** (`src/webgl-renderer.ts`) — **default**. Uploads video frames as GPU textures (`gl.texImage2D`) — no CPU readback. UV rect and fit (cover/fill) computed CPU-side and passed as uniforms. Transforms (rotateZ, rotateX/Y scale, scaleX/Y) encoded as a 4×4 column-major matrix built on CPU. Blend modes use `blendFuncSeparate` so RGB and alpha channels accumulate correctly.
+- **`Canvas2DRenderer`** (`src/canvas2d-renderer.ts`) — fallback. Uses `CanvasRenderingContext2D` / `drawImage`. Add `?renderer=canvas2d` to the URL to use it.
+
+Backend selection in `main.ts`: WebGL2 is attempted first; if unavailable it falls back to Canvas 2D automatically. The `?renderer=canvas2d` query param forces Canvas 2D (useful for visual comparison during development).
+
+`TextureCache` (`src/texture-cache.ts`) manages WebGL textures:
+- Videos/streams: `texImage2D` every frame (content changes)
+- Images: uploaded once, cached by element reference
+- Colors: 1×1 RGBA texture, cached by `"r,g,b"` key
+- All video elements are created with `crossOrigin = "anonymous"` (set in the pool factory in `main.ts`) so WebGL can upload them without CORS errors
 
 ## Pattern architecture
 

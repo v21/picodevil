@@ -35,10 +35,20 @@ shuffleStack should also run index() after
 or there should be a shuffleIndex which does not reorder the haps, but does assign indices randomly
 
 
+shift TileParams so it carries a transform instead
+WelGL renders in clip space - weirdness with rotating non square stuff?
+add extra objectfit params - notably "none"
 
-grid
 
-mapOn - in sidebar docs twice
+give up on rendering if our frame takes over a sec to execute - this keeps stuff responsive
+
+
+change x & y to encode center positions, not top left
+
+
+/ grid
+
+/ mapOn - in sidebar docs twice
 
 
 sync resets to 0 pos if the speed is ever set to 0

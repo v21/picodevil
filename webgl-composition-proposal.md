@@ -21,6 +21,58 @@ Everything above the rendering layer is unchanged:
 
 ## Steps
 
+### 0. Extract the rendering subsystem from `main.ts`
+
+Before any WebGL work, pull the rendering concern out of `main.ts` behind a clean interface. This is done while keeping Canvas 2D working — it's a pure refactor with no behaviour change.
+
+**What moves out:**
+
+`main.ts` currently holds six distinct concerns. Only the rendering one moves in this step:
+
+| Concern | Current location | Destination |
+|---|---|---|
+| Clock (`setCps`, `accumulatedCycle`, cycle timing) | `main.ts` | stays for now |
+| Pattern state (`pPatterns`, `collectScreens`, `hush`) | `main.ts` | stays for now |
+| Eval bridge (`uzuEval`, snapshot/restore) | `main.ts` | stays for now |
+| Image pool (`getImageEl`, `clearImages`) | `main.ts` | stays for now |
+| Metrics (`uzuMetrics`) | `main.ts` | stays for now |
+| **Render loop** (`collectFrameEvents`, `assignVideoElements`, `drawFrameEvents`, `prewarmVideos`, `frame()`) | `main.ts` | → `src/renderer.ts` |
+
+**The `Renderer` interface** (`src/renderer-interface.ts`):
+
+```ts
+export interface TileParams {
+  source: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement;
+  destX: number; destY: number; destW: number; destH: number;  // 0..1 normalised canvas coords
+  uvX: number; uvY: number; uvW: number; uvH: number;          // 0..1 source crop
+  alpha: number;
+  flipX: boolean; flipY: boolean;
+  blendMode: GlobalCompositeOperation;
+  fit: FitMode;
+  // transform
+  rotateZ: number;   // turns
+  scaleX: number; scaleY: number;
+}
+
+export interface Renderer {
+  resize(widthPx: number, heightPx: number): void;
+  beginFrame(): void;
+  drawTile(params: TileParams): void;
+  endFrame(): void;
+  dispose(): void;
+}
+```
+
+**`src/canvas2d-renderer.ts`** — the current drawing logic, wrapped behind `Renderer`. `drawFrameEvents` in main.ts becomes `drawTile` calls issued by the frame loop. `drawFit` is unchanged; `ctx.save/restore`, `globalAlpha`, `globalCompositeOperation` all stay as-is. This is the live implementation while WebGL is built.
+
+**`src/renderer.ts`** — owns `collectFrameEvents`, `assignVideoElements`, `drawFrameEvents` (now calls `renderer.drawTile`), `prewarmVideos`, and `frame()`. Receives a `Renderer` instance at construction. `main.ts` creates the renderer, passes it in, calls `requestAnimationFrame(frame)`.
+
+**After this step**, `main.ts` is wiring only: canvas setup, editor, sidebar, URL state, pool construction, and starting the loop. The rendering subsystem is fully contained in `renderer.ts` + `canvas2d-renderer.ts`. No behaviour change — the stress test and full test suite should pass unchanged.
+
+This step also defines the exact `TileParams` interface that the WebGL renderer must implement, so the subsequent steps are working to a known target rather than designing it speculatively.
+
+---
+
 ### 1. Create a WebGL renderer module (`src/webgl-renderer.ts`)
 
 Set up a WebGL2 context on the existing canvas. Write two shaders:
@@ -103,18 +155,36 @@ Fit modes (cover/contain/fill/none) are computed the same way as now — they de
 
 The tiling case (crop out of bounds) is handled by `fract(v_uv)` in the fragment shader — no need for `createPattern`.
 
-### 4. Replace the drawing section of `main.ts`
+### 4. Swap `canvas2d-renderer.ts` for `webgl-renderer.ts`
 
-Currently the render loop calls `renderVideoFrame` (which updates seek/playback) then `drawFit`. After this change:
+After step 0, `main.ts` constructs a `Renderer` and passes it to `renderer.ts`. Swapping backends is a one-line change at the construction site. The frame loop in `renderer.ts` is unchanged — it still calls `renderer.drawTile(params)` for each event; it just gets a different implementation.
+
+During this step:
 - `renderVideoFrame` still runs (playback/seek logic is unchanged)
-- Instead of calling `drawFit`, push a `TileParams` into a per-frame draw list
-- At the end of the frame, sort by blend mode (to minimise GL state changes) and issue all draw calls
+- Instead of drawing immediately, the WebGL renderer accumulates `TileParams` into a per-frame draw list
+- At `endFrame()`, sort by blend mode (to minimise GL state changes) and issue all draw calls
 
-### 5. Solid colours and images
+Keep the Canvas 2D renderer available behind a `?renderer=canvas2d` URL flag during development for bisecting visual regressions.
 
-- `color()` fills: use a 1×1 white texture (already on GPU) and pass the colour as a `u_color` uniform. No texture upload needed.
-- `image()` sources: `gl.texImage2D` accepts `HTMLImageElement` — same path as video. Images don't change frame-to-frame, so `texSubImage2D` is only called once.
-- Camera / screen capture: `gl.texImage2D` accepts `HTMLVideoElement` regardless of source — same path.
+### 5. Unified texture sources
+
+Every tile source — video, image, colour, camera, screen capture — is a `WebGLTexture`. The shader has one code path: sample the texture at the computed UV. No branching on source type.
+
+**Source → texture mapping:**
+
+| Source | Canvas element | Upload cadence |
+|---|---|---|
+| `video()` | `HTMLVideoElement` | Every frame (frame changes) |
+| `image()` | `HTMLImageElement` | Once (static after load) |
+| `color()` | 1×1 `HTMLCanvasElement`, filled with CSS color | Once (static after creation) |
+| `screen()` / camera | `HTMLVideoElement` | Every frame |
+| Future canvas sources | `HTMLCanvasElement` | Per-frame if animated |
+
+`color()` fills become a trivial special case of canvas-as-source. A 1×1 canvas is created per unique colour (keyed by normalised hex string from `parseColor`), filled with `fillRect`, uploaded once via `gl.texImage2D`, and reused permanently. No special shader uniform needed.
+
+The texture cache tracks whether each source is "dirty" this frame. Videos and live camera feeds are always dirty; colours and images are dirty only on first upload. This avoids redundant `texImage2D` calls for static sources.
+
+This also naturally enables a future `canvasSource()` API — any canvas that renders to itself (e.g. a pattern that composites to an offscreen canvas) can be fed as a texture source to another pattern, giving a compositing graph rather than a flat stack.
 
 ### 6. Blend modes
 
