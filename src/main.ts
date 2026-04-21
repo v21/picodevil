@@ -253,12 +253,15 @@ function parseColor(val: string): [number, number, number] {
 
 // --- performance metrics (exposed for stress testing) ---
 const uzuMetrics = {
-  frameTimes: [] as number[],   // last N frame durations in ms
+  frameTimes: [] as number[],      // last N JS work durations in ms (time inside frame())
+  interFrameTimes: [] as number[], // last N wall-clock gaps between rAF calls (perceived FPS)
+  heapSamples: [] as number[],     // last N usedJSHeapSize bytes (aligned with interFrameTimes)
   seekCount: 0,                 // total seeks this session
   poolSize: 0,                  // active video pool size
   freePoolSize: 0,              // free video pool size
   shareHits: 0,                 // times frameShareMap avoided a new element
   maxFrameTime: 0,              // worst frame time seen
+  maxInterFrameTime: 0,         // worst inter-frame gap seen
   xLog: [] as number[],         // x values seen in render loop (for testing)
   // live per-frame counts for perf panel
   naturalCount: 0,              // videos in native playback mode this frame
@@ -267,9 +270,12 @@ const uzuMetrics = {
   eventsPerFrame: 0,            // events drawn this frame
   reset() {
     this.frameTimes = [];
+    this.interFrameTimes = [];
+    this.heapSamples = [];
     this.seekCount = 0;
     this.shareHits = 0;
     this.maxFrameTime = 0;
+    this.maxInterFrameTime = 0;
     this.xLog = [];
   },
 };
@@ -283,6 +289,7 @@ const uzuMetrics = {
 
 // --- render loop ---
 let startTime = performance.now();
+let lastRafAbsTime = performance.now();
 /** Per-frame video element assignments, keyed by draw position (screenIndex:eventIndex). */
 const frameAssignments = new Map<string, VideoEl>();
 // Expose for testing
@@ -615,7 +622,10 @@ function prewarmVideos(cycle: number, cps: number) {
 }
 
 function frame() {
-  const now = performance.now() - startTime;
+  const rafAbsNow = performance.now();
+  const interFrameGap = rafAbsNow - lastRafAbsTime;
+  lastRafAbsTime = rafAbsNow;
+  const now = rafAbsNow - startTime;
   const nowSec = now / 1000;
   const deltaSec = nowSec - lastFrameSec;
   lastFrameSec = nowSec;
@@ -650,9 +660,16 @@ function frame() {
   // Record metrics
   const frameEnd = performance.now() - startTime;
   const frameDuration = frameEnd - now;
+  const MAX_SAMPLES = 300; // ~5s at 60fps
   uzuMetrics.frameTimes.push(frameDuration);
-  if (uzuMetrics.frameTimes.length > 300) uzuMetrics.frameTimes.shift(); // keep last 5s at 60fps
+  if (uzuMetrics.frameTimes.length > MAX_SAMPLES) uzuMetrics.frameTimes.shift();
   if (frameDuration > uzuMetrics.maxFrameTime) uzuMetrics.maxFrameTime = frameDuration;
+  uzuMetrics.interFrameTimes.push(interFrameGap);
+  if (uzuMetrics.interFrameTimes.length > MAX_SAMPLES) uzuMetrics.interFrameTimes.shift();
+  if (interFrameGap > uzuMetrics.maxInterFrameTime) uzuMetrics.maxInterFrameTime = interFrameGap;
+  const perfMem = (performance as any).memory;
+  if (perfMem) uzuMetrics.heapSamples.push(perfMem.usedJSHeapSize);
+  if (uzuMetrics.heapSamples.length > MAX_SAMPLES) uzuMetrics.heapSamples.shift();
   uzuMetrics.poolSize = pool.videoPool.size;
   let freeCount = 0;
   for (const list of pool.freeVideoPool.values()) freeCount += list.length;

@@ -6,7 +6,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
-    canvas {
+    #c {
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
@@ -134,6 +134,8 @@
     #tab-videos.active { display: flex !important; flex-direction: column; }
     #tab-videos { padding: 0 !important; }
     #tab-reference.active { display: flex !important; padding: 0 !important; }
+    #tab-perf.active { display: flex !important; flex-direction: column; padding: 0 !important; min-height: 0; }
+    #tab-perf .perf-panel { flex: 1; overflow-y: auto; padding: 12px; min-height: 0; }
 
     /* Reference panel */
     .ref-wrap { display: flex; height: 100%; font-size: 16px; }
@@ -151,6 +153,14 @@
     .ref-entry-desc { color: #bbb; margin: 4px 0; }
     .ref-entry-params { color: #888; font-size: 0.85em; margin: 2px 0; }
     .ref-entry-example { background: rgba(255,255,255,0.05); color: #ccc; padding: 6px 8px; border-radius: 3px; font-size: 0.85em; margin: 4px 0; overflow-x: auto; white-space: pre-wrap; }
+
+    /* Perf panel */
+    .perf-panel { }
+    .perf-section { margin-bottom: 20px; }
+    .perf-head { color: #888; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+    .perf-row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #1a1a1a; }
+    .perf-label { color: #888; }
+    .perf-value { color: #ccc; font-variant-numeric: tabular-nums; }
 
     .uzu-warning {
       display: none;
@@ -179,11 +189,13 @@
     <div class="tabs">
       <button class="active" data-tab="videos">videos</button>
       <button data-tab="reference">reference</button>
+      <button data-tab="perf">perf</button>
     </div>
     <div id="tab-videos" class="tab-content active"></div>
     <div id="tab-reference" class="tab-content">
       <p style="color:#666">reference coming soon</p>
     </div>
+    <div id="tab-perf" class="tab-content"></div>
   </div>
   <script type="module" src="src/main.ts"></script>
 </body>
