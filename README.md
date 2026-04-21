@@ -33,8 +33,6 @@ In general, Strudel operates by setting the pattern of notes from the leftmost p
 
 There are some exceptions. Every time there is a new video event, we start from the `start` point. We don't want this to be reset whenever a different event occurs (not least because the way that Strudel handles events means that they won't last more than a cycle). So we store a special `_onset` value when a video event starts, and use that to calculate the offset instead.
 
-(There's also a `sync()` method you can use to play videos all the way through rather than resetting to the start with every event)
-
 ### Second difference: We render frames rather than events
 
 Strudel looks ahead and queues up notes with precise timing. Each note is sent as a new event, with it's timing information attached. uzuvid runs at the browser's preferred framerate (using `requestAnimationFrame`). We sample all the events playing at the current instant, and we render those. If an event falls between frames, it won't be rendered. If two events are identical, and we miss the end of one and the beginning of another - it will be rendered exactly the same as if the event did not end and begin again. As you can imagine, this combines usefully with the first event
@@ -57,11 +55,12 @@ In Strudel, you often create "stacks" of patterns - multiple patterns that run i
 
 *How to tell it to render the same thing 16 times in a row?* You use `stackN(16)` on it.
 
-*How to then take these 16 elements and treat them differently for the purposes of positioning them in different places on the screen?* `stackN()` (and `index`, and others) labels each parallel pattern with the values `i` and `count`, allowing future methods to treat each one differently.
+*How to then take these 16 elements and treat them differently for the purposes of positioning them on the screen?* `stackN()` (and `index`, and `indexCycle`) labels each parallel pattern with the values `i` and `count`, allowing future methods to treat each one differently.
 
 *Okay, and how do you actually put them in a grid pattern?* You call `grid` on them. This can be used to place a single video in the place it would be if it was in a grid of `row` rows and `col` columns, with index `i`.
 
 In practice, you don't always need to call `stackN` on videos to make them render side by side - for example, `gridMod` will automatically do that math so that indexes will be cycled as necessary in order to fill all the spaces.
+
 
 ### Sixth difference: randomness again
 
@@ -81,6 +80,8 @@ It has a bunch of functions which relate to rendering visuals on screen, setting
 ### Nested coordinate system stuff
 If you put a grid within another grid, it works! Similarly with adjusting `.x()` and `.y()`. 
 !!! Don't think this is yet true!
+
+!! layoutParent
 
 ### i-frame encoding so that we can play videos backwards
 The server component will transcode videos into ones containing only i-frames. This improves the performance when playing videos backwards, or outside of natively supported play rates, or when jumping around a lot within the video file.

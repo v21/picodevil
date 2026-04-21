@@ -7,6 +7,39 @@
 regen thumbnails
 
 
+/ syncStack - like chopStack, except it runs sync() with values across 0-1
+
+sortStack('val') - opposite of shuffle stack. keeps order of elements where val is the same - allowing it to be used multiple times. only sorts within each layoutParent
+
+/ crop(x, y, w, h) - sets cropx, cropy, cropw, croph - defines a rectangle within the video source to render.
+cropx - sets cropx
+cropy - sets cropy
+cropw - sets cropw
+croph - sets croph
+if the slice cropped falls outside of 0-1, tile the graphic so we still see it
+
+NOPE zoom(intensity, centerx, centery) - shorthand for crop, intensity goes from 0 (no zoom) to 1 (single pixel)
+
+/ cropStack(rows, cols) - slices the video input into rows x cols slices. running grid() after this looks like it's the same thing. 
+
+/ resume prev session work
+
+/ update cropStack
+
+/ check perf for big cropStacks - it seems slow!! 
+
+/ add perf panel to sidebar. framerate, fps, videos playing (and number in natural or seek mode), total screens rendered, memory usage of tab. 
+
+
+shuffleStack should also run index() after
+or there should be a shuffleIndex which does not reorder the haps, but does assign indices randomly
+
+
+
+grid
+
+mapOn - in sidebar docs twice
+
 
 sync resets to 0 pos if the speed is ever set to 0
 
