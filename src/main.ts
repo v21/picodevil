@@ -103,6 +103,8 @@ const uzuMetrics = {
   seekModeCount: 0,
   screensCount: 0,
   eventsPerFrame: 0,
+  seeksThisFrame: 0,
+  seeksHistory: [] as number[],
   reset() {
     this.frameTimes = [];
     this.interFrameTimes = [];
@@ -120,6 +122,8 @@ const uzuMetrics = {
   seekCount: uzuMetrics.seekModeCount,
   screensCount: uzuMetrics.screensCount,
   eventsPerFrame: uzuMetrics.eventsPerFrame,
+  seeksThisFrame: uzuMetrics.seeksThisFrame,
+  seeksPer60f: uzuMetrics.seeksHistory.reduce((a, b) => a + b, 0),
 });
 
 // --- video pool ---
@@ -303,6 +307,8 @@ function frame() {
   }
   uzuMetrics.naturalCount = naturalCount;
   uzuMetrics.seekModeCount = seekModeCount;
+  uzuMetrics.seeksHistory.push(uzuMetrics.seeksThisFrame);
+  if (uzuMetrics.seeksHistory.length > 60) uzuMetrics.seeksHistory.shift();
 
   flushWarnings();
   requestAnimationFrame(frame);

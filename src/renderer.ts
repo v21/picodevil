@@ -22,6 +22,7 @@ interface FrameEvent {
 export interface FrameMetrics {
   shareHits: number;
   xLog: number[];
+  seeksThisFrame: number;
 }
 
 const SHARE_TIME_THRESHOLD = 0.04;
@@ -79,6 +80,7 @@ export class FrameRenderer {
    * Phases: collect events → assign video elements → beginFrame → draw → endFrame → prewarm.
    */
   render(screens: Screen[], t: number, cps: number, cycle: number): void {
+    this.metrics.seeksThisFrame = 0;
     const frameEvents = this.collectFrameEvents(screens, t);
     this.lastEventCount = frameEvents.length;
     this.assignVideoElements(frameEvents, t, cps);
@@ -297,7 +299,7 @@ export class FrameRenderer {
       if (!el) return null;
       const eventBegin = eventBeginFromHap(ev, hap, t);
       if (isFinite(el.duration) && el.duration > 0) {
-        renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps });
+        renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps, onSeek: () => { this.metrics.seeksThisFrame++; } });
       }
       if (el.videoWidth === 0) return null;
       source = { kind: 'video', el };

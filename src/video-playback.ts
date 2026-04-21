@@ -9,6 +9,8 @@ export interface VideoFrameContext {
   currentCycle: number;
   eventBegin: number;
   cps: number;
+  /** Called each time a seek (el.currentTime assignment) is triggered. */
+  onSeek?: () => void;
 }
 
 
@@ -170,7 +172,7 @@ export function renderVideoFrame(c: VideoFrameContext): void {
   const synced = c.ev.sync != null;
   const rolling = c.ev.rolling != null;
   const syncOffset = synced && c.ev.sync !== true ? Number(c.ev.sync) * c.el.duration : 0;
-  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset, synced, rolling);
+  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset, synced, rolling, c.onSeek);
 }
 
 function updateVideoPlayback(
@@ -184,6 +186,7 @@ function updateVideoPlayback(
   syncOffset: number = 0,
   synced: boolean = false,
   rolling: boolean = false,
+  onSeek?: () => void,
 ): void {
   const dur = el.duration;
   const loopStart = beginVal * dur;
@@ -301,12 +304,14 @@ function updateVideoPlayback(
     });
     if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
       el.currentTime = expected;
+      if (onSeek) onSeek();
     }
   } else {
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
     if (Math.abs(el.currentTime - expected) > 0.01) {
       el.currentTime = expected;
+      if (onSeek) onSeek();
     }
   }
 }

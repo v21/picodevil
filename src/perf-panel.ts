@@ -25,6 +25,8 @@ export function setupPerfPanel(container: HTMLElement) {
         <div class="perf-row"><span class="perf-label">playing</span><span class="perf-value" id="perf-playing">—</span></div>
         <div class="perf-row"><span class="perf-label">natural playback</span><span class="perf-value" id="perf-natural">—</span></div>
         <div class="perf-row"><span class="perf-label">seek mode</span><span class="perf-value" id="perf-seek">—</span></div>
+        <div class="perf-row"><span class="perf-label">seeks/frame</span><span class="perf-value" id="perf-seeks-frame">—</span></div>
+        <div class="perf-row"><span class="perf-label">seeks/60f</span><span class="perf-value" id="perf-seeks-60f">—</span></div>
         <div class="perf-row"><span class="perf-label">free pool</span><span class="perf-value" id="perf-free">—</span></div>
       </div>
       <div class="perf-section">
@@ -236,6 +238,8 @@ export function setupPerfPanel(container: HTMLElement) {
     if (info) {
       (container.querySelector("#perf-natural") as HTMLElement).textContent = String(info.naturalCount);
       (container.querySelector("#perf-seek") as HTMLElement).textContent = String(info.seekCount);
+      (container.querySelector("#perf-seeks-frame") as HTMLElement).textContent = String(info.seeksThisFrame);
+      (container.querySelector("#perf-seeks-60f") as HTMLElement).textContent = String(info.seeksPer60f);
       (container.querySelector("#perf-screens") as HTMLElement).textContent = String(info.screensCount);
       (container.querySelector("#perf-events") as HTMLElement).textContent = String(info.eventsPerFrame);
     }
