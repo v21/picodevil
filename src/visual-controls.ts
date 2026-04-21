@@ -138,103 +138,97 @@ export const scaleY = createMixParam("scaleY");
 export const objectfit = createMixParam("objectfit");
 
 /**
- * Sets the left edge of the crop rectangle within the source, in normalized [0,1] coordinates.
- * 0 = left edge of source. Use with `.cropy()`, `.cropw()`, `.croph()`, or the `.crop()` shorthand.
+ * Sets the horizontal centre of the crop window within the source, in normalised [0,1] coordinates.
+ * Default 0.5 (centre of source). Use with `.cropw()` to define the crop region.
  *
- * @param {number | string | Pattern} value horizontal crop start (0–1, default 0)
+ * @param {number | string | Pattern} value horizontal crop centre (0–1, default 0.5)
  * @returns {Pattern} pattern with cropx applied
  * @example
- * $: video("clip.mp4").cropx(0.25)       // start from 25% into the source
+ * $: video("clip.mp4").cropx(0.25).cropw(0.5)   // left-of-centre crop window
+ * $: video("clip.mp4").cropx(sine.range(0.25, 0.75)).cropw(0.5)  // sliding window
  *
  */
 export const cropx = createMixParam("cropx");
 
 /**
- * Sets the top edge of the crop rectangle within the source, in normalized [0,1] coordinates.
+ * Sets the vertical centre of the crop window within the source, in normalised [0,1] coordinates.
+ * Default 0.5 (centre of source).
  *
- * @param {number | string | Pattern} value vertical crop start (0–1, default 0)
+ * @param {number | string | Pattern} value vertical crop centre (0–1, default 0.5)
  * @returns {Pattern} pattern with cropy applied
  * @example
- * $: video("clip.mp4").cropy(0.25)       // start from 25% down the source
+ * $: video("clip.mp4").cropy(0.25).croph(0.5)   // top-of-source crop window
  *
  */
 export const cropy = createMixParam("cropy");
 
 /**
- * Sets the width of the crop rectangle within the source, in normalized [0,1] coordinates.
- * 1 = full source width, 0.5 = half. If the crop region extends outside [0,1], the source tiles.
+ * Sets the width of the crop window as a fraction of source width. Default 1 (full width).
+ * Negative values mirror the source horizontally. 0 samples a single pixel (fills with that colour).
+ * If the window extends outside [0,1], the source tiles.
  *
- * @param {number | string | Pattern} value crop width as fraction of source width (default 1)
+ * @param {number | string | Pattern} value crop width fraction (default 1)
  * @returns {Pattern} pattern with cropw applied
  * @example
- * $: video("clip.mp4").cropw(0.5)        // use only left half of source, stretched to fill
- * $: video("clip.mp4").cropw(1.5)        // wider than source — tiles horizontally
+ * $: video("clip.mp4").cropw(0.5)        // centre half of source width
+ * $: video("clip.mp4").cropw(-1)         // full width, mirrored horizontally
+ * $: video("clip.mp4").cropw(1.5)        // wider than source — tiles
  *
  */
 export const cropw = createMixParam("cropw");
 
 /**
- * Sets the height of the crop rectangle within the source, in normalized [0,1] coordinates.
+ * Sets the height of the crop window as a fraction of source height. Default 1 (full height).
+ * Negative values mirror the source vertically. 0 samples a single pixel (fills with that colour).
  *
- * @param {number | string | Pattern} value crop height as fraction of source height (default 1)
+ * @param {number | string | Pattern} value crop height fraction (default 1)
  * @returns {Pattern} pattern with croph applied
  * @example
- * $: video("clip.mp4").croph(0.5)        // use only top half of source
+ * $: video("clip.mp4").croph(0.5)        // centre half of source height
+ * $: video("clip.mp4").croph(-1)         // full height, mirrored vertically
  *
  */
 export const croph = createMixParam("croph");
 
 /**
- * Crops the source to the given rectangle in normalized [0,1] source coordinates.
- * x/y set the top-left corner; w/h set the size. The cropped region is then fit
- * into the cell using the current `objectfit` mode (default "cover").
+ * Sets both cropw and croph to the same value. Shorthand for `.cropw(v).croph(v)`.
+ * With default cropx/cropy (0.5, 0.5) this always crops from the centre.
+ * 0 = single pixel colour fill; negative = mirror both axes.
  *
- * If the rectangle extends outside [0,1], the source tiles to fill the gap.
- * Aspect ratio of the cropped region is preserved by `objectfit("contain")`.
+ * @param {number | string | Pattern} value crop size fraction (default 1)
+ * @returns {Pattern} pattern with cropw and croph applied
+ * @example
+ * $: video("clip.mp4").cropwh(0.5)                  // 2× zoom into centre
+ * $: video("clip.mp4").cropwh(0)                    // fill with centre pixel colour
+ * $: video("clip.mp4").cropwh(-1)                   // flip both axes
+ * $: video("clip.mp4").cropwh(sine.range(0.1, 1))   // pulsing zoom
  *
- * @param {number | string | Pattern} [x=0] left edge of crop (0–1)
- * @param {number | string | Pattern} [y=0] top edge of crop (0–1)
+ */
+PatternProto.cropwh = function (value: any) {
+  return this.cropw(value).croph(value);
+};
+
+/**
+ * Crops the source to a rectangle defined by its centre (x, y) and size (w, h),
+ * all in normalised [0,1] source coordinates. The cropped region is fit into the
+ * cell using the current `objectfit` mode (default "cover").
+ *
+ * If the rectangle extends outside [0,1], the source tiles. Negative w/h mirror the axis.
+ *
+ * @param {number | string | Pattern} [x=0.5] horizontal centre of crop (0–1)
+ * @param {number | string | Pattern} [y=0.5] vertical centre of crop (0–1)
  * @param {number | string | Pattern} [w=1] width of crop (fraction of source width)
  * @param {number | string | Pattern} [h=1] height of crop (fraction of source height)
  * @returns {Pattern} pattern with crop applied
  * @example
- * $: video("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)   // center quarter
- * $: video("clip.mp4").crop(0, 0, 0.5, 1)            // left half, stretched to fill
- * $: video("clip.mp4").crop(0, 0, 0.5, 1).objectfit("contain")  // left half, letterboxed
- * $: video("clip.mp4").crop(-0.1, 0, 1.2, 1)         // slightly wider than source, tiles edges
+ * $: video("clip.mp4").crop(0.5, 0.5, 0.5, 0.5)   // centre quarter
+ * $: video("clip.mp4").crop(0.25, 0.5, 0.5, 1)     // left half
+ * $: video("clip.mp4").crop(0.25, 0.5, 0.5, 1).objectfit("contain")  // left half, letterboxed
+ * $: video("clip.mp4").crop(0.5, 0.5, 1.2, 1)      // slightly wider than source, tiles edges
  *
  */
-PatternProto.crop = function (x: any = 0, y: any = 0, w: any = 1, h: any = 1) {
+PatternProto.crop = function (x: any = 0.5, y: any = 0.5, w: any = 1, h: any = 1) {
   return this.cropx(x).cropy(y).cropw(w).croph(h);
-};
-
-/**
- * Zooms into a point of the source. `intensity` 0 = no zoom (full source), 1 = single pixel.
- * `cx` and `cy` set the zoom centre in normalised [0,1] source coordinates (default: 0.5, 0.5).
- *
- * Shorthand for `.cropw(1-i).croph(1-i).cropx(cx-(1-i)/2).cropy(cy-(1-i)/2)`.
- * All arguments accept patterns and signals.
- *
- * @param {number | string | Pattern} [intensity=0] zoom amount (0–1)
- * @param {number | string | Pattern} [cx=0.5] horizontal centre (0–1)
- * @param {number | string | Pattern} [cy=0.5] vertical centre (0–1)
- * @returns {Pattern} pattern with zoom applied
- * @example
- * $: video("clip.mp4").zoom(0.5)                  // 2× zoom into centre
- * $: video("clip.mp4").zoom(0.8, 0.25, 0.5)       // zoom into left side
- * $: video("clip.mp4").zoom(sine.range(0, 0.8))   // pulsing zoom
- * $: video("clip.mp4").zoom(0.5, mouseX, mouseY)  // zoom follows cursor
- *
- */
-PatternProto.zoom = function (intensity: any = 0, cx: any = 0.5, cy: any = 0.5) {
-  const iP = reify(intensity);
-  const cxP = reify(cx);
-  const cyP = reify(cy);
-  // Clamp to a tiny minimum so zoom(1) samples a point rather than drawing nothing
-  const wP = iP.fmap((v: any) => Math.max(1e-4, 1 - Number(v)));
-  const xP = cxP.sub(wP.div(2));
-  const yP = cyP.sub(wP.div(2));
-  return this.cropw(wP).croph(wP).cropx(xP).cropy(yP);
 };
 
 /**

@@ -2,12 +2,15 @@ export type FitMode = "cover" | "contain" | "fill" | "none";
 
 /**
  * Draw `source` into the canvas context at the given fit mode, optionally
- * cropping to a normalized sub-rectangle of the source.
+ * cropping to a sub-rectangle of the source.
  *
- * @param cropx  Left edge of crop in [0,1] normalized source coords (default 0)
- * @param cropy  Top edge of crop (default 0)
- * @param cropw  Width of crop (default 1). Negative values mirror horizontally.
- * @param croph  Height of crop (default 1). Negative values mirror vertically.
+ * @param cropx  Horizontal centre of crop in [0,1] normalised source coords (default 0.5)
+ * @param cropy  Vertical centre of crop (default 0.5)
+ * @param cropw  Width of crop as fraction of source width (default 1). Negative values mirror horizontally.
+ * @param croph  Height of crop as fraction of source height (default 1). Negative values mirror vertically.
+ *
+ * cropx/cropy refer to the *centre* of the crop window, not the top-left corner.
+ * cropw=0 (or croph=0) samples a single pixel at the centre — fills with that colour.
  *
  * When the crop rectangle extends outside [0,1], the source is tiled to fill
  * the destination (like CSS background-repeat). When it stays within [0,1] a
@@ -19,13 +22,16 @@ export function drawFit(
   sw: number, sh: number,
   cw: number, ch: number,
   fit: FitMode,
-  cropx = 0, cropy = 0, cropw = 1, croph = 1,
+  cropx = 0.5, cropy = 0.5, cropw = 1, croph = 1,
 ): void {
   const flipX = cropw < 0;
   const flipY = croph < 0;
-  // Effective source dimensions use absolute crop size
-  const vsw = Math.abs(cropw) * sw;
-  const vsh = Math.abs(croph) * sh;
+  const halfW = Math.abs(cropw) / 2;
+  const halfH = Math.abs(croph) / 2;
+
+  // Clamp to at least 1 source pixel so cropw=0 samples a single colour
+  const vsw = Math.max(1, halfW * 2 * sw);
+  const vsh = Math.max(1, halfH * 2 * sh);
 
   let dx: number, dy: number, dw: number, dh: number;
 
@@ -57,32 +63,35 @@ export function drawFit(
     }
   }
 
-  const needsTiling = cropx < 0 || cropy < 0 || cropx + Math.abs(cropw) > 1 || cropy + Math.abs(croph) > 1;
+  // Source top-left in source pixels (centre ± half-size)
+  const sxOrigin = (cropx - halfW) * sw;
+  const syOrigin = (cropy - halfH) * sh;
+
+  const needsTiling =
+    sxOrigin < 0 || syOrigin < 0 ||
+    sxOrigin + vsw > sw || syOrigin + vsh > sh;
 
   if (!needsTiling) {
-    // Fast path: 9-arg drawImage. Flip via negative dest dimensions.
-    const actualDx = flipX ? dx + dw : dx;
-    const actualDw = flipX ? -dw : dw;
-    const actualDy = flipY ? dy + dh : dy;
-    const actualDh = flipY ? -dh : dh;
-    ctx.drawImage(source, cropx * sw, cropy * sh, vsw, vsh, actualDx, actualDy, actualDw, actualDh);
+    ctx.save();
+    ctx.translate(flipX ? dx + dw : dx, flipY ? dy + dh : dy);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    ctx.drawImage(source, sxOrigin, syOrigin, vsw, vsh, 0, 0, dw, dh);
+    ctx.restore();
   } else {
-    // Tiling path: createPattern with a transform that accounts for flip.
     const pat = ctx.createPattern(source, "repeat");
     if (!pat) return;
-    const absScaleX = dw / vsw;
-    const absScaleY = dh / vsh;
-    // For flip, anchor shifts to the far edge so the image mirrors within the dest rect.
-    const tx = flipX ? dx + dw + cropx * sw * absScaleX : dx - cropx * sw * absScaleX;
-    const ty = flipY ? dy + dh + cropy * sh * absScaleY : dy - cropy * sh * absScaleY;
+    const scaleX = dw / vsw;
+    const scaleY = dh / vsh;
     pat.setTransform(
       new DOMMatrix()
-        .translate(tx, ty)
-        .scale(flipX ? -absScaleX : absScaleX, flipY ? -absScaleY : absScaleY),
+        .translate(-sxOrigin * scaleX, -syOrigin * scaleY)
+        .scale(scaleX, scaleY),
     );
     ctx.save();
+    ctx.translate(flipX ? dx + dw : dx, flipY ? dy + dh : dy);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
     (ctx as any).fillStyle = pat;
-    ctx.fillRect(dx, dy, dw, dh);
+    ctx.fillRect(0, 0, dw, dh);
     ctx.restore();
   }
 }

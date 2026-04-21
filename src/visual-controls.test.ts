@@ -397,49 +397,6 @@ describe("visual controls via createMixParam", () => {
     });
   });
 
-  describe(".zoom()", () => {
-    it("zoom(0) = full source: cropw=1, croph=1, cropx=0, cropy=0", () => {
-      const v = query(src("x").zoom(0), 0);
-      expect(v.cropw).toBeCloseTo(1);
-      expect(v.croph).toBeCloseTo(1);
-      expect(v.cropx).toBeCloseTo(0);
-      expect(v.cropy).toBeCloseTo(0);
-    });
-
-    it("zoom(0.5) = 2× zoom centred: cropw=0.5, cropx=0.25", () => {
-      const v = query(src("x").zoom(0.5), 0);
-      expect(v.cropw).toBeCloseTo(0.5);
-      expect(v.croph).toBeCloseTo(0.5);
-      expect(v.cropx).toBeCloseTo(0.25);
-      expect(v.cropy).toBeCloseTo(0.25);
-    });
-
-    it("zoom(1) = near-single-pixel at centre: cropw≈0, cropx≈0.5", () => {
-      const v = query(src("x").zoom(1), 0);
-      // Clamped to 1e-4 so drawImage gets a non-zero source rect
-      expect(v.cropw).toBeLessThan(0.001);
-      expect(v.croph).toBeLessThan(0.001);
-      expect(v.cropx).toBeCloseTo(0.5, 1);
-      expect(v.cropy).toBeCloseTo(0.5, 1);
-    });
-
-    it("zoom centre shifts with cx/cy", () => {
-      // zoom(0.5) centred at (0.25, 0.75): cropx = 0.25 - 0.25 = 0, cropy = 0.75 - 0.25 = 0.5
-      const v = query(src("x").zoom(0.5, 0.25, 0.75), 0);
-      expect(v.cropx).toBeCloseTo(0);
-      expect(v.cropy).toBeCloseTo(0.5);
-      expect(v.cropw).toBeCloseTo(0.5);
-      expect(v.croph).toBeCloseTo(0.5);
-    });
-
-    it("zoom works with signal (sine at t=0 = 0.5 → cropw≈0.5)", () => {
-      // sine at t=0: sin(0) = 0, so (sin/2)+0.5 = 0.5 → cropw = 1-0.5 = 0.5
-      const v = query(src("x").zoom(sine), 0);
-      expect(v.cropw).toBeCloseTo(0.5, 1);
-      expect(v.cropx).toBeCloseTo(0.25, 1);
-    });
-  });
-
   describe("standalone functions", () => {
     it("speed as standalone wraps value", async () => {
       const { speed } = await import("./visual-controls");

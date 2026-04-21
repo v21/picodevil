@@ -153,48 +153,41 @@ $: video("clip.mp4").fit("cover contain")  // alternates
 
 Crop the source to a rectangle defined in normalized [0,1] source coordinates, then fit the cropped region into the cell using the current `objectfit` mode.
 
+`cropx`/`cropy` are the **centre** of the crop window, not the top-left corner. `cropw`/`croph` are the width and height of the window as fractions of the source dimensions. Negative `cropw`/`croph` flips the axis. `cropwh(0)` samples a single pixel (fills the cell with that colour).
+
 ```js
-$: video("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)  // center quarter, stretched to fill
-$: video("clip.mp4").cropw(0.5)                    // left half, stretched to fill
-$: video("clip.mp4").crop(0, 0, 0.5, 1).objectfit("contain")  // left half, letterboxed
-$: video("clip.mp4").cropx(0.5).cropw(0.5)        // right half
+$: video("clip.mp4").crop(0.5, 0.5, 0.5, 0.5)  // center quarter, stretched to fill
+$: video("clip.mp4").cropw(0.5)                  // left half (centre default 0.5 → covers [0.25, 0.75])
+$: video("clip.mp4").crop(0.25, 0.5, 0.5, 1).objectfit("contain")  // left half, letterboxed
+$: video("clip.mp4").cropx(0.75).cropw(0.5)     // right half
+$: video("clip.mp4").cropw(-1)                   // full source, horizontally flipped
+$: video("clip.mp4").cropwh(-1)                  // full source, flipped both axes
 ```
 
-| Method         | Description                                         | Default |
-| -------------- | --------------------------------------------------- | ------- |
-| `.cropx(v)`    | Left edge of crop in source coords (0–1)            | 0       |
-| `.cropy(v)`    | Top edge of crop in source coords (0–1)             | 0       |
-| `.cropw(v)`    | Width of crop as fraction of source width (0–1)     | 1       |
-| `.croph(v)`    | Height of crop as fraction of source height (0–1)   | 1       |
-| `.crop(x,y,w,h)` | Shorthand for all four at once                   |         |
+| Method         | Description                                                      | Default |
+| -------------- | ---------------------------------------------------------------- | ------- |
+| `.cropx(v)`    | Horizontal centre of crop window in source coords (0–1)          | 0.5     |
+| `.cropy(v)`    | Vertical centre of crop window in source coords (0–1)            | 0.5     |
+| `.cropw(v)`    | Width of crop as fraction of source width; negative = flip       | 1       |
+| `.croph(v)`    | Height of crop as fraction of source height; negative = flip     | 1       |
+| `.cropwh(v)`   | Sets both cropw and croph; 0 = single-pixel colour fill          | 1       |
+| `.crop(x,y,w,h)` | Shorthand for all four at once (x,y are centres)              |         |
 
 All arguments accept patterns and signals:
 
 ```js
-$: video("clip.mp4").cropx(sine.range(0, 0.5)).cropw(0.5)   // sliding window
-$: video("clip.mp4").cropx("0 0.5").cropw("0.5 0.5")         // alternating halves
+$: video("clip.mp4").cropx(sine.range(0.25, 0.75)).cropw(0.5)  // sliding crop window
+$: video("clip.mp4").cropx("0.25 0.75").cropw(0.5)              // alternating halves
 ```
 
 **Aspect ratio**: the cropped region's own aspect ratio is what `objectfit` applies to. `.objectfit("contain")` letterboxes the crop; `.objectfit("fill")` stretches it (ignoring aspect ratio).
 
-**Tiling**: if the crop rectangle extends outside [0,1] — for example `cropx(-0.1).cropw(1.2)` — the source wraps/tiles to fill the region.
+**Tiling**: if the crop window extends outside [0,1] — for example `cropw(1.2)` with the default centre of 0.5 gives a window from −0.1 to 1.1 — the source wraps/tiles to fill the region.
 
 ```js
-$: video("clip.mp4").crop(-0.1, 0, 1.2, 1).objectfit("fill")  // slight tile wrap at edges
+$: video("clip.mp4").cropw(1.2).objectfit("fill")  // slight tile wrap at edges
+$: video("clip.mp4").crop(0.5, 0.5, 1.2, 1)        // same, explicit centre
 ```
-
-### Zoom
-
-`.zoom(intensity, cx, cy)` is a shorthand for crop that zooms into a point. `intensity` 0 = no zoom (full source), 1 = single pixel. `cx`/`cy` set the zoom centre in normalized [0,1] source coordinates (default: 0.5, 0.5).
-
-```js
-$: video("clip.mp4").zoom(0.5)                  // 2× zoom into centre
-$: video("clip.mp4").zoom(0.8, 0.25, 0.5)       // zoom into left side
-$: video("clip.mp4").zoom(sine.range(0, 0.8))   // pulsing zoom
-$: video("clip.mp4").zoom(0.5, mouseX, mouseY)  // zoom follows cursor
-```
-
-All arguments accept patterns and signals.
 
 ### Video speed
 

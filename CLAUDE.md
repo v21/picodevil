@@ -103,8 +103,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
 - Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`
 - Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.fit()`, `.urlBase()`
-- Crop: `.cropx(n)`, `.cropy(n)`, `.cropw(n)`, `.croph(n)`, `.crop(x, y, w, h)` — all normalized [0,1] source coords; crop outside [0,1] tiles the source
-- Zoom: `.zoom(intensity, cx?, cy?)` — shorthand for crop; 0=no zoom, 1=single pixel; centre defaults to (0.5, 0.5)
+- Crop: `.cropx(n)`, `.cropy(n)`, `.cropw(n)`, `.croph(n)`, `.cropwh(n)`, `.crop(x, y, w, h)` — cropx/cropy are the **centre** of the crop window (default 0.5); cropw/croph are width/height fractions (negative = flip axis; 0 = single-pixel colour fill); crop outside [0,1] tiles the source
 - Grid labelling: `.i(n)`, `.count(n)`, `.rows(n)`, `.cols(n)`, `.rowscols(n)`
 - Circle labelling: `.radius(n)`, `.startOffset(n)`, `.circleCount(n)`
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
@@ -126,13 +125,13 @@ Example: `$: stack(s("a.mp4"), s("b.mp4")).chopStack(4).index().rowscols(2).grid
 Example: `$: s("clip.mp4").syncStack(4).rowscols(2).gridMod().rolling()` — 4 phase-offset copies (sync 0, 0.25, 0.5, 0.75) tiled in a grid
 Example: `$: s("clip.mp4").cropStack(2).gridMod()` — slice frame into 2×2 tiles, reassembled into grid
 Example: `$: s("clip.mp4").cropStack(2, 3).gridMod()` — 2 rows, 3 columns
-Example: `$: s("clip.mp4").crop(0.25, 0.25, 0.5, 0.5)` — render center quarter of source, stretched to fill cell
-Example: `$: s("clip.mp4").cropw(0.5).objectfit("contain")` — left half of source, letterboxed
-Example: `$: s("clip.mp4").cropx(sine.range(0, 0.5)).cropw(0.5)` — sliding crop window
-Example: `$: s("clip.mp4").crop(-0.1, 0, 1.2, 1)` — slightly wider than source; edges tile
-Example: `$: s("clip.mp4").zoom(0.5)` — 2× zoom into centre
-Example: `$: s("clip.mp4").zoom(sine.range(0, 0.8))` — pulsing zoom
-Example: `$: s("clip.mp4").zoom(0.5, mouseX, mouseY)` — zoom follows cursor
+Example: `$: s("clip.mp4").crop(0.5, 0.5, 0.5, 0.5)` — render center quarter of source (centre at 0.5,0.5; size 0.5×0.5), stretched to fill cell
+Example: `$: s("clip.mp4").cropw(0.5).objectfit("contain")` — centre strip of source, letterboxed
+Example: `$: s("clip.mp4").crop(0.25, 0.5, 0.5, 1).objectfit("contain")` — left half of source, letterboxed
+Example: `$: s("clip.mp4").cropx(sine.range(0.25, 0.75)).cropw(0.5)` — sliding crop window
+Example: `$: s("clip.mp4").cropw(1.2)` — slightly wider than source; edges tile
+Example: `$: s("clip.mp4").cropwh(0.5)` — 2× zoom into centre (crops to centre quarter)
+Example: `$: s("clip.mp4").cropwh(-1)` — full source, flipped both axes
 Example: `$: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())` — smoothly interpolate the x field between values
 Example: `$: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline())` — spline-interpolate the alpha field
 Example: `$: s("clip.mp4").speed("1 2").mulOn('speed', 0.5)` — halve the speed field arithmetically

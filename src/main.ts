@@ -496,7 +496,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
         if (el && el.naturalWidth > 0) {
           const fitMode = ev.objectfit ?? "cover";
           drawFit(ctx, el, el.naturalWidth, el.naturalHeight, canvas.width, canvas.height, fitMode,
-            ev.cropx ?? 0, ev.cropy ?? 0, ev.cropw ?? 1, ev.croph ?? 1);
+            ev.cropx ?? 0.5, ev.cropy ?? 0.5, ev.cropw ?? 1, ev.croph ?? 1);
         }
       } else if (ev._type === "video") {
         const drawPos = `${screenIndex}:${eventIndex}`;
@@ -511,7 +511,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
           if (el.videoWidth > 0) {
             const fitMode = ev.objectfit ?? "cover";
             drawFit(ctx, el, el.videoWidth, el.videoHeight, canvas.width, canvas.height, fitMode,
-              ev.cropx ?? 0, ev.cropy ?? 0, ev.cropw ?? 1, ev.croph ?? 1);
+              ev.cropx ?? 0.5, ev.cropy ?? 0.5, ev.cropw ?? 1, ev.croph ?? 1);
           }
         }
       } else if (ev._type === "stream") {
@@ -519,7 +519,7 @@ function drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number) {
         if (streamEl && streamEl.videoWidth > 0) {
           const fitMode = ev.objectfit ?? "cover";
           drawFit(ctx, streamEl, streamEl.videoWidth, streamEl.videoHeight, canvas.width, canvas.height, fitMode,
-            ev.cropx ?? 0, ev.cropy ?? 0, ev.cropw ?? 1, ev.croph ?? 1);
+            ev.cropx ?? 0.5, ev.cropy ?? 0.5, ev.cropw ?? 1, ev.croph ?? 1);
         }
       } else {
         warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);

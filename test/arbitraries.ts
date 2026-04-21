@@ -351,11 +351,7 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.tuple(cropArg, cropArg, cropDimArg, cropDimArg).map(([x, y, w, h]) => ({
     code: `.crop(${x}, ${y}, ${w}, ${h})`,
   })),
-  // zoom shorthand
-  cropDimArg.map(a => ({ code: `.zoom(${a})` })),
-  fc.tuple(cropDimArg, cropArg, cropArg).map(([i, cx, cy]) => ({
-    code: `.zoom(${i}, ${cx}, ${cy})`,
-  })),
+  cropDimArg.map(a => ({ code: `.cropwh(${a})` })),
 );
 
 const videoChain: fc.Arbitrary<string> = fc.array(videoMethod, { minLength: 0, maxLength: 5 })
@@ -383,10 +379,7 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.tuple(cropArg, cropArg, cropDimArg, cropDimArg).map(([x, y, w, h]) => ({
     code: `.crop(${x}, ${y}, ${w}, ${h})`,
   })),
-  cropDimArg.map(a => ({ code: `.zoom(${a})` })),
-  fc.tuple(cropDimArg, cropArg, cropArg).map(([i, cx, cy]) => ({
-    code: `.zoom(${i}, ${cx}, ${cy})`,
-  })),
+  cropDimArg.map(a => ({ code: `.cropwh(${a})` })),
   posArg.map(a => ({ code: `.x(${a})` })),
   posArg.map(a => ({ code: `.y(${a})` })),
   posArg.map(a => ({ code: `.left(${a})` })),

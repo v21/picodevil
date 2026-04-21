@@ -178,8 +178,8 @@ PatternProto.cropStack = function (rowsArg: any = 2, colsArg?: any) {
           const val = Object(v) === v ? v : {};
           return {
             ...val,
-            cropx: c / cols,
-            cropy: r / rows,
+            cropx: (c + 0.5) / cols,
+            cropy: (r + 0.5) / rows,
             cropw: 1 / cols,
             croph: 1 / rows,
             i,

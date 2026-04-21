@@ -358,24 +358,24 @@ describe("cropStack", () => {
       cropw: e.value.cropw,
       croph: e.value.croph,
     }));
-    expect(crops[0]).toEqual({ cropx: 0, cropy: 0, cropw: 0.5, croph: 0.5 }); // top-left
-    expect(crops[1]).toEqual({ cropx: 0.5, cropy: 0, cropw: 0.5, croph: 0.5 }); // top-right
-    expect(crops[2]).toEqual({ cropx: 0, cropy: 0.5, cropw: 0.5, croph: 0.5 }); // bottom-left
-    expect(crops[3]).toEqual({ cropx: 0.5, cropy: 0.5, cropw: 0.5, croph: 0.5 }); // bottom-right
+    expect(crops[0]).toEqual({ cropx: 0.25, cropy: 0.25, cropw: 0.5, croph: 0.5 }); // top-left centre
+    expect(crops[1]).toEqual({ cropx: 0.75, cropy: 0.25, cropw: 0.5, croph: 0.5 }); // top-right centre
+    expect(crops[2]).toEqual({ cropx: 0.25, cropy: 0.75, cropw: 0.5, croph: 0.5 }); // bottom-left centre
+    expect(crops[3]).toEqual({ cropx: 0.75, cropy: 0.75, cropw: 0.5, croph: 0.5 }); // bottom-right centre
   });
 
   it("sets correct crop for 1x2 (two rows, one column)", () => {
     const evs = (video("a.mp4") as any).cropStack(2, 1).queryArc(0, 1);
     expect(evs).toHaveLength(2);
-    expect(evs[0].value).toMatchObject({ cropx: 0, cropy: 0, cropw: 1, croph: 0.5 });
-    expect(evs[1].value).toMatchObject({ cropx: 0, cropy: 0.5, cropw: 1, croph: 0.5 });
+    expect(evs[0].value).toMatchObject({ cropx: 0.5, cropy: 0.25, cropw: 1, croph: 0.5 });
+    expect(evs[1].value).toMatchObject({ cropx: 0.5, cropy: 0.75, cropw: 1, croph: 0.5 });
   });
 
   it("sets correct crop for 1 row, 2 cols", () => {
     const evs = (video("a.mp4") as any).cropStack(1, 2).queryArc(0, 1);
     expect(evs).toHaveLength(2);
-    expect(evs[0].value).toMatchObject({ cropx: 0, cropy: 0, cropw: 0.5, croph: 1 });
-    expect(evs[1].value).toMatchObject({ cropx: 0.5, cropy: 0, cropw: 0.5, croph: 1 });
+    expect(evs[0].value).toMatchObject({ cropx: 0.25, cropy: 0.5, cropw: 0.5, croph: 1 });
+    expect(evs[1].value).toMatchObject({ cropx: 0.75, cropy: 0.5, cropw: 0.5, croph: 1 });
   });
 
   it("sets i, count, rows, cols on each slice", () => {
