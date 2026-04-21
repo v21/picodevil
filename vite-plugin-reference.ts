@@ -73,6 +73,7 @@ function extractFromFile(source: string, filterNames?: Set<string>): RefEntry[] 
     if (!name) continue;
     if (filterNames && !filterNames.has(name)) continue;
 
+    if (jsdocBlock.includes("@internal")) continue;
     const { description, params, examples } = parseJSDoc(jsdocBlock);
     if (!description) continue;
 
@@ -136,6 +137,9 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Iteration", "src/iterators.ts"],
     ["Randomness", "src/event-random.ts"],
     ["Signals", "src/strudel-globals.ts"],
+    ["Media", "src/media-registry.ts"],
+    ["Media", "src/stream-manager.ts"],
+    ["Global", "src/runtime-globals.ts"],
   ];
 
   const catMap = new Map<string, RefEntry[]>();

@@ -136,7 +136,16 @@ export function getAllStreamStates(): StreamState[] {
   return Array.from(streams.values());
 }
 
-/** Idempotent: start a webcam stream by name. No-op if already active. Fire-and-forget. */
+/**
+ * Start a webcam stream and register it by name. Idempotent — no-op if already active.
+ * The browser will prompt for camera permission on first call.
+ * Use the name with `s()` after calling this.
+ *
+ * @param {string} name short identifier used in patterns
+ * @example
+ * loadCamera('cam')
+ * $: s('cam')
+ */
 export function loadCamera(name: string): void {
   if (isStreamActive(name)) return;
   startWebcam(name).catch(err => {
@@ -144,7 +153,16 @@ export function loadCamera(name: string): void {
   });
 }
 
-/** Idempotent: start a screen capture by name. No-op if already active. Fire-and-forget. */
+/**
+ * Start a screen/window capture stream and register it by name. Idempotent — no-op if already active.
+ * The browser will prompt to choose a screen or window on first call.
+ * Use the name with `s()` after calling this.
+ *
+ * @param {string} name short identifier used in patterns
+ * @example
+ * loadScreen('scrn')
+ * $: s('scrn')
+ */
 export function loadScreen(name: string): void {
   if (isStreamActive(name)) return;
   startScreenCapture(name).catch(err => {
@@ -157,6 +175,7 @@ export function loadScreen(name: string): void {
  * Screen captures cannot auto-reconnect (getDisplayMedia requires user gesture).
  * Webcams can reconnect if permission was previously granted, using the saved deviceId.
  * Failures are silently ignored — the entry stays disconnected in the sidebar.
+ * @internal
  */
 export async function reconnectStreams() {
   const entries = getAllEntries();

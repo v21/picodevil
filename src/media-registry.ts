@@ -41,6 +41,7 @@ function save() {
  * Initialise the registry from a decoded URL state (replaces any existing contents).
  * Thumbnails are merged from localStorage by entry ID.
  * Call this once at startup before any other registry operations.
+ * @internal
  */
 export function initRegistry(entries: { id: string; name: string; url: string; type: MediaEntry["type"]; duration?: number; streamKind?: MediaEntry["streamKind"]; deviceId?: string }[]) {
   registry.length = 0;
@@ -139,12 +140,12 @@ export function updateEntry(name: string, updates: Partial<MediaEntry>) {
   save();
 }
 
-/** Look up cached duration by media URL. Returns undefined if not yet known. */
+/** Look up cached duration by media URL. Returns undefined if not yet known. @internal */
 export function getDurationByUrl(url: string): number | undefined {
   return registry.find(e => e.url === url && e.duration != null)?.duration;
 }
 
-/** Update duration for an entry by URL (called when video metadata loads in the pool). */
+/** Update duration for an entry by URL (called when video metadata loads in the pool). @internal */
 export function setDurationByUrl(url: string, duration: number) {
   const e = registry.find(e => e.url === url && !e.duration);
   if (e) { e.duration = duration; save(); }
@@ -177,7 +178,20 @@ export function importAll(json: string) {
   save();
 }
 
-/** Idempotent: register a video by name. No-op if name+url already match. */
+/**
+ * Register a video by name. Idempotent — no-op if name+url already match.
+ * If the URL is a YouTube link, the server will download it automatically.
+ * Use the name with `video()` or `s()` after calling this.
+ *
+ * @param {string} name short identifier used in patterns
+ * @param {string} url  video URL (MP4 or YouTube)
+ * @example
+ * loadVideo('cat', 'https://example.com/cat.mp4')
+ * $: video('cat')
+ * @example
+ * loadVideo('yt', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+ * $: s('yt')
+ */
 export function loadVideo(name: string, url: string): void {
   const existing = resolveMedia(name);
   if (existing) {
@@ -193,7 +207,16 @@ export function loadVideo(name: string, url: string): void {
   }
 }
 
-/** Idempotent: register an image by name. No-op if name+url already match. */
+/**
+ * Register an image by name. Idempotent — no-op if name+url already match.
+ * Use the name with `image()` or `s()` after calling this.
+ *
+ * @param {string} name short identifier used in patterns
+ * @param {string} url  image URL (PNG, JPEG, GIF, etc.)
+ * @example
+ * loadImage('logo', 'https://example.com/logo.png')
+ * $: image('logo')
+ */
 export function loadImage(name: string, url: string): void {
   const existing = resolveMedia(name);
   if (existing) {
@@ -215,7 +238,7 @@ export function setOnChange(cb: (() => void) | null) {
   onChange = cb;
 }
 
-/** Add an additional listener that is called alongside the primary onChange. */
+/** Add an additional listener that is called alongside the primary onChange. @internal */
 export function addOnChange(cb: () => void) {
   extraListeners.add(cb);
   return () => extraListeners.delete(cb); // returns an unsubscribe fn
@@ -241,7 +264,7 @@ function pollTranscodeReady(entryId: string, stem: string, serverBase: string, i
   }, interval);
 }
 
-/** Upload a local file to the server, re-encode as I-frame-only MP4, then update the entry URL. */
+/** Upload a local file to the server, re-encode as I-frame-only MP4, then update the entry URL. @internal */
 export function uploadToServer(name: string, file: File, serverBase = "http://localhost:3456"): Promise<void> {
   return new Promise((resolve, reject) => {
     const entry = registry.find(e => e.name === name);
