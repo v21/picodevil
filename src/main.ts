@@ -11,6 +11,7 @@ import { type VideoEl } from "./video-element-state";
 import { eventBeginFromHap } from "./event-begin";
 import { drawFit } from "./draw-fit";
 import { scoreFreeElement, computeExpectedFromEvent } from "./video-pool";
+import { isNativeRate } from "./playback-rate";
 import { createVideoPoolManager } from "./video-pool-manager";
 import { transpile, type WidgetCallInfo } from "./transpiler";
 import { runTranspiled } from "./eval-sandbox";
@@ -259,6 +260,11 @@ const uzuMetrics = {
   shareHits: 0,                 // times frameShareMap avoided a new element
   maxFrameTime: 0,              // worst frame time seen
   xLog: [] as number[],         // x values seen in render loop (for testing)
+  // live per-frame counts for perf panel
+  naturalCount: 0,              // videos in native playback mode this frame
+  seekModeCount: 0,             // videos in manual-seek mode this frame
+  screensCount: 0,              // screens rendered this frame
+  eventsPerFrame: 0,            // events drawn this frame
   reset() {
     this.frameTimes = [];
     this.seekCount = 0;
@@ -268,6 +274,12 @@ const uzuMetrics = {
   },
 };
 (window as any).uzuMetrics = uzuMetrics;
+(window as any).uzuPerfInfo = () => ({
+  naturalCount: uzuMetrics.naturalCount,
+  seekCount: uzuMetrics.seekModeCount,
+  screensCount: uzuMetrics.screensCount,
+  eventsPerFrame: uzuMetrics.eventsPerFrame,
+});
 
 // --- render loop ---
 let startTime = performance.now();
@@ -365,23 +377,23 @@ function assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number) 
       continue;
     }
 
-    // 2. Share: another event already assigned this frame with same src at similar expected time
+    // 2. Share: another event already assigned this frame with same src at similar expected time.
+    // Also share when expectedTime is null (duration unknown) — any same-src element is equally good.
     let shared = false;
-    if (expectedTime != null) {
-      for (const [otherKey, el] of frameAssignments) {
-        if (el._state.srcUrl !== srcUrl) continue;
+    for (const [otherKey, el] of frameAssignments) {
+      if (el._state.srcUrl !== srcUrl) continue;
+      if (expectedTime != null) {
         const other = assignedExpected.get(otherKey);
         if (!other || other.srcUrl !== srcUrl) continue;
         const dur = cachedDur ?? (isFinite(el.duration) ? el.duration : 0);
         const score = dur > 0 ? scoreFreeElement(other.expected, expectedTime, dur) : Math.abs(other.expected - expectedTime);
-        if (score < SHARE_TIME_THRESHOLD) {
-          frameAssignments.set(drawPos, el);
-          assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
-          uzuMetrics.shareHits++;
-          shared = true;
-          break;
-        }
+        if (score >= SHARE_TIME_THRESHOLD) continue;
       }
+      frameAssignments.set(drawPos, el);
+      if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
+      uzuMetrics.shareHits++;
+      shared = true;
+      break;
     }
     if (shared) continue;
 
@@ -645,6 +657,16 @@ function frame() {
   let freeCount = 0;
   for (const list of pool.freeVideoPool.values()) freeCount += list.length;
   uzuMetrics.freePoolSize = freeCount;
+  uzuMetrics.screensCount = screens.length;
+  uzuMetrics.eventsPerFrame = frameEvents.length;
+  let naturalCount = 0, seekModeCount = 0;
+  for (const el of pool.videoPool.values()) {
+    if (el.paused) seekModeCount++;
+    else if (isNativeRate(el.playbackRate)) naturalCount++;
+    else seekModeCount++;
+  }
+  uzuMetrics.naturalCount = naturalCount;
+  uzuMetrics.seekModeCount = seekModeCount;
 
   flushWarnings();
   requestAnimationFrame(frame);
