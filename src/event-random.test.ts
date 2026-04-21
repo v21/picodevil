@@ -1,3 +1,4 @@
+
 import { describe, it, expect } from "vitest";
 import { sine } from "@strudel/core";
 import { color } from "./color-pattern";
@@ -79,9 +80,12 @@ describe("per-event rand stability (no flicker)", () => {
 
 // ─── decorrelation via index() ────────────────────────────────────────────────
 
+// Decorrelation: rand applied AFTER the stack op reads _randSeed stamped on each hap.
+// Rand applied BEFORE the stack is shared (same source value copied to all slots).
+
 describe("parallel instance decorrelation via index()", () => {
   it("two simultaneous slots get different rand values", () => {
-    const pat = index(color("red").alpha(rand), color("blue").alpha(rand));
+    const pat = index(color("red"), color("blue")).alpha(rand);
     const evs = pat.queryArc(0.1, 0.1);
     const red = evs.find((e: any) => e.value.color === "red");
     const blue = evs.find((e: any) => e.value.color === "blue");
@@ -89,7 +93,7 @@ describe("parallel instance decorrelation via index()", () => {
   });
 
   it("slot values are stable across frame times", () => {
-    const pat = index(color("red").alpha(rand), color("blue").alpha(rand));
+    const pat = index(color("red"), color("blue")).alpha(rand);
     const v1 = pat.queryArc(0.1, 0.1).find((e: any) => e.value.color === "red").value.alpha;
     const v2 = pat.queryArc(0.4, 0.4).find((e: any) => e.value.color === "red").value.alpha;
     expect(v1).toBe(v2);
@@ -100,7 +104,7 @@ describe("parallel instance decorrelation via index()", () => {
 
 describe("parallel instance decorrelation via indexCycle()", () => {
   it("two simultaneous slots get different rand values", () => {
-    const pat = indexCycle(color("red").alpha(rand), color("blue").alpha(rand));
+    const pat = indexCycle(color("red"), color("blue")).alpha(rand);
     const evs = pat.queryArc(0.1, 0.1);
     const red = evs.find((e: any) => e.value.color === "red");
     const blue = evs.find((e: any) => e.value.color === "blue");
@@ -108,14 +112,9 @@ describe("parallel instance decorrelation via indexCycle()", () => {
   });
 
   it("multiple copies of the same pattern get different values", () => {
-    const pat = indexCycle(
-      color("red").alpha(rand),
-      color("red").alpha(rand),
-      color("red").alpha(rand),
-    );
+    const pat = indexCycle(color("red"), color("red"), color("red")).alpha(rand);
     const alphas = pat.queryArc(0.1, 0.1).map((e: any) => e.value.alpha);
     expect(alphas).toHaveLength(3);
-    // All 3 should differ
     expect(new Set(alphas).size).toBe(3);
   });
 });
@@ -124,14 +123,14 @@ describe("parallel instance decorrelation via indexCycle()", () => {
 
 describe("parallel instance decorrelation via stackN()", () => {
   it("4 copies of same pattern get different rand values", () => {
-    const pat = stackN(4, color("red").alpha(rand));
+    const pat = stackN(4, color("red")).alpha(rand);
     const alphas = pat.queryArc(0.1, 0.1).map((e: any) => e.value.alpha);
     expect(alphas).toHaveLength(4);
     expect(new Set(alphas).size).toBeGreaterThan(1);
   });
 
   it("slot values are stable across frame times", () => {
-    const pat = stackN(2, color("red").alpha(rand));
+    const pat = stackN(2, color("red")).alpha(rand);
     const first1 = pat.queryArc(0.1, 0.1)[0].value.alpha;
     const first2 = pat.queryArc(0.5, 0.5)[0].value.alpha;
     expect(first1).toBe(first2);

@@ -1,5 +1,6 @@
 import { reify, Pattern } from "@strudel/core";
 import "./visual-controls";
+import { nextLayoutParent, deriveRandSeed } from "./layout-counter";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -7,16 +8,6 @@ type PatOrArr = any | any[];
 
 function flattenPats(args: PatOrArr[]): any[] {
   return args.flatMap((a) => (Array.isArray(a) ? a : [a])).map(reify);
-}
-
-// FNV-1a 32-bit hash — used to derive stable randSeed values from slot position
-function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h * 16777619) >>> 0;
-  }
-  return h;
 }
 
 /** The event's onset time — uses whole.begin when available (gives true onset even in clipped queries). */
@@ -42,10 +33,10 @@ function querySeparately(
 }
 
 function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
+  const callId = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
     const cBegin = begin.floor ? begin.floor() : Math.floor(Number(begin));
-    const cycle = Math.round(Number(cBegin));
 
     // Full-cycle query per source pattern to establish temporal order
     const cycleTagged = querySeparately(pats, Number(cBegin), Number(cBegin) + 1);
@@ -83,34 +74,24 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
       const subIdx = subIdxCounters.get(groupKey) ?? 0;
       subIdxCounters.set(groupKey, subIdx + 1);
 
-      const seed = hashStr(`${gIdx}:${cycle}`);
-      const seededState = state.setControls({ randSeed: seed });
-
-      // Re-query source pattern with seeded state; take the subIdx-th hap at this onset.
-      const matching: any[] = [];
-      for (const hap of pats[srcIdx].query(seededState)) {
-        if (String(hapOnset(hap)) === onsetKey) matching.push(hap);
-      }
-      const target = matching[subIdx];
-      if (target) {
-        result.push(
-          target.withValue((v: any) => ({
-            ...(Object(v) === v ? v : {}),
-            [iLabel]: gIdx,
-            [countLabel]: count,
-          })),
-        );
-      }
+      const sourceLp = Object(cycleHap.value) === cycleHap.value ? cycleHap.value.layoutParent : undefined;
+      const seed = deriveRandSeed(callId, gIdx, state, sourceLp);
+      result.push(
+        cycleHap.withValue((v: any) => ({
+          ...(Object(v) === v ? v : {}),
+          [iLabel]: gIdx,
+          [countLabel]: count,
+          _randSeed: seed,
+        })),
+      );
     }
     return result;
   });
 }
 
 function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
+  const callId = nextLayoutParent();
   return new Pattern((state: any) => {
-    const { begin } = state.span;
-    const cycle = Math.round(Math.floor(Number(begin)));
-
     // Query each source at the current arc in insertion order
     const arcTagged = querySeparately(pats, state.span.begin, state.span.end);
 
@@ -141,23 +122,16 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
       const subIdx = subIdxCounters.get(groupKey) ?? 0;
       subIdxCounters.set(groupKey, subIdx + 1);
 
-      const seed = hashStr(`${gIdx}:${cycle}`);
-      const seededState = state.setControls({ randSeed: seed });
-
-      const matching: any[] = [];
-      for (const hap of pats[srcIdx].query(seededState)) {
-        if (String(hapOnset(hap)) === onsetKey) matching.push(hap);
-      }
-      const target = matching[subIdx];
-      if (target) {
-        result.push(
-          target.withValue((v: any) => ({
-            ...(Object(v) === v ? v : {}),
-            [iLabel]: gIdx,
-            [countLabel]: count,
-          })),
-        );
-      }
+      const sourceLp = Object(ev.value) === ev.value ? ev.value.layoutParent : undefined;
+      const seed = deriveRandSeed(callId, gIdx, state, sourceLp);
+      result.push(
+        ev.withValue((v: any) => ({
+          ...(Object(v) === v ? v : {}),
+          [iLabel]: gIdx,
+          [countLabel]: count,
+          _randSeed: seed,
+        })),
+      );
     }
     return result;
   });

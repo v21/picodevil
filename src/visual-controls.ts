@@ -6,7 +6,7 @@
  * (so fit/chop/loopAt see the true event duration). See docs/combinators.md.
  */
 import { reify, Pattern, Hap } from "@strudel/core";
-import { createMixParam } from "./create-mix-param";
+import { createMixParam, samplePerEvent } from "./create-mix-param";
 import "./pattern-extensions"; // registers addOn on Pattern.prototype
 import { resolveMedia } from "./media-registry";
 import { resolveValue } from "./resolve-pattern-value";
@@ -232,17 +232,21 @@ PatternProto.crop = function (x: any = 0.5, y: any = 0.5, w: any = 1, h: any = 1
 };
 
 /**
- * Sets the CSS blend mode for compositing this pattern onto the canvas.
- * Uses canvas globalCompositeOperation values (same as CSS mix-blend-mode).
+ * Sets the blend mode for compositing this pattern onto the canvas.
  *
- * @param {string | Pattern} value blend mode: "multiply", "screen", "overlay", "darken", "lighten",
- *   "color-dodge", "color-burn", "hard-light", "soft-light", "difference", "exclusion",
- *   "hue", "saturation", "color", "luminosity", "source-over" (default)
+ * Supported modes (WebGL backend):
+ * - `"source-over"` — normal alpha compositing (default)
+ * - `"lighter"` / `"add"` — additive: colors add together, good for glows/light leaks
+ * - `"multiply"` — darkens: multiplies source with destination colors
+ * - `"screen"` — lightens: inverse of multiply, good for fire/smoke effects
+ * - `"destination-out"` — erases destination where source is opaque (alpha mask)
+ *
+ * @param {string | Pattern} value blend mode string (see above)
  * @returns {Pattern} pattern with blend mode applied
  * @example
  * $: video("clip.mp4").blend("multiply")
- * $: color("red").blend("screen difference")  // alternates per cycle
- *
+ * $: color("red").blend("screen lighter")  // alternates per cycle
+ * $: video("fire.mp4").blend("lighter")    // additive glow
  */
 export const blend = createMixParam("blend");
 
@@ -525,10 +529,14 @@ function makeXY(field: 'x' | 'y') {
   const method = function (this: any, value: any) {
     const valPat = reify(value);
     if ((valPat as any)._perEvent) {
-      return this.fmap((v: any) => (ctrl: any) => {
-        const base = typeof v === 'object' && v !== null ? v : {};
-        return { ...base, [field]: (base[field] ?? 0) + ctrl };
-      }).appLeft(valPat);
+      return new (Pattern as any)((state: any) => {
+        return this.query(state).flatMap((hap: any) => {
+          const ctrl = samplePerEvent(valPat, hap, state);
+          if (ctrl === undefined) return [hap];
+          const base = typeof hap.value === 'object' && hap.value !== null ? hap.value : {};
+          return [hap.withValue(() => ({ ...base, [field]: (base[field] ?? 0) + ctrl }))];
+        });
+      });
     }
     return this.addOn(field, value);
   };
@@ -594,10 +602,19 @@ const iFunc = function (value: any, pat?: any) {
   const valPat = reify(value);
 
   if ((valPat as any)._perEvent) {
-    return pat.fmap((v: any) => (ctrl: any) => {
-      const base = typeof v === 'object' && v !== null ? v : {};
-      return { ...(base.count === undefined ? { count: Infinity } : {}), ...base, i: ctrl, layoutParent: undefined };
-    }).appLeft(valPat);
+    return new Pattern((state: any) => {
+      return pat.query(state).flatMap((hap: any) => {
+        const ctrl = samplePerEvent(valPat, hap, state);
+        if (ctrl === undefined) return [hap];
+        const base = typeof hap.value === 'object' && hap.value !== null ? hap.value : {};
+        return [hap.withValue(() => ({
+          ...(base.count === undefined ? { count: Infinity } : {}),
+          ...base,
+          i: ctrl,
+          layoutParent: undefined,
+        }))];
+      });
+    });
   }
 
   return new Pattern((state: any) => {

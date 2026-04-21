@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
-import { Pattern, Hap } from "@strudel/core";
+import { Pattern, Hap, rand } from "@strudel/core";
 import "./pattern-extensions";
 import "./visual-controls";
 import "./index-patterns";
@@ -299,6 +299,21 @@ describe("chopStack", () => {
     expect(iVals).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
     expect(evs[0].value.count).toBe(8);
   });
+
+  it("each slice gets a unique randSeed so post-stack rand is decorrelated", () => {
+    const evs = (video("a.mp4") as any).chopStack(4).addOn('alpha', rand as any).queryArc(0, 1);
+    const alphas = evs.map((e: any) => e.value.alpha);
+    expect(new Set(alphas).size).toBe(4);
+  });
+
+  it("two separate chopStack calls produce decorrelated tile-0s (callId differentiates)", () => {
+    // Two separate .chopStack(2) calls → different callIds → different seeds for same i
+    const pA = (video("a.mp4") as any).chopStack(2).addOn('alpha', rand as any);
+    const pB = (video("b.mp4") as any).chopStack(2).addOn('alpha', rand as any);
+    const tile0A = pA.queryArc(0, 1).find((e: any) => e.value.i === 0);
+    const tile0B = pB.queryArc(0, 1).find((e: any) => e.value.i === 0);
+    expect(tile0A.value.alpha).not.toBe(tile0B.value.alpha);
+  });
 });
 
 describe("syncStack", () => {
@@ -336,6 +351,12 @@ describe("syncStack", () => {
       expect(ev.value._type).toBe("video");
       expect(ev.value.src).toBe("a.mp4");
     }
+  });
+
+  it("each copy gets a unique randSeed so post-stack rand is decorrelated", () => {
+    const evs = (video("a.mp4") as any).syncStack(4).addOn('alpha', rand as any).queryArc(0, 1);
+    const alphas = evs.map((e: any) => e.value.alpha);
+    expect(new Set(alphas).size).toBe(4);
   });
 });
 
@@ -415,5 +436,22 @@ describe("cropStack", () => {
     const evs = pat.queryArc(0, 1);
     // 2 sources × 2 slices = 4 events
     expect(evs).toHaveLength(4);
+  });
+
+  it("rand is decorrelated post-cropStack via addOn", () => {
+    const evs = (video("a.mp4") as any).cropStack(2, 2).addOn('alpha', rand as any).queryArc(0, 1);
+    expect(new Set(evs.map((e: any) => e.value.alpha)).size).toBe(4);
+  });
+
+  it("rand is decorrelated post-cropStack via createMixParam (.width)", () => {
+    // Non-_perEvent control (rand.segment(1)) applied via .width() — uses frame-time combiner
+    const evs = (video("a.mp4") as any).cropStack(2, 2).width((rand as any).segment(1)).queryArc(0, 1);
+    expect(new Set(evs.map((e: any) => e.value.width)).size).toBe(4);
+  });
+
+  it("rand is decorrelated post-cropStack via createMixParam (.alpha — _perEvent path)", () => {
+    // _perEvent control (rand) applied via .alpha() — uses appLeft / onset-sampling combiner
+    const evs = (video("a.mp4") as any).cropStack(2, 2).alpha(rand as any).queryArc(0, 1);
+    expect(new Set(evs.map((e: any) => e.value.alpha)).size).toBe(4);
   });
 });

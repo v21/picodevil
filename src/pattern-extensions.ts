@@ -1,9 +1,10 @@
 import {
-  Hap, Pattern as CorePattern, reify, TimeSpan,
+  Hap, Pattern as CorePattern, reify,
 } from "@strudel/core";
 import { warn } from "./warnings";
 import { resolveMedia } from "./media-registry";
 import { getRuntimeCps } from "./config";
+import { nextLayoutParent, deriveRandSeed } from "./layout-counter";
 
 const PatternProto = CorePattern.prototype as any;
 
@@ -83,6 +84,7 @@ PatternProto.striate = function (...args: any[]) {
 PatternProto.chopStack = function (nArg: any) {
   warnIfSignal(this, "chopStack");
   const pat = this;
+  const callId = nextLayoutParent();
   return new CorePattern((state: any) => {
     const n = typeof nArg === "number"
       ? nArg
@@ -100,6 +102,7 @@ PatternProto.chopStack = function (nArg: any) {
             end: oldBegin + ((i + 1) / n) * d,
             i,
             count: n,
+            _randSeed: deriveRandSeed(callId, i, state, val.layoutParent),
           };
         })
       )
@@ -120,6 +123,7 @@ PatternProto.chopStack = function (nArg: any) {
  */
 PatternProto.syncStack = function (nArg: any) {
   const pat = this;
+  const callId = nextLayoutParent();
   return new CorePattern((state: any) => {
     const n = typeof nArg === "number"
       ? nArg
@@ -133,6 +137,7 @@ PatternProto.syncStack = function (nArg: any) {
             sync: i / n,
             i,
             count: n,
+            _randSeed: deriveRandSeed(callId, i, state, val.layoutParent),
           };
         })
       )
@@ -160,6 +165,7 @@ PatternProto.syncStack = function (nArg: any) {
 PatternProto.cropStack = function (rowsArg: any = 2, colsArg?: any) {
   warnIfSignal(this, "cropStack");
   const pat = this;
+  const callId = nextLayoutParent();
   return new CorePattern((state: any) => {
     const rows = typeof rowsArg === "number"
       ? rowsArg
@@ -170,11 +176,12 @@ PatternProto.cropStack = function (rowsArg: any = 2, colsArg?: any) {
         : Math.round(Number(reify(colsArg).queryArc(state.span.begin, state.span.end)[0]?.value ?? rows)))
       : rows;
     const n = rows * cols;
-    return pat.queryArc(state.span.begin, state.span.end).flatMap((hap: any) =>
-      Array.from({ length: n }, (_, i) => {
-        const r = Math.floor(i / cols);
-        const c = i % cols;
-        return hap.withValue((v: any) => {
+    const results: any[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = Math.floor(i / cols);
+      const c = i % cols;
+      for (const hap of pat.query(state)) {
+        results.push(hap.withValue((v: any) => {
           const val = Object(v) === v ? v : {};
           return {
             ...val,
@@ -186,10 +193,12 @@ PatternProto.cropStack = function (rowsArg: any = 2, colsArg?: any) {
             count: n,
             rows,
             cols,
+            _randSeed: deriveRandSeed(callId, i, state, val.layoutParent),
           };
-        });
-      })
-    );
+        }));
+      }
+    }
+    return results;
   });
 };
 
@@ -628,9 +637,14 @@ for (const [name, { op, identity }] of Object.entries(_toOps)) {
     return new CorePattern((state: any) => {
       const srcHaps = src.query(state);
       const keyHaps = keyPat.query(state);
-      const amtHaps = amountPat.query(state);
       const results: any[] = [];
       for (const sh of srcHaps) {
+        // If the source hap carries a _randSeed (e.g. from cropStack), re-query the
+        // amount pattern with that seed so rand-based amounts are decorrelated per tile.
+        const hapSeed = sh.value?._randSeed;
+        const amtHaps = hapSeed !== undefined
+          ? amountPat.query(state.setControls({ randSeed: hapSeed }))
+          : amountPat.query(state);
         for (const kh of keyHaps) {
           const kPart = sh.part.intersection(kh.part);
           if (!kPart) continue;
