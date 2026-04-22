@@ -297,6 +297,30 @@ Use `indexWith` / `indexCycleWith` to label with custom property names instead o
 $: indexWith("slot", "total", video("a.mp4"), video("b.mp4"))
 ```
 
+### `.shuffleIndex(seed?)` / `.shuffleIndexCycle(seed?)`
+
+Assigns shuffled `i` values (and matching `count`) to events **without changing their order**. Think of it as `.index()` / `.indexCycle()` but with randomised cell assignments.
+
+- **`.shuffleIndex`** — shuffles the `i` values assigned at query time (mirrors `.index()`).
+- **`.shuffleIndexCycle`** — shuffles the `i` values assigned by cycle-onset order (mirrors `.indexCycle()`).
+
+The key difference from `.shuffleStack().index()`: event order in the result is preserved, so pool identity and video stacking order stay the same. Only the grid cell each event lands in is randomised.
+
+`seed` accepts a number, string, or any pattern. Same seed → same assignment. No seed → fixed shuffle (seed 0).
+
+```js
+// Fixed shuffle: videos keep their pool identity, cells are shuffled
+$: stack(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4"))
+     .shuffleIndex(42).rowscols(2).gridMod()
+
+// Different seed → different layout
+$: stack(s("a.mp4"), s("b.mp4"), s("c.mp4"), s("d.mp4"))
+     .shuffleIndex(99).rowscols(2).gridMod()
+
+// Cycle variant for temporally-ordered patterns
+$: stack(video("a.mp4"), video("b.mp4 c.mp4")).shuffleIndexCycle(7).rowscols(2).gridMod()
+```
+
 ### `autoseed(...patterns)`
 
 Stacks patterns and labels each hap with a deterministic `seed` value — a hash of the event's value, position in the cycle, and cycle number. Useful for giving each cell a stable unique random stream.

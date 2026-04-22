@@ -12,6 +12,7 @@
  */
 import { reify, Pattern, steady, pure } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
+import { nextLayoutParent, deriveRandSeed } from "./layout-counter";
 import "./visual-controls";
 
 const PatternProto = Pattern.prototype as any;
@@ -164,5 +165,128 @@ PatternProto.shuffleStackCycle = function (seedPat?: any) {
     }
 
     return result;
+  });
+};
+
+// ─── .shuffleIndex(seed?) — assign shuffled i without reordering events ──────
+
+/**
+ * Assigns shuffled `i` (and `count`) to events without changing their order.
+ * Like `.index()` but with grid cell assignments randomized per seed.
+ * Events stay in their original query order (pool identity / stacking is preserved).
+ *
+ * @param seedPat - Seed pattern (or number/string). No arg = fixed shuffle (seed 0).
+ *
+ * @example
+ * stack(a, b, c, d).shuffleIndex(42).rowscols(2).gridMod()
+ */
+PatternProto.shuffleIndex = function (seedPat?: any) {
+  const self = this;
+  const seed = seedPat !== undefined ? reify(seedPat) : steady(0);
+  const callId = nextLayoutParent();
+
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const haps: any[] = self.queryArc(Number(begin), Number(end));
+    if (haps.length === 0) return haps;
+
+    // Assign group indices with same layoutParent grouping as applyIndex
+    const groupOrder: string[] = [];
+    const eventGroupIdx: number[] = new Array(haps.length);
+    for (let i = 0; i < haps.length; i++) {
+      const hap = haps[i];
+      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const key = lp !== undefined ? `lp:0:${lp}` : `ev:${i}`;
+      let gIdx = groupOrder.indexOf(key);
+      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      eventGroupIdx[i] = gIdx;
+    }
+
+    const count = groupOrder.length;
+    const intSeed = resolveSeed(seed, begin, end, count);
+    const perm = shuffledPermutation(count, intSeed);
+
+    return haps.map((hap: any, i: number) => {
+      const shuffledI = perm[eventGroupIdx[i]];
+      const sourceLp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const randSeed = deriveRandSeed(callId, shuffledI, state, sourceLp);
+      return hap.withValue((v: any) => ({
+        ...(Object(v) === v ? v : {}),
+        i: shuffledI,
+        count,
+        _randSeed: randSeed,
+      }));
+    });
+  });
+};
+
+// ─── .shuffleIndexCycle(seed?) — cycle-order i, shuffled ─────────────────────
+
+/**
+ * Assigns shuffled `i` (and `count`) based on full-cycle onset order, without
+ * changing event order. Like `.indexCycle()` but with cell assignments randomized.
+ *
+ * @param seedPat - Seed pattern (or number/string). No arg = fixed shuffle (seed 0).
+ *
+ * @example
+ * stack(a, b, c, d).shuffleIndexCycle(42).rowscols(2).gridMod()
+ */
+PatternProto.shuffleIndexCycle = function (seedPat?: any) {
+  const self = this;
+  const seed = seedPat !== undefined ? reify(seedPat) : steady(0);
+  const callId = nextLayoutParent();
+
+  return new Pattern((state: any) => {
+    const { begin, end } = state.span;
+    const cBegin = begin.floor ? Number(begin.floor()) : Math.floor(Number(begin));
+
+    // Full-cycle query to establish onset order
+    const cycleHaps: any[] = self.queryArc(cBegin, cBegin + 1);
+    if (cycleHaps.length === 0) return [];
+
+    // Sort by onset (stable — preserves insertion order for ties)
+    const sorted = cycleHaps
+      .map((hap: any, i: number) => ({ hap, origIdx: i }))
+      .sort((a: any, b: any) => hapOnset(a.hap) - hapOnset(b.hap));
+
+    // Assign group indices with layoutParent grouping (same as applyIndexCycle)
+    const groupOrder: string[] = [];
+    const eventGroupIdx: number[] = new Array(sorted.length);
+    for (let i = 0; i < sorted.length; i++) {
+      const { hap } = sorted[i];
+      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const key = lp !== undefined ? `lp:0:${lp}` : `ev:${i}`;
+      let gIdx = groupOrder.indexOf(key);
+      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      eventGroupIdx[i] = gIdx;
+    }
+
+    const count = groupOrder.length;
+    const intSeed = resolveSeed(seed, begin, end, count);
+    const perm = shuffledPermutation(count, intSeed);
+
+    // Build a map from origIdx → shuffledI for the current frame filter
+    const origIdxToShuffledI = new Map<number, number>();
+    for (let i = 0; i < sorted.length; i++) {
+      origIdxToShuffledI.set(sorted[i].origIdx, perm[eventGroupIdx[i]]);
+    }
+
+    // Return only events within [begin, end), in their original query order
+    return cycleHaps
+      .map((hap: any, origIdx: number) => ({ hap, origIdx }))
+      .filter(({ hap }: any) =>
+        Number(hap.part.begin) < Number(end) && Number(hap.part.end) > Number(begin)
+      )
+      .map(({ hap, origIdx }: any) => {
+        const shuffledI = origIdxToShuffledI.get(origIdx)!;
+        const sourceLp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+        const randSeed = deriveRandSeed(callId, shuffledI, state, sourceLp);
+        return hap.withValue((v: any) => ({
+          ...(Object(v) === v ? v : {}),
+          i: shuffledI,
+          count,
+          _randSeed: randSeed,
+        }));
+      });
   });
 };

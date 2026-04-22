@@ -32,7 +32,7 @@ uzuvid/
     transpiler.ts         — $: label transpiler, double-quote mini() wrapping
     visual-controls.ts    — createMixParam, position/grid/speed/alpha controls on Pattern.prototype
     grid-stack.ts         — gridStack() and four() helpers using .gridModulo()
-    shuffle-stack.ts      — .shuffleStack(seed?) and .shuffleStackCycle(seed?) on Pattern.prototype
+    shuffle-stack.ts      — .shuffleStack(seed?), .shuffleStackCycle(seed?), .shuffleIndex(seed?), .shuffleIndexCycle(seed?) on Pattern.prototype
     color-pattern.ts      — color() function: wraps mini pattern with {color} values
     video-pattern.ts      — video() function: wraps mini pattern with {src} values
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
@@ -40,7 +40,11 @@ uzuvid/
     draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering in Canvas 2D; FitMode type
     video-playback.ts     — video frame rendering: playback update, seeking (computeExpectedTime, detectWindowMoving, renderVideoFrame)
     event-begin.ts        — eventBeginFromHap: derives playback start cycle from hap + event value
-    video-pool.ts         — computeExpectedFromEvent, scoreFreeElement for video element pool
+    video-pool.ts         — computeExpectedFromEvent (expected time from event props), scoreFreeElement (seek-cost scoring for pool candidates)
+    source-query.ts       — queryNeeded: queries all screens and builds NeededSource list (what elements are needed this frame)
+    source-matcher.ts     — matchSources: greedy best-match assignment of free pool elements to NeededSources by seek cost; creates new elements when pool is empty
+    video-pool-manager.ts — VideoPoolManager: owns freeVideoPool and imagePool Maps, element creation, duration caching, blob URL management
+    video-element-state.ts — VideoEl type and _state bag (lastEventBegin, lastSyncSpeed, syncDistOffset, etc.)
     playback-rate.ts      — setPlaybackRate helper, native rate range constants
     time-value.ts         — TimeValue type and parsing (relative, seconds, milliseconds)
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
@@ -68,14 +72,14 @@ uzuvid/
 3. The render loop runs at requestAnimationFrame rate. Each frame it:
    - Computes cycle position from elapsed time and `cyclesPerSecond`
    - Queries each screen pattern with `queryArc(t, t)` (zero-width instant query)
-   - `FrameRenderer.render()` collects events, assigns video pool elements, then dispatches `TileParams` to the active `Renderer` backend
+   - `FrameRenderer.render()` calls `queryNeeded` to collect needed sources, calls `matchSources` to assign pool elements by seek-cost scoring, then dispatches `TileParams` to the active `Renderer` backend
 4. `window.uzuEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
 
 ## Renderer architecture
 
 Rendering is split into two layers:
 
-- **`FrameRenderer`** (`src/renderer.ts`) — frame-loop logic: event collection, video pool assignment, prewarm, building `TileParams` structs. Backend-agnostic.
+- **`FrameRenderer`** (`src/renderer.ts`) — frame-loop logic: calls `queryNeeded` to build needed-source list, calls `matchSources` to assign free pool elements by seek-cost scoring, prewarms future elements, builds `TileParams` structs. Backend-agnostic.
 - **`Renderer` interface** (`src/renderer-interface.ts`) — `resize / beginFrame / drawTile(TileParams) / endFrame / dispose`. Backends plug in here.
 
 Two backends exist:
@@ -134,7 +138,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 - Grid placement: `.grid(rows?, cols?, i?)`, `.gridMod(rows?, cols?)`
 - Circle placement: `.circle(radius?, startOffset?, circleCount?, i?)`, `.circleMod(radius?, startOffset?, circleCount?)`
 - Iteration: `.iteratorWith(fn)`, `.iterator()`
-- Stack shuffling: `.shuffleStack(seed?)`, `.shuffleStackCycle(seed?)`
+- Stack shuffling: `.shuffleStack(seed?)`, `.shuffleStackCycle(seed?)`, `.shuffleIndex(seed?)`, `.shuffleIndexCycle(seed?)` — shuffleStack/Cycle reorders events; shuffleIndex/Cycle keeps event order and only randomises `i` assignments
 - Slice stacking: `.chopStack(n)`, `.syncStack(n)`, `.cropStack(rows, cols?)` — spatial frame-slicing into rows×cols tiles
 - Field transforms: `.mapOn(key, fn)`, `.addOn(key, amt)`, `.subOn(key, amt)`, `.mulOn(key, amt)`, `.divOn(key, amt)`, `.modOn(key, amt)`, `.powOn(key, amt)`, `.setOn(key, amt)` — extract/transform/write back a named field; function forms also available: `mapOn(pat, key, fn)`, `addOn(pat, key, amt)`, etc.
 - Misc: `.mapWithVal(fn)`, `.stackN(n)`
@@ -144,6 +148,7 @@ Example: `$: gridStack([color("red"), video("clip.mp4")], 2, 2)`
 Example: `$: index(color("red"), color("blue")).rowscols(2).gridMod()`
 Example: `$: video("a.mp4").i("0 1 2 3").rowscols(2).grid()`
 Example: `$: stack(color("red"), color("blue"), color("green")).shuffleStack(42).index().rowscols(2).gridMod()`
+Example: `$: stack(color("red"), color("blue"), color("green")).shuffleIndex(42).rowscols(2).gridMod()`
 Example: `loadVideo("clip", "https://example.com/vid.mp4"); $: video("clip")`
 Example: `$: s("clip.mp4").chopStack(4).rowscols(2).gridMod()` — 4 simultaneous slices tiled in a 2×2 grid
 Example: `$: stack(s("a.mp4"), s("b.mp4")).chopStack(4).index().rowscols(2).gridMod()` — chopStack on stacked sources; index() re-numbers all slices 0..7
@@ -258,7 +263,7 @@ The render loop is instrumented with `performance.mark` / `performance.measure` 
 | Measure name | What it covers |
 |---|---|
 | `uzu query` | Pattern `.queryArc()` calls — building the event list |
-| `uzu assign` | Pool matching — scoring and assigning video/image elements |
+| `uzu assign` | `matchSources` — seek-cost scoring and greedy assignment of pool elements to needed sources |
 | `uzu draw` | Video frame rendering + GPU dispatch (`beginFrame` → `endFrame`) |
 | `uzu prewarm` | Lookahead query + prewarm element creation/seeking |
 

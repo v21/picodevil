@@ -410,9 +410,11 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.constant({ code: `.sometimes(x => x.fast(2))` }),
   fc.constant({ code: `.often(x => x.fast(2))` }),
   fc.constant({ code: `.rarely(x => x.fast(2))` }),
-  // shuffleStack/shuffleStackCycle — can appear anywhere, even after index (nonsensical but shouldn't crash)
+  // shuffleStack/shuffleStackCycle/shuffleIndex/shuffleIndexCycle — can appear anywhere
   shuffleSeed.map(s => ({ code: `.shuffleStack(${s})` })),
   shuffleSeed.map(s => ({ code: `.shuffleStackCycle(${s})` })),
+  shuffleSeed.map(s => ({ code: `.shuffleIndex(${s})` })),
+  shuffleSeed.map(s => ({ code: `.shuffleIndexCycle(${s})` })),
 );
 
 // ============================================================
@@ -744,6 +746,44 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const seedArg = seed ? `(${seed})` : "()";
       return {
         code: `${cpsCode}${label}: stack(${childrenCode}).shuffleStackCycle${seedArg}.indexCycle().rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // shuffleIndex + gridMod — shuffled cell assignment without reordering
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 2, maxLength: 4 }),
+      shuffleSeed,
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, seed, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      const seedArg = seed ? `(${seed})` : "()";
+      return {
+        code: `${cpsCode}${label}: stack(${childrenCode}).shuffleIndex${seedArg}.rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // shuffleIndexCycle + gridMod
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 2, maxLength: 4 }),
+      shuffleSeed,
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, seed, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      const seedArg = seed ? `(${seed})` : "()";
+      return {
+        code: `${cpsCode}${label}: stack(${childrenCode}).shuffleIndexCycle${seedArg}.rowscols(${cols}).gridMod()${chain}`,
       };
     })
   },

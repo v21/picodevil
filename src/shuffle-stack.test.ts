@@ -433,6 +433,132 @@ describe("shuffleStackCycle after stackN", () => {
   });
 });
 
+// ─── shuffleIndex (assign shuffled i without reordering) ─────────────────────
+
+describe("shuffleIndex", () => {
+  it("assigns i values that are a permutation of [0..count-1]", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const evs = queryAll(base.shuffleIndex(42), 0.1);
+    const iVals = evs.map((v: any) => v.i).sort((a: number, b: number) => a - b);
+    expect(iVals).toEqual([0, 1, 2, 3]);
+    expect(evs[0].count).toBe(4);
+  });
+
+  it("same seed produces same i assignment", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const evs1 = queryAll(base.shuffleIndex(42), 0.1);
+    const evs2 = queryAll(base.shuffleIndex(42), 0.1);
+    expect(evs1.map((v: any) => v.i)).toEqual(evs2.map((v: any) => v.i));
+  });
+
+  it("different seeds produce different i assignments", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const evs1 = queryAll(base.shuffleIndex(1), 0.1);
+    const evs2 = queryAll(base.shuffleIndex(2), 0.1);
+    expect(evs1.map((v: any) => v.i)).not.toEqual(evs2.map((v: any) => v.i));
+  });
+
+  it("does NOT change event order — colors come out in original query order", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = base.shuffleIndex(42);
+    const evs = queryAll(shuffled, 0.1);
+    // Original query order from stack() is red, blue, green, yellow
+    expect(evs.map((v: any) => v.color)).toEqual(["red", "blue", "green", "yellow"]);
+  });
+
+  it("i values differ from original (for non-identity seed)", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const normal = queryAll(base.index(), 0.1);
+    const shuffled = queryAll(base.shuffleIndex(42), 0.1);
+    // The i sequence should differ from [0,1,2,3]
+    expect(shuffled.map((v: any) => v.i)).not.toEqual(normal.map((v: any) => v.i));
+  });
+
+  it("default seed (no arg) is equivalent to seed=0", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const noSeed = queryAll(base.shuffleIndex(), 0.1);
+    const seed0 = queryAll(base.shuffleIndex(0), 0.1);
+    expect(noSeed.map((v: any) => v.i)).toEqual(seed0.map((v: any) => v.i));
+  });
+
+  it("single event: i=0, count=1, unchanged", () => {
+    const evs = queryAll(color("red").shuffleIndex(42), 0.1);
+    expect(evs).toHaveLength(1);
+    expect(evs[0].color).toBe("red");
+    expect(evs[0].i).toBe(0);
+    expect(evs[0].count).toBe(1);
+  });
+
+  it("works in full grid chain", () => {
+    const pat = stack(color("red"), color("blue"), color("green"), color("yellow"))
+      .shuffleIndex(42)
+      .rowscols(2)
+      .gridMod();
+    const evs = queryAll(pat, 0.1);
+    expect(evs).toHaveLength(4);
+    expect(new Set(evs.map((v: any) => v.color))).toEqual(
+      new Set(["red", "blue", "green", "yellow"])
+    );
+  });
+});
+
+// ─── shuffleIndexCycle (cycle-order i, shuffled) ──────────────────────────────
+
+describe("shuffleIndexCycle", () => {
+  it("assigns i values that are a permutation of [0..count-1]", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const evs = queryAllWide(base.shuffleIndexCycle(42), 0, 1);
+    const iVals = evs.map((v: any) => v.i).sort((a: number, b: number) => a - b);
+    expect(iVals).toEqual([0, 1, 2, 3]);
+    expect(evs[0].count).toBe(4);
+  });
+
+  it("same seed produces same i assignment", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const evs1 = queryAllWide(base.shuffleIndexCycle(42), 0, 1);
+    const evs2 = queryAllWide(base.shuffleIndexCycle(42), 0, 1);
+    // Compare by color+i pairing
+    const key = (evs: any[]) =>
+      evs.map((v: any) => `${v.color}:${v.i}`).sort().join(",");
+    expect(key(evs1)).toEqual(key(evs2));
+  });
+
+  it("different seeds produce different i assignments", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const evs1 = queryAllWide(base.shuffleIndexCycle(1), 0, 1);
+    const evs2 = queryAllWide(base.shuffleIndexCycle(2), 0, 1);
+    const key = (evs: any[]) =>
+      evs.map((v: any) => `${v.color}:${v.i}`).sort().join(",");
+    expect(key(evs1)).not.toEqual(key(evs2));
+  });
+
+  it("does NOT change event order — cycle query returns original hap order", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const shuffled = queryAllWide(base.shuffleIndexCycle(42), 0, 1);
+    // Colors should still come out in original order
+    expect(shuffled.map((v: any) => v.color)).toEqual(["red", "blue", "green", "yellow"]);
+  });
+
+  it("with mixed subdivisions: assigns cycle-order i but shuffled", () => {
+    // "red blue" has onset 0 and 0.5; "green" has onset 0
+    // count=3, i values are a permutation of [0,1,2]
+    const base = stack(color("red blue"), color("green"));
+    const evs = queryAllWide(base.shuffleIndexCycle(42), 0, 1);
+    expect(evs).toHaveLength(3);
+    const iVals = evs.map((v: any) => v.i).sort((a: number, b: number) => a - b);
+    expect(iVals).toEqual([0, 1, 2]);
+  });
+
+  it("default seed (no arg) is equivalent to seed=0", () => {
+    const base = stack(color("red"), color("blue"), color("green"), color("yellow"));
+    const noSeed = queryAllWide(base.shuffleIndexCycle(), 0, 1);
+    const seed0 = queryAllWide(base.shuffleIndexCycle(0), 0, 1);
+    const key = (evs: any[]) =>
+      evs.map((v: any) => `${v.color}:${v.i}`).sort().join(",");
+    expect(key(noSeed)).toEqual(key(seed0));
+  });
+});
+
 describe("shuffleStackCycle with signals/steady", () => {
   it("shuffles stacked steady values within onset group", () => {
     // All steadys have same onset (part.begin), so they all land in one group
