@@ -38,6 +38,13 @@ import {
   never as _never,
 } from "@strudel/core";
 
+// Structural Strudel combinators that reshape patterns rather than transforming
+// values in parameter space. _perEvent must NOT propagate through these — doing
+// so would freeze animated signals like `sine.late(rand.segment(1))` at onset.
+const STRUCTURAL_METHODS = new Set([
+  'fmap', 'innerJoin', 'outerJoin', 'appLeft', 'appRight', 'appBoth', 'bind', 'query',
+]);
+
 function perEvent(pat: any): any {
   return new Proxy(pat, {
     get(target, prop) {
@@ -46,7 +53,8 @@ function perEvent(pat: any): any {
       if (typeof val !== "function") return val;
       return function (...args: any[]) {
         const result = val.apply(target, args);
-        if (result && typeof result === "object" && typeof result.query === "function")
+        const isPattern = result && typeof result === "object" && typeof result.query === "function";
+        if (isPattern && !STRUCTURAL_METHODS.has(prop as string))
           return perEvent(result);
         return result;
       };

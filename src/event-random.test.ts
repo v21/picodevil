@@ -119,6 +119,29 @@ describe("parallel instance decorrelation via indexCycle()", () => {
   });
 });
 
+// ─── sine.late(rand) composed controls ───────────────────────────────────────
+// sine.late(rand.segment(1)) should: (a) animate like sine (different at t=0.1 vs t=0.4),
+// and (b) be decorrelated across stackN slots (different tiles get different phases).
+
+describe("sine.late(rand.segment(1)) as a control value", () => {
+  it("sine.late(rand.segment(1)) is NOT _perEvent — it animates over time", () => {
+    // The perEvent proxy propagates through .late(), which makes the composed pattern
+    // _perEvent:true. That causes createMixParam to freeze the value at hap onset.
+    // This test documents the DESIRED behavior: it should animate.
+    const pat = color("red").alpha(sine.late((rand as any).segment(1)));
+    const v1 = queryAlpha(pat, 0.1);
+    const v2 = queryAlpha(pat, 0.4);
+    expect(v1).not.toBe(v2);  // should animate — currently FAILS because _perEvent freezes it
+  });
+
+  it("stackN slots get different alpha phases from sine.late(rand.segment(1))", () => {
+    const pat = stackN(4, color("red")).alpha(sine.late((rand as any).segment(1)));
+    const alphas = pat.queryArc(0.1, 0.1).map((e: any) => e.value.alpha);
+    expect(alphas).toHaveLength(4);
+    expect(new Set(alphas).size).toBeGreaterThan(1);  // different phases per slot
+  });
+});
+
 // ─── decorrelation via stackN() ───────────────────────────────────────────────
 
 describe("parallel instance decorrelation via stackN()", () => {

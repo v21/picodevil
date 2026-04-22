@@ -9,6 +9,8 @@ import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
 import { sine, stack } from "@strudel/core";
 import { index } from "./index-patterns";
+import { stackN } from "./grid-stack";
+import { rand } from "./event-random";
 import "./visual-controls";
 
 function query(pat: any, t: number) {
@@ -411,5 +413,82 @@ describe("visual controls via createMixParam", () => {
       expect(v.src).toBe("clip.mp4");
       expect(v.speed).toBe(0.5);
     });
+  });
+});
+
+describe(".scrub()", () => {
+  it("scrub(0.5) freezes at midpoint of full video", () => {
+    const v = query((src("a") as any).scrub(0.5), 0.1);
+    expect(v.begin).toBeCloseTo(0.5);
+    expect(v.end).toBeCloseTo(0.5);
+  });
+
+  it("scrub(0.5) with begin/end uses region", () => {
+    const v = query((src("a") as any).begin(0.2).end(0.8).scrub(0.5), 0.1);
+    expect(v.begin).toBeCloseTo(0.5);
+    expect(v.end).toBeCloseTo(0.5);
+  });
+
+  it("scrub(0) pins to begin of region", () => {
+    const v = query((src("a") as any).begin(0.2).end(0.8).scrub(0), 0.1);
+    expect(v.begin).toBeCloseTo(0.2);
+    expect(v.end).toBeCloseTo(0.2);
+  });
+
+  it("scrub(1) pins to end of region", () => {
+    const v = query((src("a") as any).begin(0.2).end(0.8).scrub(1), 0.1);
+    expect(v.begin).toBeCloseTo(0.8);
+    expect(v.end).toBeCloseTo(0.8);
+  });
+
+  it("scrub(sine) animates — different values at different frame times", () => {
+    const pat = (src("a") as any).scrub(sine);
+    // Use t=0 (sine=0) and t=0.25 (sine peak=1) to avoid symmetry traps
+    const v1 = query(pat, 0.0);
+    const v2 = query(pat, 0.25);
+    expect(v1.begin).not.toBeCloseTo(v2.begin);
+  });
+
+  it("scrub(rand) — stackN slots get different values", () => {
+    const pat = stackN(4, src("a")).scrub(rand as any);
+    const evs = pat.queryArc(0.1, 0.1);
+    const begins = evs.map((e: any) => e.value.begin);
+    expect(begins).toHaveLength(4);
+    expect(new Set(begins.map((b: number) => b.toFixed(6))).size).toBeGreaterThan(1);
+  });
+
+  it("scrub(sine.late(rand.segment(1))) animates AND differs across stackN slots", () => {
+    const pat = stackN(4, src("a")).scrub(sine.late((rand as any).segment(1)));
+    // Check animation: same slot, different frame times (use t=0 vs t=0.25 to avoid symmetry)
+    const slot0_t1 = pat.queryArc(0.0, 0.0)[0]?.value.begin;
+    const slot0_t2 = pat.queryArc(0.25, 0.25)[0]?.value.begin;
+    expect(slot0_t1).not.toBeCloseTo(slot0_t2);  // animates
+    // Check decorrelation: different slots at same frame time
+    const evs = pat.queryArc(0.1, 0.1);
+    const begins = evs.map((e: any) => e.value.begin);
+    expect(new Set(begins.map((b: number) => b.toFixed(6))).size).toBeGreaterThan(1);  // different per slot
+  });
+});
+
+describe(".duration()", () => {
+  it("duration sets end = begin + value", () => {
+    const v = query((src("a") as any).begin(0.2).duration(0.3), 0.1);
+    expect(v.begin).toBeCloseTo(0.2);
+    expect(v.end).toBeCloseTo(0.5);
+  });
+
+  it("duration with default begin (0)", () => {
+    const v = query((src("a") as any).duration(0.25), 0.1);
+    // begin is not explicitly set (renderer defaults it to 0); only end is computed
+    expect(v.begin).toBeUndefined();
+    expect(v.end).toBeCloseTo(0.25);
+  });
+
+  it("duration(rand) — stackN slots get different end values", () => {
+    const pat = stackN(4, src("a")).duration(rand as any);
+    const evs = pat.queryArc(0.1, 0.1);
+    const ends = evs.map((e: any) => e.value.end);
+    expect(ends).toHaveLength(4);
+    expect(new Set(ends.map((b: number) => b.toFixed(6))).size).toBeGreaterThan(1);
   });
 });

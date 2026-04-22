@@ -356,22 +356,16 @@ export const end = createMixParam("end");
  * $: video("clip.mp4").dur(0.1)                 // short snippet
  *
  */
+const _durMix = createMixParam("_dur");
+
 PatternProto.duration = function (value: any) {
-  const p = reify(value).withValue((v: any) => ({ _dur: v }));
-  const merged = this.set(p);
-  return new Pattern((state: any) => {
-    return merged.queryArc(state.span.begin, state.span.end).map((hap: any) => {
-      return hap.withValue((v: any) => {
-        if (v._dur != null) {
-          const b = v.begin ?? 0;
-          const { _dur, ...rest } = v;
-          const rawEnd = b + Number(_dur);
-          const end = rawEnd >= 0 && rawEnd <= 1 ? rawEnd : ((rawEnd % 1) + 1) % 1;
-          return { ...rest, end };
-        }
-        return v;
-      });
-    });
+  return _durMix(value, this).withValue((v: any) => {
+    if (v._dur == null) return v;
+    const b = v.begin ?? 0;
+    const { _dur, ...rest } = v;
+    const rawEnd = b + Number(_dur);
+    const end = rawEnd >= 0 && rawEnd <= 1 ? rawEnd : ((rawEnd % 1) + 1) % 1;
+    return { ...rest, end };
   });
 };
 PatternProto.dur = PatternProto.duration;
@@ -391,27 +385,20 @@ PatternProto.dur = PatternProto.duration;
  * $: video("clip.mp4").chop(8).scrub(sine)           // scan within each slice
  *
  */
+const _scrubMix = createMixParam("_scrub");
+
 PatternProto.scrub = function (value: any) {
-  const pat = this;
-  const valPat = reify(value);
-  // Frame-time combiner: query the signal at current state (not at the event's
-  // whole span) so signals like sine animate smoothly every frame.
-  return new Pattern((state: any) => {
-    const mainHaps = pat.queryArc(state.span.begin, state.span.end);
-    const ctrlHaps = valPat.queryArc(state.span.begin, state.span.end);
-    const scrubVal = ctrlHaps.length > 0 ? Number(ctrlHaps[0].value) : 0;
-    return mainHaps.map((hap: any) => {
-      return hap.withValue((v: any) => {
-        const b = v.begin ?? 0;
-        const e = v.end ?? 1;
-        const pos = b + scrubVal * (e - b);
-        // Wrap within full video [0, 1], not within [b, e] —
-        // so scrubbing past a chop slice or begin/end region
-        // reaches other parts of the video rather than looping in place.
-        const wrapped = pos >= 0 && pos <= 1 ? pos : ((pos % 1) + 1) % 1;
-        return { ...v, begin: wrapped, end: wrapped };
-      });
-    });
+  return _scrubMix(value, this).withValue((v: any) => {
+    const scrubVal = v._scrub ?? 0;
+    const b = v.begin ?? 0;
+    const e = v.end ?? 1;
+    const pos = b + Number(scrubVal) * (e - b);
+    // Wrap within full video [0, 1], not within [b, e] —
+    // so scrubbing past a chop slice or begin/end region
+    // reaches other parts of the video rather than looping in place.
+    const wrapped = pos >= 0 && pos <= 1 ? pos : ((pos % 1) + 1) % 1;
+    const { _scrub, ...rest } = v;
+    return { ...rest, begin: wrapped, end: wrapped };
   });
 };
 
