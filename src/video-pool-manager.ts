@@ -8,18 +8,21 @@ export interface VideoPoolManagerConfig {
   resolveMediaUrl: (name: string, base: string) => string;
   /** Called when a video's duration is discovered from loadedmetadata. */
   onDurationDiscovered?: (srcUrl: string, duration: number) => void;
-  /** Max idle elements per unique src URL. Default: 2 */
-  maxFreePerSrc?: number;
-  /** Max idle elements total. Default: 8 */
+  /** Max idle elements total across all srcs. Default: 16 */
   maxFreeTotal?: number;
-  /** Max blob cache entries. Oldest evicted when exceeded. Default: 20 */
-  maxBlobEntries?: number;
+  /** Max total blob memory in bytes. Oldest evicted when exceeded. Default: 2 GB. */
+  maxBlobBytes?: number;
 }
 
 export interface VideoPoolManager {
-  getVideoEl(name: string, base: string, poolKey: string, targetTime?: number, autoPlay?: boolean): VideoEl;
+  /**
+   * Take the best-matching idle video element for `srcUrl` from the free pool.
+   * Returns null if the free pool has no elements for this src.
+   * Caller is responsible for setting the element active and calling freeVideoEl when done.
+   */
+  takeFromFreePool(srcUrl: string, targetTime?: number): VideoEl | null;
   freeVideoEl(el: VideoEl): void;
-  clearVideos(): void;
+  clearVideos(activeEls: VideoEl[]): void;
   makeVideoEl(name: string): VideoEl;
   destroyVideoEl(el: VideoEl): void;
   trimFreePool(): void;
@@ -27,23 +30,22 @@ export interface VideoPoolManager {
   evictOldestBlobs(): void;
   resolveMediaUrl(name: string, base: string): string;
 
-  readonly videoPool: Map<string, VideoEl>;
   readonly freeVideoPool: Map<string, VideoEl[]>;
   readonly videoBlobUrls: Map<string, string>;
+  readonly videoBlobSizes: Map<string, number>;
   readonly videoDurations: Map<string, number>;
 }
 
 export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoolManager {
-  const MAX_FREE_PER_SRC = config.maxFreePerSrc ?? 2;
-  const MAX_FREE_TOTAL = config.maxFreeTotal ?? 8;
-  const MAX_BLOB_ENTRIES = config.maxBlobEntries ?? 20;
+  const MAX_FREE_TOTAL = config.maxFreeTotal ?? 64;
+  const MAX_BLOB_BYTES = config.maxBlobBytes ?? 2 * 1024 * 1024 * 1024;
   const createEl = config.createElement ?? (() => document.createElement("video"));
   const resolve = config.resolveMediaUrl;
   const onDuration = config.onDurationDiscovered;
 
-  const videoPool = new Map<string, VideoEl>();
   const freeVideoPool = new Map<string, VideoEl[]>();
   const videoBlobUrls = new Map<string, string>();
+  const videoBlobSizes = new Map<string, number>(); // srcUrl → bytes
   const videoBlobPending = new Map<string, Promise<void>>();
   const videoDurations = new Map<string, number>();
 
@@ -71,21 +73,20 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     el.pause();
     const srcUrl = el._state.srcUrl ?? el.src;
     const freeList = freeVideoPool.get(srcUrl) ?? [];
-    if (freeList.length >= MAX_FREE_PER_SRC) {
-      destroyVideoEl(el);
-      return;
-    }
     freeList.push(el);
     freeVideoPool.set(srcUrl, freeList);
     trimFreePool();
   }
 
   function evictOldestBlobs() {
-    while (videoBlobUrls.size > MAX_BLOB_ENTRIES) {
+    let total = 0;
+    for (const s of videoBlobSizes.values()) total += s;
+    while (total > MAX_BLOB_BYTES && videoBlobUrls.size > 0) {
       const oldest = videoBlobUrls.keys().next().value!;
-      const blobUrl = videoBlobUrls.get(oldest)!;
-      URL.revokeObjectURL(blobUrl);
+      URL.revokeObjectURL(videoBlobUrls.get(oldest)!);
+      total -= videoBlobSizes.get(oldest) ?? 0;
       videoBlobUrls.delete(oldest);
+      videoBlobSizes.delete(oldest);
     }
   }
 
@@ -96,6 +97,7 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
       .then(blob => {
         const blobUrl = URL.createObjectURL(blob);
         videoBlobUrls.set(srcUrl, blobUrl);
+        videoBlobSizes.set(srcUrl, blob.size);
         videoBlobPending.delete(srcUrl);
         evictOldestBlobs();
       })
@@ -124,53 +126,40 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     return el;
   }
 
-  function getVideoEl(name: string, base: string, poolKey: string, targetTime?: number, autoPlay: boolean = true): VideoEl {
-    const srcUrl = resolve(name, base);
-
-    // Reuse an idle element with the same src, preferring one nearest the target time
+  /**
+   * Take the best-matching idle video element for `srcUrl` from the free pool.
+   * Returns null if nothing is available. The caller must set the element active
+   * and call freeVideoEl when done.
+   */
+  function takeFromFreePool(srcUrl: string, targetTime?: number): VideoEl | null {
     const freeList = freeVideoPool.get(srcUrl);
-    if (freeList && freeList.length > 0) {
-      let bestIdx = freeList.length - 1;
-      if (targetTime != null && freeList.length > 1) {
-        let bestScore = Infinity;
-        for (let i = 0; i < freeList.length; i++) {
-          const el = freeList[i];
-          const dur = isFinite(el.duration) ? el.duration : 0;
-          const score = scoreFreeElement(el.currentTime, targetTime, dur);
-          if (score < bestScore) {
-            bestScore = score;
-            bestIdx = i;
-          }
-        }
+    if (!freeList || freeList.length === 0) return null;
+
+    let bestIdx = freeList.length - 1;
+    if (targetTime != null && freeList.length > 1) {
+      let bestScore = Infinity;
+      for (let i = 0; i < freeList.length; i++) {
+        const el = freeList[i];
+        const dur = isFinite(el.duration) ? el.duration : 0;
+        const score = scoreFreeElement(el.currentTime, targetTime, dur);
+        if (score < bestScore) { bestScore = score; bestIdx = i; }
       }
-      const el = freeList.splice(bestIdx, 1)[0];
-      if (freeList.length === 0) freeVideoPool.delete(srcUrl);
-      resetVideoState(el._state);
-      el._state.srcUrl = srcUrl;
-      el.playbackRate = 1;
-      if (autoPlay) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
-      videoPool.set(poolKey, el);
-      return el;
     }
 
-    // Create new element; use blob URL if cached, otherwise stream directly + background blob fetch
-    const el = makeVideoEl(name);
+    const el = freeList.splice(bestIdx, 1)[0];
+    if (freeList.length === 0) freeVideoPool.delete(srcUrl);
+    resetVideoState(el._state);
     el._state.srcUrl = srcUrl;
-    const blobUrl = videoBlobUrls.get(srcUrl);
-    el.src = blobUrl ?? srcUrl;
-    if (!blobUrl) fetchVideoBlob(srcUrl);
-    if (autoPlay) el.play().catch(e => { if ((e as DOMException).name !== "AbortError") throw e; });
-    videoPool.set(poolKey, el);
+    el.playbackRate = 1;
     return el;
   }
 
-  function clearVideos() {
-    for (const el of videoPool.values()) freeVideoEl(el);
-    videoPool.clear();
+  function clearVideos(activeEls: VideoEl[]) {
+    for (const el of activeEls) freeVideoEl(el);
   }
 
   return {
-    getVideoEl,
+    takeFromFreePool,
     freeVideoEl,
     clearVideos,
     makeVideoEl,
@@ -179,9 +168,9 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     fetchVideoBlob,
     evictOldestBlobs,
     resolveMediaUrl: resolve,
-    videoPool,
     freeVideoPool,
     videoBlobUrls,
+    videoBlobSizes,
     videoDurations,
   };
 }

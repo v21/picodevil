@@ -29,6 +29,14 @@ interface StressCase {
   code: string;
   /** Max acceptable p95 frame time in ms. Defaults to FRAME_THRESHOLD_MS. */
   threshold?: number;
+  /**
+   * After a warmup period, how many seeks per frame are acceptable on average?
+   * E.g. 0 means "no seeks after warmup" (for rolling/sync video).
+   * If omitted, seeks are not checked.
+   */
+  maxAvgSeeksAfterWarmup?: number;
+  /** Warmup frames to skip before checking seeks. Default: 5. */
+  seekWarmupFrames?: number;
 }
 
 const CASES: StressCase[] = [
@@ -105,6 +113,23 @@ const CASES: StressCase[] = [
       video("blue.mp4").urlBase('/test-assets/').chop(4).scrub(saw),
     ).rowscols(2).gridMod()`,
   },
+  {
+    name: "rolling: no seeks after first frame",
+    code: `$: video("hXJaBfcdCKM.mp4").urlBase('/test-assets/').rolling()`,
+    maxAvgSeeksAfterWarmup: 0,
+    seekWarmupFrames: 10,
+  },
+  {
+    name: "rolling 4-tile grid: no seeks after warmup",
+    code: `$: index(
+      video("hXJaBfcdCKM.mp4").urlBase('/test-assets/').rolling(),
+      video("hXJaBfcdCKM.mp4").urlBase('/test-assets/').rolling(),
+      video("hXJaBfcdCKM.mp4").urlBase('/test-assets/').rolling(),
+      video("hXJaBfcdCKM.mp4").urlBase('/test-assets/').rolling(),
+    ).rowscols(2).gridMod()`,
+    maxAvgSeeksAfterWarmup: 0,
+    seekWarmupFrames: 10,
+  },
 ];
 
 interface CaseResult {
@@ -118,6 +143,7 @@ interface CaseResult {
   avgFreePoolSize: number;
   frameCount: number;
   threshold: number;
+  avgSeeksAfterWarmup?: number;
   errors: string[];
 }
 
@@ -184,6 +210,7 @@ async function main() {
       const m = (window as any).uzuMetrics;
       return {
         frameTimes: [...m.frameTimes] as number[],
+        seeksHistory: [...m.seeksHistory] as number[],
         poolSize: m.poolSize as number,
         freePoolSize: m.freePoolSize as number,
         maxFrameTime: m.maxFrameTime as number,
@@ -196,9 +223,23 @@ async function main() {
     const threshold = tc.threshold ?? FRAME_THRESHOLD_MS;
     const p95 = percentile(sorted, 95);
 
+    // Seeks check
+    let avgSeeksAfterWarmup: number | undefined;
+    let seekCheckPass = true;
+    if (tc.maxAvgSeeksAfterWarmup !== undefined) {
+      const warmup = tc.seekWarmupFrames ?? 5;
+      const postWarmup = metrics.seeksHistory.slice(warmup);
+      avgSeeksAfterWarmup = postWarmup.length > 0
+        ? postWarmup.reduce((a, b) => a + b, 0) / postWarmup.length
+        : 0;
+      seekCheckPass = avgSeeksAfterWarmup <= tc.maxAvgSeeksAfterWarmup;
+      if (!seekCheckPass) errors.push(`seeks: avg=${avgSeeksAfterWarmup.toFixed(3)} after warmup, max=${tc.maxAvgSeeksAfterWarmup}`);
+    }
+
     const result: CaseResult = {
       name: tc.name,
-      pass: p95 <= threshold && errors.length === 0,
+      pass: p95 <= threshold && seekCheckPass && errors.length === 0,
+      avgSeeksAfterWarmup,
       p50: percentile(sorted, 50),
       p95,
       p99: percentile(sorted, 99),
@@ -236,7 +277,8 @@ async function main() {
   console.error("\n=== Stress Test Results ===");
   for (const r of results) {
     const status = r.pass ? "PASS" : "FAIL";
-    console.error(`  [${status}] ${r.name}: p50=${r.p50.toFixed(1)}ms p95=${r.p95.toFixed(1)}ms p99=${r.p99.toFixed(1)}ms max=${r.max.toFixed(1)}ms (${r.frameCount} frames, pool=${r.avgPoolSize}+${r.avgFreePoolSize}free)`);
+    const seekStr = r.avgSeeksAfterWarmup !== undefined ? ` seeks/frame=${r.avgSeeksAfterWarmup.toFixed(3)}` : "";
+    console.error(`  [${status}] ${r.name}: p50=${r.p50.toFixed(1)}ms p95=${r.p95.toFixed(1)}ms p99=${r.p99.toFixed(1)}ms max=${r.max.toFixed(1)}ms (${r.frameCount} frames, pool=${r.avgPoolSize}+${r.avgFreePoolSize}free${seekStr})`);
     if (r.errors.length > 0) {
       for (const e of r.errors) console.error(`    ERROR: ${e}`);
     }

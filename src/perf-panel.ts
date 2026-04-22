@@ -28,6 +28,7 @@ export function setupPerfPanel(container: HTMLElement) {
         <div class="perf-row"><span class="perf-label">seeks/frame</span><span class="perf-value" id="perf-seeks-frame">—</span></div>
         <div class="perf-row"><span class="perf-label">seeks/60f</span><span class="perf-value" id="perf-seeks-60f">—</span></div>
         <div class="perf-row"><span class="perf-label">free pool</span><span class="perf-value" id="perf-free">—</span></div>
+        <div class="perf-row"><span class="perf-label">blob cache</span><span class="perf-value" id="perf-blob-cache">—</span></div>
       </div>
       <div class="perf-section">
         <div class="perf-head">render</div>
@@ -240,6 +241,8 @@ export function setupPerfPanel(container: HTMLElement) {
       (container.querySelector("#perf-seek") as HTMLElement).textContent = String(info.seekCount);
       (container.querySelector("#perf-seeks-frame") as HTMLElement).textContent = String(info.seeksThisFrame);
       (container.querySelector("#perf-seeks-60f") as HTMLElement).textContent = String(info.seeksPer60f);
+      (container.querySelector("#perf-blob-cache") as HTMLElement).textContent =
+        info.blobCacheCount > 0 ? `${fmtBytes(info.blobCacheBytes)} (${info.blobCacheCount})` : "0";
       (container.querySelector("#perf-screens") as HTMLElement).textContent = String(info.screensCount);
       (container.querySelector("#perf-events") as HTMLElement).textContent = String(info.eventsPerFrame);
     }

@@ -299,12 +299,24 @@ function updateVideoPlayback(
     const loopWrapped = detectLoopWrap({
       expected, prevExpected, loopStart, loopEnd, loopLen, duration: dur,
     });
-    const drift = computeDrift({
-      currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
-    });
-    if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
-      el.currentTime = expected;
-      if (onSeek) onSeek();
+    if (rolling) {
+      // Rolling: position is stateful — only seek on fresh element assignment (isNewEvent)
+      // or genuine loop-boundary wrap (needed for custom begin/end ranges).
+      // Never drift-correct: rolling means "let it play freely", and drift seeks cause
+      // visible judder. The video's native playback handles timing; we only intervene
+      // at boundaries.
+      if (isNewEvent || loopWrapped) {
+        el.currentTime = expected;
+        if (onSeek) onSeek();
+      }
+    } else {
+      const drift = computeDrift({
+        currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
+      });
+      if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
+        el.currentTime = expected;
+        if (onSeek) onSeek();
+      }
     }
   } else {
     // Non-native rate: pause and seek to computed position

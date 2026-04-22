@@ -7,9 +7,50 @@
 regen thumbnails
 
 
-/ syncStack - like chopStack, except it runs sync() with values across 0-1
+shuffleStack should also run index() after
+or there should be a shuffleIndex which does not reorder the haps, but does assign indices randomly
+
 
 sortStack('val') - opposite of shuffle stack. keeps order of elements where val is the same - allowing it to be used multiple times. only sorts within each layoutParent
+
+i guess this also implies sortIndex('val') ?
+
+
+shift TileParams so it carries a transform instead
+WelGL renders in clip space - weirdness with rotating non square stuff?
+add extra objectfit params - notably "none"
+
+
+give up on rendering if our frame takes over a sec to execute - this keeps stuff responsive
+easy to run code like `$: s("dvsa3,dvsa2").index().tile().syncStack(10).tile()` which freezes it up
+
+
+
+`$: s("<dvsa3 dvsa2>, dvsa3").index().syncStack(10).tile().alpha(.7)` halts whenever it loads new videos - keep old sources around for a bit, and do prewarming so we don't judder when loading them
+
+let's do the prewarm slowly - only seek one video per frame
+
+
+right now, our deduplication means that 
+```
+$: s("hXJaBfcdCKM.mp4").rolling().sync(.5)
+$: s("hXJaBfcdCKM.mp4").rolling().sync(.2).alpha(.2)
+```
+doesn't apply the sync param. it should! maybe this is an extra bit of state to track when looking through video sources?
+
+
+change x & y to encode center positions, not top left
+
+can we make a signal called i, which returns the current value of i for this hap?
+
+
+$: s("hXJaBfcdCKM.mp4").rolling().cropStack(4,4).tile().cropStack(2,2).tile() doesn't set the size of the subtiles correctly
+
+
+
+
+/ syncStack - like chopStack, except it runs sync() with values across 0-1
+
 
 / crop(x, y, w, h) - sets cropx, cropy, cropw, croph - defines a rectangle within the video source to render.
 cropx - sets cropx
@@ -31,19 +72,54 @@ NOPE zoom(intensity, centerx, centery) - shorthand for crop, intensity goes from
 / add perf panel to sidebar. framerate, fps, videos playing (and number in natural or seek mode), total screens rendered, memory usage of tab. 
 
 
-shuffleStack should also run index() after
-or there should be a shuffleIndex which does not reorder the haps, but does assign indices randomly
 
 
-shift TileParams so it carries a transform instead
-WelGL renders in clip space - weirdness with rotating non square stuff?
-add extra objectfit params - notably "none"
+/ why is 
+$: s("dronecanyon").rolling()
+//same random position
+$: s("dronecanyon,~")
+  .speed(slider(1.05,-2,10))
+  .syncStack(8)
+  .rolling()
+  .cropStack(7,7)
+  .shuffleStack()
+  .index()
+  .shuffleStack(rand.segment(1))
+  .grid(7,7)
+.w(.12)
+.h(.12)
+
+so much slower than
+
+$: s("dronecanyon").rolling()
+//same random position
+$: s("dronecanyon,~")
+  .speed(slider(1.05,-2,10))
+  .syncStack(8)
+  .rolling()
+  .cropStack(7,7)
+  .shuffleStack()
+  .index()
+  .shuffleStack()
+  .grid(7,7)
+.w(.12)
+.h(.12)
+
+(at the end of every cycle, when the tiles shuffle)
 
 
-give up on rendering if our frame takes over a sec to execute - this keeps stuff responsive
+
+/ make a plan for rewriting the video source mapping system. here's the parts:
+- a function that can take the current pattern, a time, and the current state (needed only for rolling), and produce a list of video sources needed (with source, playhead & speed)
+- a list of currently active video sources (with source, playhead & speed)
+- something algorithmic which can perform an optimal or near optimal mapping between what we currently need and what we currently have, minimising new sources & seeks needed
+- and something algorithmic which can run ahead of the current playhead, warming up sources needed ahead of time
+let's use the idempotency we have from the pattern, and ideally reduce the number of special cases needed to make this work
+notably, this abandons the idea that the order that video elements are drawn is useful information. maybe this is used to avoid doing the matching algorithm where no changes have occured? but ideally it's fast enough we don't need to do that - let's prefer not to
+i guess this maybe even includes images and colours, as well as videos? where colours are treated as 1x1 canvases for the webgl backend
 
 
-change x & y to encode center positions, not top left
+
 
 
 / grid

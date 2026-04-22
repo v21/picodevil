@@ -2,7 +2,7 @@ import { silence } from "@strudel/core";
 import "./visual-controls";
 import { setupEditor } from "./editor";
 import "./shuffle-stack";
-import { CYCLES_PER_SECOND, setRuntimeCps } from "./config";
+import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CACHE_BYTES } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
@@ -117,14 +117,20 @@ const uzuMetrics = {
   },
 };
 (window as any).uzuMetrics = uzuMetrics;
-(window as any).uzuPerfInfo = () => ({
-  naturalCount: uzuMetrics.naturalCount,
-  seekCount: uzuMetrics.seekModeCount,
-  screensCount: uzuMetrics.screensCount,
-  eventsPerFrame: uzuMetrics.eventsPerFrame,
-  seeksThisFrame: uzuMetrics.seeksThisFrame,
-  seeksPer60f: uzuMetrics.seeksHistory.reduce((a, b) => a + b, 0),
-});
+(window as any).uzuPerfInfo = () => {
+  let blobCacheBytes = 0;
+  for (const s of pool.videoBlobSizes.values()) blobCacheBytes += s;
+  return {
+    naturalCount: uzuMetrics.naturalCount,
+    seekCount: uzuMetrics.seekModeCount,
+    screensCount: uzuMetrics.screensCount,
+    eventsPerFrame: uzuMetrics.eventsPerFrame,
+    seeksThisFrame: uzuMetrics.seeksThisFrame,
+    seeksPer60f: uzuMetrics.seeksHistory.reduce((a, b) => a + b, 0),
+    blobCacheBytes,
+    blobCacheCount: pool.videoBlobUrls.size,
+  };
+};
 
 // --- video pool ---
 const pool = createVideoPoolManager({
@@ -140,6 +146,8 @@ const pool = createVideoPoolManager({
     el.crossOrigin = "anonymous";
     return el;
   },
+  maxFreeTotal: MAX_FREE_VIDEO_ELEMENTS,
+  maxBlobBytes: MAX_BLOB_CACHE_BYTES,
 });
 
 const frameRenderer = new FrameRenderer(activeRenderer, pool, uzuMetrics);
@@ -215,8 +223,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
   const prevCyclesPerSecond = cyclesPerSecond;
 
   // Phase 3: Clear state and execute
-  pool.clearVideos();
-  frameRenderer.clearImages();
+  pool.clearVideos(frameRenderer.activeVideoEls.splice(0));
   clearWarnings();
   if (typeof window !== "undefined") (window as any).uzuWarnings = [];
   screens = [];
@@ -255,8 +262,8 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
 let startTime = performance.now();
 let lastRafAbsTime = performance.now();
 
-// Expose frameAssignments for testing
-(window as any)._uzuFrameAssignments = frameRenderer.frameAssignments;
+// Expose active video elements for testing/debugging
+(window as any)._uzuActiveVideoEls = frameRenderer.activeVideoEls;
 
 function frame() {
   const rafAbsNow = performance.now();
@@ -293,14 +300,14 @@ function frame() {
   const perfMem = (performance as any).memory;
   if (perfMem) uzuMetrics.heapSamples.push(perfMem.usedJSHeapSize);
   if (uzuMetrics.heapSamples.length > MAX_SAMPLES) uzuMetrics.heapSamples.shift();
-  uzuMetrics.poolSize = pool.videoPool.size;
+  uzuMetrics.poolSize = frameRenderer.activeVideoEls.length;
   let freeCount = 0;
   for (const list of pool.freeVideoPool.values()) freeCount += list.length;
   uzuMetrics.freePoolSize = freeCount;
   uzuMetrics.screensCount = screens.length;
   uzuMetrics.eventsPerFrame = frameRenderer.lastEventCount;
   let naturalCount = 0, seekModeCount = 0;
-  for (const el of pool.videoPool.values()) {
+  for (const el of frameRenderer.activeVideoEls) {
     if (el.paused) seekModeCount++;
     else if (isNativeRate(el.playbackRate)) naturalCount++;
     else seekModeCount++;

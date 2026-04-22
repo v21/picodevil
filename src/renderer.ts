@@ -1,22 +1,17 @@
-import { VIDEO_BASE, IMAGE_BASE, PREWARM_LOOKAHEAD_MS } from './config';
+import { VIDEO_BASE, IMAGE_BASE, PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME } from './config';
 import { eventBeginFromHap } from './event-begin';
-import { scoreFreeElement, computeExpectedFromEvent } from './video-pool';
+import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
 import { warn } from './warnings';
 import { getStreamVideoEl } from './stream-manager';
+import { queryNeeded, type FrameEvent, type NeededSource } from './source-query';
+import { matchSources, type FreePool } from './source-matcher';
 import type { Renderer, TileParams, TileSource } from './renderer-interface';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
 type Screen = { queryArc(begin: number, end: number): any[] };
-
-interface FrameEvent {
-  screenIndex: number;
-  eventIndex: number;
-  ev: any;
-  hap: any;
-}
 
 /** Subset of uzuMetrics that the frame renderer updates. */
 export interface FrameMetrics {
@@ -25,26 +20,32 @@ export interface FrameMetrics {
   seeksThisFrame: number;
 }
 
-const SHARE_TIME_THRESHOLD = 0.04;
 const TAU = Math.PI * 2;
 
 /**
- * Owns the per-frame rendering pipeline: collect pattern events, assign video
+ * Owns the per-frame rendering pipeline: collect pattern events, assign video/image
  * elements, build TileParams, and dispatch to the active Renderer backend.
- * Also manages the image pool and video prewarm logic.
+ * Also manages the image cache and video prewarm logic.
  */
 export class FrameRenderer {
-  /** Per-frame video element assignments, keyed by "screenIndex:eventIndex". Exposed for testing. */
-  readonly frameAssignments = new Map<string, VideoEl>();
   /** Total events collected in the last render() call. Exposed for metrics. */
   lastEventCount = 0;
+  /** Active video elements this frame. Exposed for metrics in main.ts. */
+  readonly activeVideoEls: VideoEl[] = [];
 
   private readonly renderer: Renderer;
   private readonly pool: VideoPool;
   private readonly metrics: FrameMetrics;
-  private readonly imagePool = new Map<string, HTMLImageElement>();
+  /** Free image elements keyed by srcUrl. Images are lightweight and never evicted. */
+  private readonly imageFreePool = new Map<string, HTMLImageElement>();
   private readonly colorCache = new Map<string, [number, number, number]>();
   private readonly scratchCtx = document.createElement('canvas').getContext('2d')!;
+  /** Assignment from NeededSource to element for the current frame. */
+  private neededToEl = new Map<NeededSource, VideoEl | HTMLImageElement>();
+  /** Reverse map: FrameEvent key ("si:ei") → NeededSource. Built each frame. */
+  private feToNeeded = new Map<string, NeededSource>();
+  /** Wall-clock time of last frame, for forward prediction in matchSources. */
+  private lastFrameWall = performance.now();
 
   constructor(renderer: Renderer, pool: VideoPool, metrics: FrameMetrics) {
     this.renderer = renderer;
@@ -54,7 +55,7 @@ export class FrameRenderer {
 
   /**
    * Called from uzuEval after new screens are registered.
-   * Warms blob cache and image elements for all sources in the screen.
+   * Pre-fetches blobs for all video sources visible in the screen.
    */
   prewarmBlobs(screen: Screen): void {
     const probe = screen.queryArc(0, 1);
@@ -63,47 +64,35 @@ export class FrameRenderer {
       if (v?._type === 'video') {
         const base = v.urlBase ?? VIDEO_BASE;
         this.pool.fetchVideoBlob(this.pool.resolveMediaUrl(v.src, base));
-      } else if (v?._type === 'image') {
-        const base = v.urlBase ?? IMAGE_BASE;
-        this.getImageEl(v.src, base);
       }
     }
   }
 
-  /** Called from uzuEval: drop all cached image elements. */
-  clearImages(): void {
-    this.imagePool.clear();
-  }
-
   /**
    * Render one full frame.
-   * Phases: collect events → assign video elements → beginFrame → draw → endFrame → prewarm.
+   * Phases: query needed sources → match elements → beginFrame → draw → endFrame → prewarm.
    */
   render(screens: Screen[], t: number, cps: number, cycle: number): void {
+    const nowWall = performance.now();
+    const frameDt = Math.min((nowWall - this.lastFrameWall) / 1000, 0.1); // cap at 100ms
+    this.lastFrameWall = nowWall;
+
     this.metrics.seeksThisFrame = 0;
-    const frameEvents = this.collectFrameEvents(screens, t);
-    this.lastEventCount = frameEvents.length;
-    this.assignVideoElements(frameEvents, t, cps);
+    const { needed, eventMap, allEvents } = queryNeeded(screens, t, cps, this.pool.videoDurations, this.pool.resolveMediaUrl);
+    this.lastEventCount = allEvents.length;
+
+    this.assignElements(needed, eventMap, t, cps, frameDt);
+
     this.renderer.beginFrame();
-    this.drawFrameEvents(frameEvents, t, cps);
+    this.drawFrame(allEvents, t, cps);
     this.renderer.endFrame();
-    if (cps > 0) this.prewarmVideos(screens, cycle, cps);
+
+    if (cps > 0) this.prewarmSources(screens, cycle, cps);
   }
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
-
-  private getImageEl(src: string, base: string): HTMLImageElement {
-    const srcUrl = this.pool.resolveMediaUrl(src, base);
-    if (this.imagePool.has(srcUrl)) return this.imagePool.get(srcUrl)!;
-    const el = new Image();
-    el.src = srcUrl;
-    el.addEventListener('load', () => console.log('image loaded:', src));
-    el.addEventListener('error', () => console.error('image failed to load:', srcUrl));
-    this.imagePool.set(srcUrl, el);
-    return el;
-  }
 
   private parseColor(val: string): [number, number, number] {
     const cached = this.colorCache.get(val);
@@ -129,124 +118,146 @@ export class FrameRenderer {
     return [1, 1, 1];
   }
 
-  /** Phase 1: Query all screens and collect events for this cycle position. */
-  private collectFrameEvents(screens: Screen[], t: number): FrameEvent[] {
-    const result: FrameEvent[] = [];
-    for (let si = 0; si < screens.length; si++) {
-      let events: any[];
-      try {
-        events = screens[si].queryArc(t, t);
-      } catch (e) {
-        warn(`queryArc failed on screen ${si}: ${e instanceof Error ? e.message : e}`);
-        continue;
-      }
-      if (!events || !Array.isArray(events)) {
-        warn(`screen ${si}: queryArc returned non-array: ${typeof events}`);
-        continue;
-      }
-      for (let ei = 0; ei < events.length; ei++) {
-        const ev = events[ei]?.value;
-        if (ev == null || typeof ev !== 'object') {
-          warn(`screen ${si} event ${ei}: expected object value, got ${typeof ev}`);
-          continue;
-        }
-        if (!ev._type) {
-          warn(`screen ${si} event ${ei}: missing _type (got keys: ${Object.keys(ev).join(',')})`);
-          continue;
-        }
-        result.push({ screenIndex: si, eventIndex: ei, ev, hap: events[ei] });
-      }
-    }
-    return result;
-  }
-
   /**
-   * Phase 2: Assign video elements for all video events.
-   * Reuse by draw position for frame-to-frame stability; share by content when
-   * the same src is at a similar expected playback time.
+   * Phase 2: Build FreePool, run the matcher, wire up new elements, update active list.
    */
-  private assignVideoElements(frameEvents: FrameEvent[], t: number, cps: number): void {
-    const { pool, frameAssignments, metrics } = this;
-    frameAssignments.clear();
-    const assignedExpected = new Map<string, { srcUrl: string; expected: number }>();
+  private assignElements(
+    needed: NeededSource[],
+    eventMap: Map<NeededSource, FrameEvent[]>,
+    _t: number,
+    _cps: number,
+    frameDt: number,
+  ): void {
+    const { pool } = this;
 
-    // Pre-pass: free any active pool entries whose src won't be needed at their
-    // current draw position (e.g. after a shuffle rearranges the layout).
-    const neededSrc = new Map<string, string>();
-    for (const fe of frameEvents) {
-      if (fe.ev._type !== 'video') continue;
-      const drawPos = `${fe.screenIndex}:${fe.eventIndex}`;
-      const base = fe.ev.urlBase ?? VIDEO_BASE;
-      neededSrc.set(drawPos, pool.resolveMediaUrl(fe.ev.src, base));
+    // Build a unified FreePool for the matcher:
+    //  - Previous frame's active elements (paused in place, state preserved)
+    //  - pool.freeVideoPool elements
+    //  - imageFreePool elements
+    //
+    // Active elements are added to a temporary map rather than pool.freeVideoPool to avoid
+    // triggering the per-src cap (e.g. syncStack(4) would lose 2 elements if capped at 2).
+    // After matching, unmatched active elements are properly freed through pool.freeVideoEl.
+
+    // Step 1: group previous active elements by srcUrl.
+    // Do NOT pause them yet — pausing is only done for elements that won't be reused
+    // (via pool.freeVideoEl below). Pausing here would cause play→pause→play jitter for
+    // native-rate elements (e.g. rolling at speed=1).
+    const prevActiveMap = new Map<string, VideoEl[]>();
+    for (const el of this.activeVideoEls) {
+      const srcUrl = el._state.srcUrl ?? '';
+      if (!srcUrl) { pool.freeVideoEl(el); continue; }
+      const list = prevActiveMap.get(srcUrl) ?? [];
+      list.push(el);
+      prevActiveMap.set(srcUrl, list);
     }
-    for (const [key, el] of pool.videoPool) {
-      const needed = neededSrc.get(key);
-      if (needed === undefined || el._state.srcUrl !== needed) {
-        pool.freeVideoEl(el);
-        pool.videoPool.delete(key);
+    this.activeVideoEls.length = 0;
+
+    // Step 2: build freePool where:
+    //  - pool.freeVideoPool entries use the SAME array references (so splice inside
+    //    matchSources automatically removes taken elements from the real pool)
+    //  - prevActive elements are in SEPARATE arrays (not polluting pool.freeVideoPool)
+    //  - active elements are prepended so they score first (already at correct time)
+    const freePool: FreePool = new Map();
+    for (const [k, v] of pool.freeVideoPool) freePool.set(k, v as Array<VideoEl | HTMLImageElement>);
+
+    // Prepend active elements using new arrays (so pool.freeVideoPool is unaffected)
+    for (const [k, v] of prevActiveMap) {
+      const existing = freePool.get(k);
+      if (existing) {
+        // Create a new combined array with active elements at front, pool elements after
+        freePool.set(k, [...(v as Array<VideoEl | HTMLImageElement>), ...existing]);
+        // Also replace the pool.freeVideoPool entry with the original ref so we can
+        // still detect which elements came from the pool vs active
+      } else {
+        freePool.set(k, v as Array<VideoEl | HTMLImageElement>);
+      }
+    }
+    for (const [k, v] of this.imageFreePool) {
+      if (!freePool.has(k)) freePool.set(k, [v]);
+    }
+
+    const assignments = matchSources(
+      needed,
+      freePool,
+      pool.videoDurations,
+      frameDt,
+      (name: string) => pool.makeVideoEl(name),
+    );
+
+    // Step 3: sync pool.freeVideoPool.
+    // For srcs that had active elements prepended, we created NEW arrays in freePool —
+    // the original pool arrays are untouched. We need to remove any pool elements that
+    // were taken by the matcher from pool.freeVideoPool.
+    const assignedEls = new Set(assignments.map(a => a.el));
+    for (const [srcUrl, poolList] of pool.freeVideoPool) {
+      const remaining = (poolList as VideoEl[]).filter(el => !assignedEls.has(el));
+      if (remaining.length === 0) pool.freeVideoPool.delete(srcUrl);
+      else pool.freeVideoPool.set(srcUrl, remaining);
+    }
+
+    // Free unmatched previous active elements through the cap logic
+    for (const [, els] of prevActiveMap) {
+      for (const el of els) {
+        if (!assignedEls.has(el)) pool.freeVideoEl(el);
       }
     }
 
-    for (const fe of frameEvents) {
-      if (fe.ev._type !== 'video') continue;
-      const drawPos = `${fe.screenIndex}:${fe.eventIndex}`;
-      const ev = fe.ev;
-      const base = ev.urlBase ?? VIDEO_BASE;
-      const srcUrl = pool.resolveMediaUrl(ev.src, base);
-      const eventBegin = eventBeginFromHap(ev, fe.hap, t);
-      const cachedDur = pool.videoDurations.get(srcUrl);
-      const expectedTime = computeExpectedFromEvent(ev, t, eventBegin, cps, cachedDur);
+    // Build new neededToEl / feToNeeded maps; activate new elements
+    this.neededToEl = new Map();
+    this.feToNeeded = new Map();
 
-      // 1. Reuse: same draw position, same src → keep same element
-      const prev = pool.videoPool.get(drawPos);
-      if (prev && prev._state.srcUrl === srcUrl) {
-        frameAssignments.set(drawPos, prev);
-        if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
-        continue;
-      }
+    let shareHits = 0;
+    for (const a of assignments) {
+      this.neededToEl.set(a.needed, a.el);
 
-      // 2. Share: another event this frame with same src at similar expected time
-      let shared = false;
-      for (const [otherKey, el] of frameAssignments) {
-        if (el._state.srcUrl !== srcUrl) continue;
-        if (expectedTime != null) {
-          const other = assignedExpected.get(otherKey);
-          if (!other || other.srcUrl !== srcUrl) continue;
-          const dur = cachedDur ?? (isFinite(el.duration) ? el.duration : 0);
-          const score = dur > 0
-            ? scoreFreeElement(other.expected, expectedTime, dur)
-            : Math.abs(other.expected - expectedTime);
-          if (score >= SHARE_TIME_THRESHOLD) continue;
+      // Build feToNeeded from eventMap
+      const fes = eventMap.get(a.needed);
+      if (fes) {
+        for (const fe of fes) {
+          const key = `${fe.screenIndex}:${fe.eventIndex}`;
+          this.feToNeeded.set(key, a.needed);
         }
-        frameAssignments.set(drawPos, el);
-        if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
-        metrics.shareHits++;
-        shared = true;
-        break;
+        if (fes.length > 1) shareHits += fes.length - 1;
       }
-      if (shared) continue;
 
-      // 3. Allocate from free pool, scored by proximity to expected time
-      const isScrubbed = Number(ev.begin ?? 0) === Number(ev.end ?? 1);
-      const el = pool.getVideoEl(ev.src, base, drawPos, expectedTime ?? undefined, !isScrubbed);
-      frameAssignments.set(drawPos, el as VideoEl);
-      if (expectedTime != null) assignedExpected.set(drawPos, { srcUrl, expected: expectedTime });
-    }
+      if (a.needed.kind === 'video') {
+        const el = a.el as VideoEl;
+        this.activeVideoEls.push(el);
 
-    // Free active pool entries not used this frame
-    for (const [key, el] of pool.videoPool) {
-      if (!frameAssignments.has(key)) {
-        pool.freeVideoEl(el);
-        pool.videoPool.delete(key);
+        if (a.isNew) {
+          // New element from matchSources: set src and start playing
+          const srcUrl = a.needed.srcUrl;
+          el._state.srcUrl = srcUrl;
+          const blobUrl = pool.videoBlobUrls.get(srcUrl);
+          el.src = blobUrl ?? srcUrl;
+          if (!blobUrl) pool.fetchVideoBlob(srcUrl);
+          el.play().catch((e: DOMException | Error) => {
+            if ((e as DOMException).name !== 'AbortError') console.warn('video play failed:', e);
+          });
+        } else {
+          // Reused element: update src if blob became available
+          const srcUrl = a.needed.srcUrl;
+          const blobUrl = pool.videoBlobUrls.get(srcUrl);
+          if (blobUrl && el.src !== blobUrl) el.src = blobUrl;
+        }
+      } else {
+        // Image: update pool cache
+        this.imageFreePool.set(a.needed.srcUrl, a.el as HTMLImageElement);
       }
     }
+    this.metrics.shareHits = shareHits;
+
+    // Sync image free pool: remove entries that freePool consumed (for images we
+    // passed new arrays, so the original imageFreePool is unaffected — correct;
+    // images are never "consumed" in the pool sense, they stay in imageFreePool)
   }
 
   /**
    * Resolve one pattern event into TileParams.
-   * Returns null if the event should be skipped (missing element, zero dimensions, NaN values).
+   * Returns null if the event should be skipped.
    */
-  private buildTileParams(fe: FrameEvent, t: number, cps: number): TileParams | null {
+  private buildTileParams(fe: FrameEvent, t: number, cps: number, videoFrameProcessed?: Set<VideoEl>): TileParams | null {
     const { ev, hap, screenIndex, eventIndex } = fe;
 
     // Position
@@ -267,7 +278,7 @@ export class FrameRenderer {
       alpha = 1;
     }
 
-    // Rotation — pre-compute cosine scales so the renderer doesn't need trig
+    // Rotation
     let rotateZ = ev.rotateZ !== undefined ? Number(ev.rotateZ) : 0;
     let rotateXScale = 1;
     let rotateYScale = 1;
@@ -283,23 +294,26 @@ export class FrameRenderer {
       rotateYScale *= 1 - sinAxis * sinAxis * (1 - cosTurns);
     }
 
-    // Source — resolve to a TileSource or bail
+    // Source
     let source: TileSource;
     if (ev._type === 'color') {
       const [r, g, b] = this.parseColor(ev.color);
       source = { kind: 'color', r, g, b };
     } else if (ev._type === 'image') {
-      const base = ev.urlBase ?? IMAGE_BASE;
-      const el = this.imagePool.get(this.pool.resolveMediaUrl(ev.src, base));
-      if (!el || el.naturalWidth === 0) return null;
-      source = { kind: 'image', el };
+      const key = `${screenIndex}:${eventIndex}`;
+      const ns = this.feToNeeded.get(key);
+      const el = ns ? (this.neededToEl.get(ns) as HTMLImageElement | undefined) : undefined;
+      if (!el || (el as HTMLImageElement).naturalWidth === 0) return null;
+      source = { kind: 'image', el: el as HTMLImageElement };
     } else if (ev._type === 'video') {
-      const drawPos = `${screenIndex}:${eventIndex}`;
-      const el = this.frameAssignments.get(drawPos);
+      const key = `${screenIndex}:${eventIndex}`;
+      const ns = this.feToNeeded.get(key);
+      const el = ns ? (this.neededToEl.get(ns) as VideoEl | undefined) : undefined;
       if (!el) return null;
       const eventBegin = eventBeginFromHap(ev, hap, t);
-      if (isFinite(el.duration) && el.duration > 0) {
+      if (isFinite(el.duration) && el.duration > 0 && !videoFrameProcessed?.has(el)) {
         renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps, onSeek: () => { this.metrics.seeksThisFrame++; } });
+        videoFrameProcessed?.add(el);
       }
       if (el.videoWidth === 0) return null;
       source = { kind: 'video', el };
@@ -330,12 +344,19 @@ export class FrameRenderer {
     };
   }
 
-  /** Phase 3: Build TileParams for each event and dispatch to the renderer. */
-  private drawFrameEvents(frameEvents: FrameEvent[], t: number, cps: number): void {
-    for (const fe of frameEvents) {
+  /** Phase 3: Build TileParams for each event in draw order and dispatch to the renderer. */
+  private drawFrame(allEvents: FrameEvent[], t: number, cps: number): void {
+    // Track which elements have already had renderVideoFrame called this frame.
+    // Multiple FrameEvents may share the same element (via deduplication in queryNeeded).
+    // renderVideoFrame must only run once per element per frame — it is a stateful
+    // playback-control function, not a pure query. Calling it multiple times per frame
+    // confuses the effective-rate estimator (wallDt≈0 on repeated calls) and can
+    // produce spurious drift seeks on shared rolling elements.
+    const videoFrameProcessed = new Set<VideoEl>();
+    for (const fe of allEvents) {
       let params: TileParams | null;
       try {
-        params = this.buildTileParams(fe, t, cps);
+        params = this.buildTileParams(fe, t, cps, videoFrameProcessed);
       } catch (e) {
         warn(`screen ${fe.screenIndex} event ${fe.eventIndex} build error: ${e instanceof Error ? e.message : e}`);
         continue;
@@ -349,61 +370,68 @@ export class FrameRenderer {
     }
   }
 
-  /** Phase 4: Query ahead, seek free pool elements toward future targets, create if needed. */
-  private prewarmVideos(screens: Screen[], cycle: number, cps: number): void {
+  /** Phase 4: Query ahead and warm up sources needed in the near future. */
+  private prewarmSources(screens: Screen[], cycle: number, cps: number): void {
     const { pool } = this;
     const lookaheadCycles = (PREWARM_LOOKAHEAD_MS / 1000) * cps;
     const futureT = cycle + lookaheadCycles;
 
-    for (const screen of screens) {
-      let futureEvents: any[];
-      try {
-        futureEvents = screen.queryArc(futureT, futureT);
-        if (!futureEvents || !Array.isArray(futureEvents)) continue;
-      } catch { continue; }
+    const { needed: futureNeeded } = queryNeeded(screens, futureT, cps, pool.videoDurations, pool.resolveMediaUrl);
 
-      for (const hap of futureEvents) {
-        const ev = hap?.value;
-        if (!ev || ev._type !== 'video') continue;
+    // Group future needed by srcUrl so we know how many elements each src will require.
+    // This matters for syncStack(N) which needs N elements of the same src simultaneously.
+    const neededBySrc = new Map<string, NeededSource[]>();
+    for (const ns of futureNeeded) {
+      if (ns.kind !== 'video') continue;
+      pool.fetchVideoBlob(ns.srcUrl);
+      const list = neededBySrc.get(ns.srcUrl) ?? [];
+      list.push(ns);
+      neededBySrc.set(ns.srcUrl, list);
+    }
 
-        const base = ev.urlBase ?? VIDEO_BASE;
-        const srcUrl = pool.resolveMediaUrl(ev.src, base);
-        const eventBegin = eventBeginFromHap(ev, hap, futureT);
-        const cachedDur = pool.videoDurations.get(srcUrl);
-        const expectedTime = computeExpectedFromEvent(ev, futureT, eventBegin, cps, cachedDur);
+    // Budget for new element creation this frame (shared across all sources).
+    // Seeking already-loaded free elements is not budgeted — it's cheap.
+    let newElementBudget = PREWARM_NEW_ELEMENTS_PER_FRAME;
 
-        pool.fetchVideoBlob(srcUrl);
+    for (const [srcUrl, nsList] of neededBySrc) {
+      // Count how many idle elements already exist for this src (active elements don't
+      // need prewarm — they're already loaded and positioned).
+      const activeCount = this.activeVideoEls.filter(el => el._state.srcUrl === srcUrl).length;
+      const freeList = pool.freeVideoPool.get(srcUrl) ?? [];
+      const available = activeCount + freeList.length;
+      const deficit = nsList.length - available;
 
-        const freeList = pool.freeVideoPool.get(srcUrl);
-        if (freeList && freeList.length > 0 && expectedTime != null) {
-          let bestIdx = 0;
-          let bestScore = Infinity;
-          for (let i = 0; i < freeList.length; i++) {
-            const dur = isFinite(freeList[i].duration) ? freeList[i].duration : (cachedDur ?? 0);
-            const score = scoreFreeElement(freeList[i].currentTime, expectedTime, dur);
-            if (score < bestScore) { bestScore = score; bestIdx = i; }
-          }
-          const best = freeList[bestIdx];
-          if (!best._state.seeking && bestScore > 0.15) {
-            best.currentTime = expectedTime;
-          }
-          continue;
-        }
+      // Seek existing free elements toward their expected positions
+      for (let i = 0; i < freeList.length; i++) {
+        const ns = nsList[i]; // best-effort: pair free elements with needed sources in order
+        if (!ns || ns.expectedTime == null) continue;
+        const el = freeList[i];
+        const dur = isFinite(el.duration) ? el.duration : (pool.videoDurations.get(srcUrl) ?? 0);
+        const score = dur > 0
+          ? ((ns.expectedTime - el.currentTime) % dur + dur) % dur
+          : Math.abs(el.currentTime - ns.expectedTime);
+        if (!el._state.seeking && score > 0.15) el.currentTime = ns.expectedTime;
+      }
 
-        const alreadyActive = [...pool.videoPool.values()].some(el => el._state.srcUrl === srcUrl);
-        if (alreadyActive) continue;
-
-        const el = pool.makeVideoEl(ev.src);
+      // Create new prewarm elements to cover the deficit, consuming the shared
+      // per-frame budget to avoid decode hitches when many elements are needed at once.
+      const toCreate = Math.min(deficit, newElementBudget);
+      newElementBudget -= toCreate;
+      for (let i = 0; i < toCreate; i++) {
+        const ns = nsList[available + i];
+        const el = pool.makeVideoEl(srcUrl);
         el._state.srcUrl = srcUrl;
         const blobUrl = pool.videoBlobUrls.get(srcUrl);
         el.src = blobUrl ?? srcUrl;
         el.preload = 'auto';
-
-        el.addEventListener('loadedmetadata', () => {
-          const realExpected = computeExpectedFromEvent(ev, futureT, eventBegin, cps, el.duration);
-          if (realExpected != null) el.currentTime = realExpected;
-        }, { once: true });
-
+        if (ns?.expectedTime != null) {
+          const cachedDur = pool.videoDurations.get(srcUrl);
+          el.addEventListener('loadedmetadata', () => {
+            const realExpected = computeExpectedFromEvent(ns.ev, futureT, eventBeginFromHap(ns.ev, ns.hap, futureT), cps, el.duration);
+            if (realExpected != null) el.currentTime = realExpected;
+          }, { once: true });
+          if (cachedDur != null) el.currentTime = ns.expectedTime;
+        }
         pool.freeVideoEl(el);
       }
     }
