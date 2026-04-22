@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-04-20.
+> This file is machine-authored for use by coding agents. Last updated 2026-04-22.
 
 ## What is this?
 
@@ -231,6 +231,8 @@ npm run test:monkey:replay
 npm run test:stress:headless
 # Or with visible browser:
 npm run test:stress
+# Run only cases matching a substring (case-insensitive):
+npx tsx test/stress-test.ts --case "rolling" --headless
 
 # Upload integration test — end-to-end file drag-and-drop upload (requires port 3456 free)
 npm run test:upload
@@ -248,6 +250,56 @@ Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest
   - `regression-cases.json` — saved monkey failures for conformance replay
 - **Stress testing** (`test/`) — `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
 - **Upload integration test** (`test/`) — `upload-integration-test.ts` — end-to-end Playwright test covering file drag-and-drop upload in both `SERVER_ENABLED=true` and `=false` modes. Catches CORS issues, XHR failures, and URL swap logic. Run with `npm run test:upload`.
+
+### Performance profiling
+
+The render loop is instrumented with `performance.mark` / `performance.measure` so Chrome DevTools shows per-phase timings on the timeline. The four named measures are:
+
+| Measure name | What it covers |
+|---|---|
+| `uzu query` | Pattern `.queryArc()` calls — building the event list |
+| `uzu assign` | Pool matching — scoring and assigning video/image elements |
+| `uzu draw` | Video frame rendering + GPU dispatch (`beginFrame` → `endFrame`) |
+| `uzu prewarm` | Lookahead query + prewarm element creation/seeking |
+
+**Interactive profiling workflow (for exploratory investigation):**
+1. `npm run dev` — start the dev server
+2. Open Chrome at `http://localhost:5173`
+3. Write and evaluate your pattern in the editor
+4. Open DevTools → Performance tab → Record → interact for a few seconds → Stop
+5. In the flame chart, look for `uzu query / uzu assign / uzu draw / uzu prewarm` in the "Timings" lane — these show exactly which phase is eating time. GPU work (compositing, texture upload) appears separately in the GPU track and is **not** captured by our JS marks.
+6. The sidebar Perf tab shows a live frame-time graph and pool stats while you experiment.
+
+**Note on total frame time:** our JS marks cover only JS execution. Browser compositing and GPU work happen after `endFrame()` and are not included — the inter-frame gap (shown in the perf panel as "frame gap") is the real perceived cost. If JS phases look fast but frame gap is high, the bottleneck is GPU-side (too many texture uploads, too large a canvas, etc.).
+
+**Automated regression (`stress-test.ts`):**
+- Reports `p50/p95` for each phase alongside total frame times in the stderr summary
+- Use `--case <substring>` to target a single scenario during investigation
+- Phase times are also in the JSON output (`cases[].phases.{query,assign,draw,prewarm}`)
+- stress-test only measures JS-side frame times from `uzuMetrics`; it cannot see GPU work, video decode, or IPC costs
+
+**Deep CDP trace profiling (`test/perf-trace.ts`):**
+
+Use this when the stress-test shows `draw` is slow but you need to understand *why* — i.e. whether the cost is JS, GPU texture uploads, video decode, seek storms, or IPC backpressure. It opens a real browser, runs a pattern, captures a Chrome DevTools Protocol trace, and prints a structured summary.
+
+To investigate a specific pattern:
+
+1. Edit the `SETUP_CODE` and `PATTERN_CODE` constants at the top of `test/perf-trace.ts`. Set `SETUP_CODE = ""` if no imperative setup is needed (e.g. when `s("file.mp4")` resolves via `VIDEO_BASE` automatically).
+2. Set `DURATION_MS` (total run time, including warmup) and `TRACE_DURATION_MS` (how long to actually record). Warmup = `DURATION_MS - TRACE_DURATION_MS`; use at least 10–15s warmup for pool settling. A 20s trace gives enough data for p95/p99.
+3. Run: `npx tsx test/perf-trace.ts` (opens a visible browser window).
+4. The script prints several analysis sections to stdout:
+   - **Top events by total time** — the global leaderboard. `WebGL` / `CommandBuffer::Flush` totals reveal GPU pressure. `GpuChannelHost::VerifyFlush` is main-thread time *stalled waiting for GPU*.
+   - **Inter-frame gaps** — p50/p95/max of time between `BeginMainThreadFrame` events. This is the real perceived frame rate, including GPU stalls.
+   - **GPU/CC thread events** — work happening on the GPU process thread, separate from JS.
+   - **Media/Video/Decode events** — `MojoVideoDecoder::Decode`, `MojoVideoDecoderService::OnDecoderOutput` (max here = decode spike causing a frame drop), `RendererImpl::SetPlaybackRate` (high call counts = excessive rate-setting each frame), `RendererImpl::StartPlayingFrom` (= seeks; high rate = seek storm).
+   - **uzu named measures** — our `performance.measure` spans if captured (requires `blink.user_timing` category; may be empty in some configurations).
+   - **Slow rAF frames** — events found *inside* rAF callbacks that took >20ms, to identify which JS operations correlate with frame drops.
+
+Key things to look for:
+- **GPU bottleneck**: `WebGL` total >> JS time, and `GpuChannelHost::VerifyFlush` is large → too many texture uploads per frame. Each active video tile costs one `texImage2D` per frame.
+- **Decode spikes**: `MojoVideoDecoderService::OnDecoderOutput` max > 20ms → decoder stall. Caused by seeks or too many concurrent streams.
+- **Seek storm**: `RendererImpl::StartPlayingFrom` count / frame count > 1 → seeks every frame, usually from pool churn (shuffleStack reorder, pattern re-eval, syncStack element turnover).
+- **Rate-set overhead**: `RendererImpl::SetPlaybackRate` count / frame count >> active tile count → calling setPlaybackRate on elements that haven't changed speed.
 
 ## Documentation
 

@@ -11,6 +11,16 @@ export interface VideoFrameContext {
   cps: number;
   /** Called each time a seek (el.currentTime assignment) is triggered. */
   onSeek?: () => void;
+  /** Called specifically when a drift-correction seek is triggered. */
+  onDriftSeek?: () => void;
+  /**
+   * Wall-clock time for this frame in milliseconds (e.g. the rAF timestamp).
+   * When provided, wallDt is computed from this value so it's consistent with
+   * the cycle computation (both derived from the same rAF clock tick). When
+   * omitted, falls back to performance.now() — which is correct for tests where
+   * there's no real rAF loop.
+   */
+  frameWallTime?: number;
 }
 
 
@@ -172,7 +182,7 @@ export function renderVideoFrame(c: VideoFrameContext): void {
   const synced = c.ev.sync != null;
   const rolling = c.ev.rolling != null;
   const syncOffset = synced && c.ev.sync !== true ? Number(c.ev.sync) * c.el.duration : 0;
-  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset, synced, rolling, c.onSeek);
+  updateVideoPlayback(c.el, speed, beginVal, endVal, c.currentCycle, c.eventBegin, c.cps, syncOffset, synced, rolling, c.onSeek, c.onDriftSeek, c.frameWallTime);
 }
 
 function updateVideoPlayback(
@@ -187,6 +197,8 @@ function updateVideoPlayback(
   synced: boolean = false,
   rolling: boolean = false,
   onSeek?: () => void,
+  onDriftSeek?: () => void,
+  frameWallTime?: number,
 ): void {
   const dur = el.duration;
   const loopStart = beginVal * dur;
@@ -280,8 +292,7 @@ function updateVideoPlayback(
     speed, loopStart, loopEnd, duration: dur, syncOffset, distOffset,
   });
 
-  const now = Date.now();
-
+  const now = frameWallTime ?? performance.now();
   const prevExpected = st.lastExpected;
   const wallDt = st.lastExpectedWall != null ? (now - st.lastExpectedWall) / 1000 : 0;
   const effectiveRate = computeEffectiveRate({
@@ -316,6 +327,7 @@ function updateVideoPlayback(
       if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
         el.currentTime = expected;
         if (onSeek) onSeek();
+        if (drift > DRIFT_THRESHOLD && !isNewEvent && !loopWrapped && onDriftSeek) onDriftSeek();
       }
     }
   } else {

@@ -104,7 +104,14 @@ const uzuMetrics = {
   screensCount: 0,
   eventsPerFrame: 0,
   seeksThisFrame: 0,
+  driftSeeksThisFrame: 0,
   seeksHistory: [] as number[],
+  driftSeeksHistory: [] as number[],
+  /** Per-phase rolling frame times (ms, last 300 frames). */
+  phaseQuery: [] as number[],
+  phaseAssign: [] as number[],
+  phaseDraw: [] as number[],
+  phasePrewarm: [] as number[],
   reset() {
     this.frameTimes = [];
     this.interFrameTimes = [];
@@ -114,6 +121,10 @@ const uzuMetrics = {
     this.maxFrameTime = 0;
     this.maxInterFrameTime = 0;
     this.xLog = [];
+    this.phaseQuery = [];
+    this.phaseAssign = [];
+    this.phaseDraw = [];
+    this.phasePrewarm = [];
   },
 };
 (window as any).uzuMetrics = uzuMetrics;
@@ -126,7 +137,8 @@ const uzuMetrics = {
     screensCount: uzuMetrics.screensCount,
     eventsPerFrame: uzuMetrics.eventsPerFrame,
     seeksThisFrame: uzuMetrics.seeksThisFrame,
-    seeksPer60f: uzuMetrics.seeksHistory.reduce((a, b) => a + b, 0),
+    seeksPer300f: uzuMetrics.seeksHistory.reduce((a, b) => a + b, 0),
+    driftSeeksPer300f: uzuMetrics.driftSeeksHistory.reduce((a, b) => a + b, 0),
     blobCacheBytes,
     blobCacheCount: pool.videoBlobUrls.size,
   };
@@ -285,7 +297,7 @@ function frame() {
   const cycle = (cpsPattern || cyclesPerSecond === 0) ? accumulatedCycle : nowSec * cyclesPerSecond;
   const t = Math.floor(cycle) + (cycle % 1);
 
-  frameRenderer.render(screens, t, cps, cycle);
+  frameRenderer.render(screens, t, cps, cycle, rafAbsNow);
 
   // Record metrics
   const frameEnd = performance.now() - startTime;
@@ -315,7 +327,10 @@ function frame() {
   uzuMetrics.naturalCount = naturalCount;
   uzuMetrics.seekModeCount = seekModeCount;
   uzuMetrics.seeksHistory.push(uzuMetrics.seeksThisFrame);
-  if (uzuMetrics.seeksHistory.length > 60) uzuMetrics.seeksHistory.shift();
+  if (uzuMetrics.seeksHistory.length > 300) uzuMetrics.seeksHistory.shift();
+  uzuMetrics.driftSeeksHistory.push(uzuMetrics.driftSeeksThisFrame);
+  if (uzuMetrics.driftSeeksHistory.length > 300) uzuMetrics.driftSeeksHistory.shift();
+  uzuMetrics.driftSeeksThisFrame = 0;
 
   flushWarnings();
   requestAnimationFrame(frame);

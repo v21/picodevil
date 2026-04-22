@@ -19,17 +19,13 @@ function flag(name: string, def: string): string {
   const i = args.indexOf(`--${name}`);
   return i >= 0 && args[i + 1] ? args[i + 1] : def;
 }
-const DURATION_MS = parseInt(flag("duration", "5000"), 10);
-const TRACE_DURATION_MS = parseInt(flag("trace", "3000"), 10);
+const DURATION_MS = parseInt(flag("duration", "35000"), 10);
+const TRACE_DURATION_MS = parseInt(flag("trace", "20000"), 10);
 
-// The pattern to investigate — matches user's report
-const SETUP_CODE = `loadVideo('dronecanyon', 'http://localhost:3456/videos/7go3VbYtgzc.mp4')`;
-const PATTERN_CODE = `$: s("dronecanyon")
-  .rolling()
-  .cropStack(4,4)
-  .cropwh(1)
-  .objectfit("none")
-  .alpha(0.368)`;
+// The pattern to investigate
+const SETUP_CODE = ``;
+const PATTERN_CODE = `$: s("<CGI_31.mp4 ~ CGI_32.mp4 ~ CGI_34.mp4 ~ CGI_15.mp4 ~ CGI_16.mp4 ~>, CGI_12.mp4")
+  .index().syncStack(10).shuffleStack(rand.segment(2)).index().tile()`;
 
 async function main() {
   const server = await createServer({ server: { port: 0 }, logLevel: "warn" });
@@ -55,12 +51,13 @@ async function main() {
   console.error("App loaded.");
 
   // Load video first (imperative, non-pattern)
-  await page.evaluate((code: string) => {
-    try { (window as any).uzuEval(code); } catch (e) { console.error(e); }
-  }, SETUP_CODE);
-
-  // Wait for video metadata to load
-  await page.waitForTimeout(2000);
+  if (SETUP_CODE) {
+    await page.evaluate((code: string) => {
+      try { (window as any).uzuEval(code); } catch (e) { console.error(e); }
+    }, SETUP_CODE);
+    // Wait for video metadata to load
+    await page.waitForTimeout(2000);
+  }
 
   // Run the pattern
   await page.evaluate((code: string) => {
@@ -78,6 +75,7 @@ async function main() {
   await cdp.send("Tracing.start", {
     categories: [
       "blink",
+      "blink.user_timing",
       "cc",
       "gpu",
       "renderer",
@@ -85,6 +83,7 @@ async function main() {
       "disabled-by-default-devtools.timeline.frame",
       "disabled-by-default-cc.debug",
       "v8",
+      "media",
     ].join(","),
     options: "sampling-frequency=1000",
   });
@@ -222,6 +221,75 @@ async function main() {
     console.log("\n=== GPU/CC thread events (top 15 by total time) ===");
     for (const [name, { total, count }] of gpuSorted) {
       console.log(`  ${name}: count=${count} total=${(total / 1000).toFixed(1)}ms avg=${(total / count / 1000).toFixed(2)}ms`);
+    }
+  }
+
+  // 7. uzu named measures (blink.user_timing)
+  // Look for measure events by name prefix "uzu"
+  const uzuByName = new Map<string, { total: number; count: number; max: number; vals: number[] }>();
+  for (const e of allEvents) {
+    if (!e.name?.startsWith("uzu")) continue;
+    if (e.ph !== "X" && e.ph !== "R") continue;
+    const dur = e.dur ?? 0;
+    const entry = uzuByName.get(e.name) ?? { total: 0, count: 0, max: 0, vals: [] };
+    entry.total += dur;
+    entry.count++;
+    entry.max = Math.max(entry.max, dur);
+    entry.vals.push(dur);
+    uzuByName.set(e.name, entry);
+  }
+  if (uzuByName.size > 0) {
+    console.log("\n=== uzu named measures ===");
+    for (const [name, { total, count, max, vals }] of uzuByName) {
+      vals.sort((a, b) => a - b);
+      const p50 = vals[Math.floor(vals.length * 0.5)] / 1000;
+      const p95 = vals[Math.floor(vals.length * 0.95)] / 1000;
+      console.log(`  ${name}: count=${count} total=${(total/1000).toFixed(1)}ms p50=${p50.toFixed(2)}ms p95=${p95.toFixed(2)}ms max=${(max/1000).toFixed(2)}ms`);
+    }
+  }
+
+  // 8. Video decode / media events
+  const mediaEvents = allEvents.filter(
+    (e) => e.cat?.includes("media") || e.name?.toLowerCase().includes("video") || e.name?.toLowerCase().includes("decode")
+  );
+  const mediaByName = new Map<string, { total: number; count: number; max: number }>();
+  for (const e of mediaEvents) {
+    if (e.ph !== "X") continue;
+    const entry = mediaByName.get(e.name) ?? { total: 0, count: 0, max: 0 };
+    entry.total += e.dur ?? 0;
+    entry.count++;
+    entry.max = Math.max(entry.max, e.dur ?? 0);
+    mediaByName.set(e.name, entry);
+  }
+  if (mediaByName.size > 0) {
+    console.log("\n=== Media/Video/Decode events (top 20) ===");
+    const mediaSorted = [...mediaByName.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 20);
+    for (const [name, { total, count, max }] of mediaSorted) {
+      console.log(`  ${name}: count=${count} total=${(total/1000).toFixed(1)}ms avg=${(total/count/1000).toFixed(2)}ms max=${(max/1000).toFixed(2)}ms`);
+    }
+  }
+
+  // 9. Seek-correlated spike analysis: find rAF frames > 20ms and check what's inside
+  const rafEventsRaw = allEvents.filter((e) => e.name === "FireAnimationFrame" && e.ph === "X");
+  const slowRafs = rafEventsRaw.filter((e) => (e.dur ?? 0) > 20000); // > 20ms
+  console.log(`\n=== Slow rAF frames (>${20}ms): ${slowRafs.length} of ${rafEventsRaw.length} total ===`);
+  if (slowRafs.length > 0) {
+    // For each slow frame, find all child events (same pid/tid, overlapping ts range)
+    const slowChildNames = new Map<string, number>();
+    for (const raf of slowRafs) {
+      const rafStart = raf.ts;
+      const rafEnd = raf.ts + (raf.dur ?? 0);
+      const children = allEvents.filter(
+        (e) => e.pid === raf.pid && e.tid === raf.tid && e.ph === "X" && e.ts >= rafStart && e.ts + (e.dur ?? 0) <= rafEnd && e.name !== "FireAnimationFrame"
+      );
+      for (const c of children) {
+        slowChildNames.set(c.name, (slowChildNames.get(c.name) ?? 0) + (c.dur ?? 0));
+      }
+    }
+    const slowChildSorted = [...slowChildNames.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15);
+    console.log("  Top events inside slow rAF frames:");
+    for (const [name, total] of slowChildSorted) {
+      console.log(`    ${name}: total=${(total/1000).toFixed(1)}ms`);
     }
   }
 

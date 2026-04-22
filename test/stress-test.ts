@@ -23,6 +23,8 @@ function flag(name: string, def: string): string {
 const HEADLESS = args.includes("--headless");
 const DURATION_MS = parseInt(flag("duration", "5000"), 10);
 const FRAME_THRESHOLD_MS = parseFloat(flag("threshold", "32"));
+/** If set, only run the case whose name contains this substring (case-insensitive). */
+const FILTER = flag("case", "").toLowerCase();
 
 interface StressCase {
   name: string;
@@ -132,6 +134,11 @@ const CASES: StressCase[] = [
   },
 ];
 
+interface PhaseStats {
+  p50: number;
+  p95: number;
+}
+
 interface CaseResult {
   name: string;
   pass: boolean;
@@ -144,6 +151,7 @@ interface CaseResult {
   frameCount: number;
   threshold: number;
   avgSeeksAfterWarmup?: number;
+  phases: { query: PhaseStats; assign: PhaseStats; draw: PhaseStats; prewarm: PhaseStats };
   errors: string[];
 }
 
@@ -170,9 +178,15 @@ async function main() {
   await page.goto(url);
   await page.waitForFunction(() => typeof window.uzuEval === "function", null, { timeout: 10000 });
 
+  const activeCases = FILTER ? CASES.filter(tc => tc.name.toLowerCase().includes(FILTER)) : CASES;
+  if (FILTER && activeCases.length === 0) {
+    console.error(`No cases match --case "${FILTER}". Available:\n${CASES.map(c => `  ${c.name}`).join("\n")}`);
+    process.exit(1);
+  }
+
   const results: CaseResult[] = [];
 
-  for (const tc of CASES) {
+  for (const tc of activeCases) {
     const errors: string[] = [];
     const onPageError = (err: any) => errors.push(err.message || String(err));
     page.on("pageerror", onPageError);
@@ -214,6 +228,10 @@ async function main() {
         poolSize: m.poolSize as number,
         freePoolSize: m.freePoolSize as number,
         maxFrameTime: m.maxFrameTime as number,
+        phaseQuery:   [...m.phaseQuery]   as number[],
+        phaseAssign:  [...m.phaseAssign]  as number[],
+        phaseDraw:    [...m.phaseDraw]    as number[],
+        phasePrewarm: [...m.phasePrewarm] as number[],
       };
     });
 
@@ -236,6 +254,11 @@ async function main() {
       if (!seekCheckPass) errors.push(`seeks: avg=${avgSeeksAfterWarmup.toFixed(3)} after warmup, max=${tc.maxAvgSeeksAfterWarmup}`);
     }
 
+    const phaseStats = (arr: number[]): PhaseStats => {
+      const s = [...arr].sort((a, b) => a - b);
+      return { p50: percentile(s, 50), p95: percentile(s, 95) };
+    };
+
     const result: CaseResult = {
       name: tc.name,
       pass: p95 <= threshold && seekCheckPass && errors.length === 0,
@@ -248,6 +271,12 @@ async function main() {
       avgFreePoolSize: metrics.freePoolSize,
       frameCount: sorted.length,
       threshold,
+      phases: {
+        query:   phaseStats(metrics.phaseQuery),
+        assign:  phaseStats(metrics.phaseAssign),
+        draw:    phaseStats(metrics.phaseDraw),
+        prewarm: phaseStats(metrics.phasePrewarm),
+      },
       errors,
     };
     results.push(result);
@@ -278,7 +307,9 @@ async function main() {
   for (const r of results) {
     const status = r.pass ? "PASS" : "FAIL";
     const seekStr = r.avgSeeksAfterWarmup !== undefined ? ` seeks/frame=${r.avgSeeksAfterWarmup.toFixed(3)}` : "";
-    console.error(`  [${status}] ${r.name}: p50=${r.p50.toFixed(1)}ms p95=${r.p95.toFixed(1)}ms p99=${r.p99.toFixed(1)}ms max=${r.max.toFixed(1)}ms (${r.frameCount} frames, pool=${r.avgPoolSize}+${r.avgFreePoolSize}free${seekStr})`);
+    const ph = r.phases;
+    const phaseStr = ` [query=${ph.query.p50.toFixed(2)}ms assign=${ph.assign.p50.toFixed(2)}ms draw=${ph.draw.p50.toFixed(2)}ms prewarm=${ph.prewarm.p50.toFixed(2)}ms p50]`;
+    console.error(`  [${status}] ${r.name}: p50=${r.p50.toFixed(1)}ms p95=${r.p95.toFixed(1)}ms p99=${r.p99.toFixed(1)}ms max=${r.max.toFixed(1)}ms (${r.frameCount} frames, pool=${r.avgPoolSize}+${r.avgFreePoolSize}free${seekStr})${phaseStr}`);
     if (r.errors.length > 0) {
       for (const e of r.errors) console.error(`    ERROR: ${e}`);
     }

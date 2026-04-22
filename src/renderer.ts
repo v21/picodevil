@@ -18,6 +18,12 @@ export interface FrameMetrics {
   shareHits: number;
   xLog: number[];
   seeksThisFrame: number;
+  driftSeeksThisFrame: number;
+  /** Per-phase rolling ms arrays (last 300 frames each). Set by FrameRenderer. */
+  phaseQuery: number[];
+  phaseAssign: number[];
+  phaseDraw: number[];
+  phasePrewarm: number[];
 }
 
 const TAU = Math.PI * 2;
@@ -72,22 +78,46 @@ export class FrameRenderer {
    * Render one full frame.
    * Phases: query needed sources → match elements → beginFrame → draw → endFrame → prewarm.
    */
-  render(screens: Screen[], t: number, cps: number, cycle: number): void {
-    const nowWall = performance.now();
+  render(screens: Screen[], t: number, cps: number, cycle: number, frameWallTime?: number): void {
+    const nowWall = frameWallTime ?? performance.now();
     const frameDt = Math.min((nowWall - this.lastFrameWall) / 1000, 0.1); // cap at 100ms
     this.lastFrameWall = nowWall;
 
     this.metrics.seeksThisFrame = 0;
+    this.metrics.driftSeeksThisFrame = 0;
+
+    // Phase 1: pattern query
+    performance.mark('uzu-phase-start');
     const { needed, eventMap, allEvents } = queryNeeded(screens, t, cps, this.pool.videoDurations, this.pool.resolveMediaUrl);
     this.lastEventCount = allEvents.length;
+    this._endPhase('uzu query', this.metrics.phaseQuery);
 
+    // Phase 2: element assignment (pool matching)
+    performance.mark('uzu-phase-start');
     this.assignElements(needed, eventMap, t, cps, frameDt);
+    this._endPhase('uzu assign', this.metrics.phaseAssign);
 
+    // Phase 3: draw (video frame rendering + GPU dispatch)
+    performance.mark('uzu-phase-start');
     this.renderer.beginFrame();
-    this.drawFrame(allEvents, t, cps);
+    this.drawFrame(allEvents, t, cps, nowWall);
     this.renderer.endFrame();
+    this._endPhase('uzu draw', this.metrics.phaseDraw);
 
+    // Phase 4: prewarm (lookahead query + element prep)
+    performance.mark('uzu-phase-start');
     if (cps > 0) this.prewarmSources(screens, cycle, cps);
+    this._endPhase('uzu prewarm', this.metrics.phasePrewarm);
+  }
+
+  /** Measure from the last 'uzu-phase-start' mark, push duration to arr, clear entries. */
+  private _endPhase(name: string, arr: number[]): void {
+    performance.measure(name, 'uzu-phase-start');
+    const entries = performance.getEntriesByName(name, 'measure');
+    const last = entries[entries.length - 1];
+    if (last) { arr.push(last.duration); if (arr.length > 300) arr.shift(); }
+    performance.clearMarks('uzu-phase-start');
+    performance.clearMeasures(name);
   }
 
   // ---------------------------------------------------------------------------
@@ -257,7 +287,7 @@ export class FrameRenderer {
    * Resolve one pattern event into TileParams.
    * Returns null if the event should be skipped.
    */
-  private buildTileParams(fe: FrameEvent, t: number, cps: number, videoFrameProcessed?: Set<VideoEl>): TileParams | null {
+  private buildTileParams(fe: FrameEvent, t: number, cps: number, frameWallTime: number, videoFrameProcessed?: Set<VideoEl>): TileParams | null {
     const { ev, hap, screenIndex, eventIndex } = fe;
 
     // Position
@@ -312,7 +342,7 @@ export class FrameRenderer {
       if (!el) return null;
       const eventBegin = eventBeginFromHap(ev, hap, t);
       if (isFinite(el.duration) && el.duration > 0 && !videoFrameProcessed?.has(el)) {
-        renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps, onSeek: () => { this.metrics.seeksThisFrame++; } });
+        renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps, frameWallTime, onSeek: () => { this.metrics.seeksThisFrame++; }, onDriftSeek: () => { this.metrics.driftSeeksThisFrame++; } });
         videoFrameProcessed?.add(el);
       }
       if (el.videoWidth === 0) return null;
@@ -345,7 +375,7 @@ export class FrameRenderer {
   }
 
   /** Phase 3: Build TileParams for each event in draw order and dispatch to the renderer. */
-  private drawFrame(allEvents: FrameEvent[], t: number, cps: number): void {
+  private drawFrame(allEvents: FrameEvent[], t: number, cps: number, frameWallTime: number): void {
     // Track which elements have already had renderVideoFrame called this frame.
     // Multiple FrameEvents may share the same element (via deduplication in queryNeeded).
     // renderVideoFrame must only run once per element per frame — it is a stateful
@@ -356,7 +386,7 @@ export class FrameRenderer {
     for (const fe of allEvents) {
       let params: TileParams | null;
       try {
-        params = this.buildTileParams(fe, t, cps, videoFrameProcessed);
+        params = this.buildTileParams(fe, t, cps, frameWallTime, videoFrameProcessed);
       } catch (e) {
         warn(`screen ${fe.screenIndex} event ${fe.eventIndex} build error: ${e instanceof Error ? e.message : e}`);
         continue;
