@@ -22,18 +22,18 @@ describe("index + gridMod (replaces gridStack)", () => {
     const pat = index(color("red"), color("blue")).cols(2).rows(1).gridMod();
     const evs = queryAll(pat, 0.1);
     evs.sort((a: any, b: any) => a.x - b.x);
-    expect(evs[0]).toMatchObject({ color: "red", x: 0, y: 0, width: 0.5, height: 1 });
-    expect(evs[1]).toMatchObject({ color: "blue", x: 0.5, y: 0, width: 0.5, height: 1 });
+    expect(evs[0]).toMatchObject({ color: "red", x: 0.25, y: 0.5, width: 0.5, height: 1 });
+    expect(evs[1]).toMatchObject({ color: "blue", x: 0.75, y: 0.5, width: 0.5, height: 1 });
   });
 
   it("sets correct position for 2x2 grid", () => {
     const pat = index(color("red"), color("blue"), color("green"), color("yellow")).rowscols(2).gridMod();
     const evs = queryAll(pat, 0.1);
     evs.sort((a: any, b: any) => a.y * 10 + a.x - (b.y * 10 + b.x));
-    expect(evs[0]).toMatchObject({ color: "red", x: 0, y: 0, width: 0.5, height: 0.5 });
-    expect(evs[1]).toMatchObject({ color: "blue", x: 0.5, y: 0, width: 0.5, height: 0.5 });
-    expect(evs[2]).toMatchObject({ color: "green", x: 0, y: 0.5, width: 0.5, height: 0.5 });
-    expect(evs[3]).toMatchObject({ color: "yellow", x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+    expect(evs[0]).toMatchObject({ color: "red", x: 0.25, y: 0.25, width: 0.5, height: 0.5 });
+    expect(evs[1]).toMatchObject({ color: "blue", x: 0.75, y: 0.25, width: 0.5, height: 0.5 });
+    expect(evs[2]).toMatchObject({ color: "green", x: 0.25, y: 0.75, width: 0.5, height: 0.5 });
+    expect(evs[3]).toMatchObject({ color: "yellow", x: 0.75, y: 0.75, width: 0.5, height: 0.5 });
   });
 
   it("cycles children when fewer than cells (via gridMod stride)", () => {

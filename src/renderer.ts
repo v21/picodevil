@@ -290,12 +290,12 @@ export class FrameRenderer {
   private buildTileParams(fe: FrameEvent, t: number, cps: number, frameWallTime: number, videoFrameProcessed?: Set<VideoEl>): TileParams | null {
     const { ev, hap, screenIndex, eventIndex } = fe;
 
-    // Position
-    const px = ev.x !== undefined ? Number(ev.x) : 0;
-    if (ev.x !== undefined) this.metrics.xLog.push(px);
-    const py = ev.y !== undefined ? Number(ev.y) : 0;
+    // Position. x/y = centre of tile in 0..1; default to canvas centre (0.5, 0.5).
     const pw = ev.width !== undefined ? Number(ev.width) : 1;
     const ph = ev.height !== undefined ? Number(ev.height) : 1;
+    const px = ev.x !== undefined ? Number(ev.x) : 0.5;
+    if (ev.x !== undefined) this.metrics.xLog.push(px);
+    const py = ev.y !== undefined ? Number(ev.y) : 0.5;
     if (isNaN(px) || isNaN(py) || isNaN(pw) || isNaN(ph)) {
       warn(`screen ${screenIndex} event ${eventIndex}: NaN in position (x=${ev.x}, y=${ev.y}, w=${ev.width}, h=${ev.height})`);
       return null;

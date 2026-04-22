@@ -9,7 +9,7 @@ const VERT_SRC = /* glsl */`#version 300 es
 in vec2 a_position;   // 0..1 quad corner
 in vec2 a_uv;         // 0..1 (matches a_position; remapped to source UV by uniforms)
 
-uniform vec2 u_destOffset;  // dest rect top-left in 0..1 canvas coords
+uniform vec2 u_destOffset;  // dest rect centre in 0..1 canvas coords
 uniform vec2 u_destSize;    // dest rect size in 0..1 canvas coords
 uniform vec2 u_uvOffset;    // UV rect origin in normalised texture coords
 uniform vec2 u_uvSize;      // UV rect size (signed — negative = flip axis)
@@ -22,7 +22,7 @@ void main() {
   v_uv = u_uvOffset + a_uv * u_uvSize;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
-  vec2 pos = u_destOffset + a_position * u_destSize;
+  vec2 pos = u_destOffset + (a_position - 0.5) * u_destSize;
   vec2 clip = pos * 2.0 - 1.0;
   clip.y = -clip.y;  // canvas Y is down; clip Y is up
 
@@ -155,8 +155,8 @@ function buildTransform(p: TileParams): Float32Array {
   const Sy = p.rotateXScale * p.scaleY;
 
   // Cell centre in clip space (canvas 0..1 → clip -1..1, Y flipped)
-  const cx =  2 * (p.x + p.w / 2) - 1;
-  const cy = -(2 * (p.y + p.h / 2) - 1);
+  const cx =  2 * p.x - 1;
+  const cy = -(2 * p.y - 1);
 
   // T(cx,cy) * S(Sx,Sy) * R(θ) * T(-cx,-cy)
   const a  =  cosZ * Sx;

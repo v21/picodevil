@@ -16,7 +16,7 @@ export type TileSource =
  */
 export interface TileParams {
   source: TileSource;
-  /** Destination rect on canvas, 0..1 normalised. */
+  /** Destination rect on canvas, 0..1 normalised. x/y = centre of tile; w/h = size. */
   x: number;
   y: number;
   w: number;

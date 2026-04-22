@@ -16,13 +16,13 @@ function circleElementSize(n: number, r: number) {
   return 2 * r * Math.sin(Math.PI / Math.max(n, 2));
 }
 
-function circleX(i: number, circleCount: number, radius: number, startOffset: number, w: number) {
+function circleX(i: number, circleCount: number, radius: number, startOffset: number, _w?: number) {
   const angle = Math.PI * 2 * (i / circleCount + startOffset) - Math.PI / 2;
-  return 0.5 + radius * Math.cos(angle) - w / 2;
+  return 0.5 + radius * Math.cos(angle);
 }
-function circleY(i: number, circleCount: number, radius: number, startOffset: number, h: number) {
+function circleY(i: number, circleCount: number, radius: number, startOffset: number, _h?: number) {
   const angle = Math.PI * 2 * (i / circleCount + startOffset) - Math.PI / 2;
-  return 0.5 + radius * Math.sin(angle) - h / 2;
+  return 0.5 + radius * Math.sin(angle);
 }
 
 // ─── value setters ────────────────────────────────────────────────────────────
@@ -50,9 +50,9 @@ describe(".circle()", () => {
   it("places element at top of circle by default (i=0, circleCount=1)", () => {
     const pat = color("red").i(0).circleCount(1).circle(0.3);
     const ev = queryAll(pat, 0.1)[0];
-    const s = circleElementSize(1, 0.3); // = 2*0.3 = 0.6
-    expect(approx(ev.x, 0.5 - s / 2)).toBe(true);
-    expect(approx(ev.y, 0.2 - s / 2)).toBe(true);
+    // i=0, count=1, radius=0.3: cx=0.5, cy=0.5-0.3=0.2
+    expect(approx(ev.x, 0.5)).toBe(true);
+    expect(approx(ev.y, 0.2)).toBe(true);
   });
 
   it("sets width and height from geometry (no-overlap sizing)", () => {
@@ -108,9 +108,9 @@ describe(".circle()", () => {
   it("uses event width/height to center element on circle point", () => {
     const pat = color("red").i(0).circleCount(1).width(0.4).height(0.4).circle(0.3);
     const ev = queryAll(pat, 0.1)[0];
-    // cx=0.5, cy=0.2; centered: x=0.5-0.2=0.3, y=0.2-0.2=0
-    expect(approx(ev.x, 0.5 - 0.4 / 2)).toBe(true);
-    expect(approx(ev.y, 0.2 - 0.4 / 2)).toBe(true);
+    // cx=0.5, cy=0.2 (i=0, radius=0.3, top of circle)
+    expect(approx(ev.x, 0.5)).toBe(true);
+    expect(approx(ev.y, 0.2)).toBe(true);
   });
 
   it("all args explicit: circle(radius, startOffset, circleCount, i)", () => {

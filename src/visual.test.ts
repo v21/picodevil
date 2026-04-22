@@ -135,16 +135,18 @@ function renderScreen(
       ctx.translate(-canvas.width / 2, -canvas.height / 2);
     }
 
-    // Position params (used by grid layout)
-    const px = ev.x !== undefined ? Number(ev.x) : 0;
-    const py = ev.y !== undefined ? Number(ev.y) : 0;
+    // Position params (used by grid layout). x/y = centre of tile in 0..1.
+    const px = ev.x !== undefined ? Number(ev.x) : undefined;
+    const py = ev.y !== undefined ? Number(ev.y) : undefined;
     const pw = ev.width !== undefined ? Number(ev.width) : 1;
     const ph = ev.height !== undefined ? Number(ev.height) : 1;
-    if (px !== 0 || py !== 0 || pw !== 1 || ph !== 1) {
+    if (px !== undefined || py !== undefined || pw !== 1 || ph !== 1) {
+      const cx = px ?? 0.5;
+      const cy = py ?? 0.5;
       ctx.beginPath();
-      ctx.rect(px * canvas.width, py * canvas.height, pw * canvas.width, ph * canvas.height);
+      ctx.rect((cx - pw / 2) * canvas.width, (cy - ph / 2) * canvas.height, pw * canvas.width, ph * canvas.height);
       ctx.clip();
-      ctx.translate(px * canvas.width, py * canvas.height);
+      ctx.translate((cx - pw / 2) * canvas.width, (cy - ph / 2) * canvas.height);
       ctx.scale(pw, ph);
     }
 

@@ -132,32 +132,32 @@ describe("visual controls via createMixParam", () => {
     });
 
     it(".grid(rows, cols, i) sets position for cell", () => {
-      // cell 0 in 2x2: top-left quarter
+      // cell 0 in 2x2: centre of top-left quarter
       const v0 = query(src("x").grid(2, 2, 0), 0);
-      expect(v0.x).toBe(0);
-      expect(v0.y).toBe(0);
+      expect(v0.x).toBe(0.25);
+      expect(v0.y).toBe(0.25);
       expect(v0.width).toBe(0.5);
       expect(v0.height).toBe(0.5);
 
-      // cell 1 in 2x2: top-right quarter
+      // cell 1 in 2x2: centre of top-right quarter
       const v1 = query(src("x").grid(2, 2, 1), 0);
-      expect(v1.x).toBe(0.5);
-      expect(v1.y).toBe(0);
+      expect(v1.x).toBe(0.75);
+      expect(v1.y).toBe(0.25);
 
-      // cell 2 in 2x2: bottom-left quarter
+      // cell 2 in 2x2: centre of bottom-left quarter
       const v2 = query(src("x").grid(2, 2, 2), 0);
-      expect(v2.x).toBe(0);
-      expect(v2.y).toBe(0.5);
+      expect(v2.x).toBe(0.25);
+      expect(v2.y).toBe(0.75);
 
-      // cell 3 in 2x2: bottom-right quarter
+      // cell 3 in 2x2: centre of bottom-right quarter
       const v3 = query(src("x").grid(2, 2, 3), 0);
-      expect(v3.x).toBe(0.5);
-      expect(v3.y).toBe(0.5);
+      expect(v3.x).toBe(0.75);
+      expect(v3.y).toBe(0.75);
     });
 
     it(".grid() composes with other controls", () => {
       const v = query(src("x").grid(2, 2, 0).alpha(0.5), 0);
-      expect(v.x).toBe(0);
+      expect(v.x).toBe(0.25);
       expect(v.width).toBe(0.5);
       expect(v.alpha).toBe(0.5);
     });
@@ -166,9 +166,9 @@ describe("visual controls via createMixParam", () => {
       // i alternates: cell 0 first half, cell 3 second half
       const pat = src("x").grid(2, 2, mini("0 3"));
       const v0 = query(pat, 0.1);
-      expect(v0).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+      expect(v0).toMatchObject({ x: 0.25, y: 0.25, width: 0.5, height: 0.5 });
       const v1 = query(pat, 0.6);
-      expect(v1).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+      expect(v1).toMatchObject({ x: 0.75, y: 0.75, width: 0.5, height: 0.5 });
     });
 
     it(".grid() with stacked pattern index gives simultaneous positions", () => {
@@ -177,8 +177,8 @@ describe("visual controls via createMixParam", () => {
       const evs = pat.queryArc(0, 0).map((e: any) => e.value);
       expect(evs).toHaveLength(2);
       evs.sort((a: any, b: any) => a.x - b.x);
-      expect(evs[0]).toMatchObject({ x: 0, y: 0 });
-      expect(evs[1]).toMatchObject({ x: 0.5, y: 0.5 });
+      expect(evs[0]).toMatchObject({ x: 0.25, y: 0.25 });
+      expect(evs[1]).toMatchObject({ x: 0.75, y: 0.75 });
     });
 
     it(".grid() with pattern cols", () => {
@@ -186,7 +186,7 @@ describe("visual controls via createMixParam", () => {
       const pat = src("x").grid(1, mini("2 3"), 0);
       // first half: cols=2 → width=0.5
       const v0 = query(pat, 0.1);
-      expect(v0).toMatchObject({ x: 0, y: 0, width: 0.5, height: 1 });
+      expect(v0).toMatchObject({ x: 0.25, y: 0.5, width: 0.5, height: 1 });
       // second half: cols=3 → width=1/3
       const v1 = query(pat, 0.6);
       expect(v1.width).toBeCloseTo(1/3);
@@ -202,25 +202,25 @@ describe("visual controls via createMixParam", () => {
     });
 
     it(".grid() composes with existing position (nesting)", () => {
-      // Inner: cell 0 of 1x2 → {x:0, y:0, w:0.5, h:1}
-      // Outer: cell 1 of 1x2 → {x:0.5, y:0, w:0.5, h:1}
-      // Composed: x=0.5+0*0.5=0.5, w=0.5*0.5=0.25
+      // Inner: cell 0 of 1x2 → centre {x:0.25, y:0.5, w:0.5, h:1}
+      // Outer: cell 1 of 1x2 → centre {x:0.75, y:0.5, w:0.5, h:1}
+      // Composed: x=0.75+(0.25-0.5)*0.5=0.625, y=0.5+(0.5-0.5)*1=0.5, w=0.25, h=1
       const pat = src("x").grid(1, 2, 0).grid(1, 2, 1);
       const v = query(pat, 0);
-      expect(v.x).toBeCloseTo(0.5);
-      expect(v.y).toBeCloseTo(0);
+      expect(v.x).toBeCloseTo(0.625);
+      expect(v.y).toBeCloseTo(0.5);
       expect(v.width).toBeCloseTo(0.25);
       expect(v.height).toBeCloseTo(1);
     });
 
     it(".grid() nesting: inner cell in outer cell", () => {
-      // Inner: cell 3 of 2x2 → {x:0.5, y:0.5, w:0.5, h:0.5}
-      // Outer: cell 0 of 2x2 → {x:0, y:0, w:0.5, h:0.5}
-      // Composed: x=0+0.5*0.5=0.25, y=0+0.5*0.5=0.25, w=0.25, h=0.25
+      // Inner: cell 3 of 2x2 → centre {x:0.75, y:0.75, w:0.5, h:0.5}
+      // Outer: cell 0 of 2x2 → centre {x:0.25, y:0.25, w:0.5, h:0.5}
+      // Composed: x=0.25+(0.75-0.5)*0.5=0.375, y=0.25+(0.75-0.5)*0.5=0.375, w=0.25, h=0.25
       const pat = src("x").grid(2, 2, 3).grid(2, 2, 0);
       const v = query(pat, 0);
-      expect(v.x).toBeCloseTo(0.25);
-      expect(v.y).toBeCloseTo(0.25);
+      expect(v.x).toBeCloseTo(0.375);
+      expect(v.y).toBeCloseTo(0.375);
       expect(v.width).toBeCloseTo(0.25);
       expect(v.height).toBeCloseTo(0.25);
     });
@@ -362,17 +362,17 @@ describe("visual controls via createMixParam", () => {
       const pat = index(src("a")).tile();
       const vs = queryAll(pat, 0);
       expect(vs).toHaveLength(1);
-      expect(vs[0]).toMatchObject({ x: 0, y: 0, width: 1, height: 1 });
+      expect(vs[0]).toMatchObject({ x: 0.5, y: 0.5, width: 1, height: 1 });
     });
 
     it("4 elements → 2×2 uniform grid", () => {
       const pat = index(src("a"), src("b"), src("c"), src("d")).tile();
       const vs = queryAll(pat, 0).sort((a: any, b: any) => a.i - b.i);
       expect(vs).toHaveLength(4);
-      expect(vs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
-      expect(vs[1]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
-      expect(vs[2]).toMatchObject({ x: 0, y: 0.5, width: 0.5, height: 0.5 });
-      expect(vs[3]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+      expect(vs[0]).toMatchObject({ x: 0.25, y: 0.25, width: 0.5, height: 0.5 });
+      expect(vs[1]).toMatchObject({ x: 0.75, y: 0.25, width: 0.5, height: 0.5 });
+      expect(vs[2]).toMatchObject({ x: 0.25, y: 0.75, width: 0.5, height: 0.5 });
+      expect(vs[3]).toMatchObject({ x: 0.75, y: 0.75, width: 0.5, height: 0.5 });
     });
 
     it("7 elements → 3 rows, top row has 3, bottom two have 2", () => {
@@ -382,11 +382,11 @@ describe("visual controls via createMixParam", () => {
       expect(vs).toHaveLength(7);
       // rows=3, distribution: 3,2,2
       expect(vs[0].width).toBeCloseTo(1 / 3);
-      expect(vs[0]).toMatchObject({ y: 0, height: 1 / 3 });
+      expect(vs[0]).toMatchObject({ y: 1 / 6, height: 1 / 3 });
       expect(vs[3].width).toBeCloseTo(0.5);
-      expect(vs[3].y).toBeCloseTo(1 / 3);
+      expect(vs[3].y).toBeCloseTo(0.5);
       expect(vs[5].width).toBeCloseTo(0.5);
-      expect(vs[5].y).toBeCloseTo(2 / 3);
+      expect(vs[5].y).toBeCloseTo(5 / 6);
     });
 
     it("9 elements → 3×3 uniform grid", () => {

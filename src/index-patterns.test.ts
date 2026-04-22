@@ -40,8 +40,8 @@ describe(".i()", () => {
     const pat = color("red").i(3).rowscols(4).gridMod();
     const evs = queryAll(pat, 0.1);
     expect(evs).toHaveLength(1);
-    // cell 3 in a 4x4 grid = col 3, row 0
-    expect(evs[0]).toMatchObject({ x: 0.75, y: 0, width: 0.25, height: 0.25 });
+    // cell 3 in a 4x4 grid = col 3, row 0 → centre (0.875, 0.125)
+    expect(evs[0]).toMatchObject({ x: 0.875, y: 0.125, width: 0.25, height: 0.25 });
   });
 });
 
@@ -198,40 +198,40 @@ describe(".grid() reading from values", () => {
   it("no args: reads i, rows, cols from value", () => {
     const pat = color("red").i(1).rows(2).cols(2).grid();
     const evs = queryAll(pat, 0.1);
-    expect(evs[0]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
+    expect(evs[0]).toMatchObject({ x: 0.75, y: 0.25, width: 0.5, height: 0.5 });
   });
 
   it("explicit rows/cols args override value", () => {
     const pat = color("red").i(2).grid(2, 2);
     const evs = queryAll(pat, 0.1);
-    // i=2 from value, rows=2 cols=2 from args → cell 2 = bottom-left
-    expect(evs[0]).toMatchObject({ x: 0, y: 0.5, width: 0.5, height: 0.5 });
+    // i=2 from value, rows=2 cols=2 from args → cell 2 = bottom-left → centre (0.25, 0.75)
+    expect(evs[0]).toMatchObject({ x: 0.25, y: 0.75, width: 0.5, height: 0.5 });
   });
 
   it("explicit rows/cols/i args, fully explicit", () => {
     const pat = color("red").grid(2, 2, 3);
     const evs = queryAll(pat, 0.1);
-    expect(evs[0]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+    expect(evs[0]).toMatchObject({ x: 0.75, y: 0.75, width: 0.5, height: 0.5 });
   });
 
   it("only rows set: cols defaults to 1", () => {
     const pat = color("red").i(1).grid(2);
     const evs = queryAll(pat, 0.1);
-    // rows=2, cols=1, i=1 from value → cell 1 = bottom (x:0, y:0.5, w:1, h:0.5)
-    expect(evs[0]).toMatchObject({ x: 0, y: 0.5, width: 1, height: 0.5 });
+    // rows=2, cols=1, i=1 from value → cell 1 = bottom → centre (0.5, 0.75)
+    expect(evs[0]).toMatchObject({ x: 0.5, y: 0.75, width: 1, height: 0.5 });
   });
 
   it("no args, no values: defaults to 2x2, i:0", () => {
     const pat = color("red").grid();
     const evs = queryAll(pat, 0.1);
-    expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.5, height: 0.5 });
+    expect(evs[0]).toMatchObject({ x: 0.25, y: 0.25, width: 0.5, height: 0.5 });
   });
 
   it("composes with existing position (nested grids)", () => {
     const pat = color("red").i(0).rows(2).cols(2).grid().i(0).rows(2).cols(2).grid();
     const evs = queryAll(pat, 0.1);
-    // cell 0 of a 2x2, then cell 0 of a 2x2 within that → top-left quarter of top-left quarter
-    expect(evs[0]).toMatchObject({ x: 0, y: 0, width: 0.25, height: 0.25 });
+    // cell 0 of 2x2 (centre 0.25,0.25) inside cell 0 of 2x2 (centre 0.25,0.25) → centre (0.125,0.125)
+    expect(evs[0]).toMatchObject({ x: 0.125, y: 0.125, width: 0.25, height: 0.25 });
   });
 });
 
@@ -250,8 +250,8 @@ describe(".gridMod()", () => {
     expect(reds).toHaveLength(2);
     expect(blues).toHaveLength(2);
     reds.sort((a: any, b: any) => a.y - b.y);
-    expect(reds[0]).toMatchObject({ x: 0, y: 0 });
-    expect(reds[1]).toMatchObject({ x: 0, y: 0.5 });
+    expect(reds[0]).toMatchObject({ x: 0.25, y: 0.25 });
+    expect(reds[1]).toMatchObject({ x: 0.25, y: 0.75 });
   });
 
   it("explicit args override values", () => {
@@ -300,10 +300,10 @@ describe("nested gridMod", () => {
     expect(evs).toHaveLength(10);
     const reds = evs.filter((v: any) => v.color === "red");
     expect(reds).toHaveLength(2); // red in outer cells 1 and 3
-    // red events should be in the "i=1" outer cells: x=0.5,y=0 and x=0.5,y=0.5
+    // red events should be in the "i=1" outer cells: centres at (0.75,0.25) and (0.75,0.75)
     reds.sort((a: any, b: any) => a.y - b.y);
-    expect(reds[0]).toMatchObject({ x: 0.5, y: 0, width: 0.5, height: 0.5 });
-    expect(reds[1]).toMatchObject({ x: 0.5, y: 0.5, width: 0.5, height: 0.5 });
+    expect(reds[0]).toMatchObject({ x: 0.75, y: 0.25, width: 0.5, height: 0.5 });
+    expect(reds[1]).toMatchObject({ x: 0.75, y: 0.75, width: 0.5, height: 0.5 });
   });
 
   it("inner cells compose positions correctly within outer cells", () => {
@@ -318,10 +318,10 @@ describe("nested gridMod", () => {
     const evs = queryAll(pat, 0.1);
     const cyans = evs.filter((v: any) => v.color === "cyan");
     // cyan = i=0 in inner 2x2 → inner cells 0,2 → each replicated in outer cells 0,2
-    // In outer cell 0 (x=0,y=0,w=0.5,h=0.5): inner cell 0 of inner 2x2 → x:0,y:0,w:0.25,h:0.25
+    // inner cell 0 centre=(0.25,0.25) inside outer cell 0 centre=(0.25,0.25) → compose → (0.125,0.125)
     expect(cyans).toHaveLength(4); // 2 inner cells × 2 outer cells
     cyans.sort((a: any, b: any) => a.y - b.y || a.x - b.x);
-    expect(cyans[0]).toMatchObject({ x: 0, y: 0, width: 0.25, height: 0.25 });
+    expect(cyans[0]).toMatchObject({ x: 0.125, y: 0.125, width: 0.25, height: 0.25 });
   });
 
   it("layoutParent is unique per gridMod call", () => {
@@ -398,11 +398,9 @@ describe("additive .x() and .y()", () => {
       .gridMod();
     const evs = queryAll(pat, 0.1);
     const cyans = evs.filter((v: any) => v.color === "cyan");
-    // cyan's x should be shifted by 0.1 * outer_cell_width (0.5) = 0.05 from base
-    // base outer cell 0: x=0; inner cell 0: x=0; after additive x(0.1): x += 0.1*0.5 = 0.05
-    // Actually addTo adds the raw value before outer compose, so x = 0 + 0.1 = 0.1 (inner space),
-    // then outer compose: finalX = 0 + 0.1 * 0.5 = 0.05
+    // cyan inner cell 0 centre=(0.25,0.25); after .x(0.1) additive: x=0.35
+    // outer compose with outer cell 0 centre=(0.25,0.25): x = 0.25 + (0.35-0.5)*0.5 = 0.175
     cyans.sort((a: any, b: any) => a.y - b.y || a.x - b.x);
-    expect(cyans[0].x).toBeCloseTo(0.05);
+    expect(cyans[0].x).toBeCloseTo(0.175);
   });
 });

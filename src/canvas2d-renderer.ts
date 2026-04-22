@@ -31,8 +31,8 @@ export class Canvas2DRenderer implements Renderer {
 
     const hasRotation = p.rotateZ !== 0 || p.rotateXScale !== 1 || p.rotateYScale !== 1;
     if (hasRotation) {
-      const cx = (p.x + p.w / 2) * w;
-      const cy = (p.y + p.h / 2) * h;
+      const cx = p.x * w;
+      const cy = p.y * h;
       ctx.save();
       ctx.translate(cx, cy);
       if (p.rotateXScale !== 1 || p.rotateYScale !== 1) ctx.scale(p.rotateYScale, p.rotateXScale);
@@ -44,9 +44,9 @@ export class Canvas2DRenderer implements Renderer {
     if (hasPosition) {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(p.x * w, p.y * h, p.w * w, p.h * h);
+      ctx.rect((p.x - p.w / 2) * w, (p.y - p.h / 2) * h, p.w * w, p.h * h);
       ctx.clip();
-      ctx.translate(p.x * w, p.y * h);
+      ctx.translate((p.x - p.w / 2) * w, (p.y - p.h / 2) * h);
       ctx.scale(p.w, p.h);
     }
 

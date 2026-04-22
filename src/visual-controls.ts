@@ -716,7 +716,7 @@ function cellPos(i: number, cols: number, rows: number) {
   const wrapped = total > 0 ? ((i % total) + total) % total : 0;
   const col = wrapped % cols;
   const row = Math.floor(wrapped / cols);
-  return { x: col / cols, y: row / rows, width: 1 / cols, height: 1 / rows };
+  return { x: (col + 0.5) / cols, y: (row + 0.5) / rows, width: 1 / cols, height: 1 / rows };
 }
 
 // Convenience wrappers for resolveValue
@@ -732,14 +732,14 @@ function resolveFloat(val: any, begin: any): number {
 // "outer" = new grid cell, "inner" = existing position from prior .grid() calls.
 // finalX = outer.x + inner.x * outer.width, etc.
 function composePos(value: any, outer: { x: number; y: number; width: number; height: number }) {
-  const ix = value.x ?? 0;
-  const iy = value.y ?? 0;
+  const ix = value.x ?? 0.5;
+  const iy = value.y ?? 0.5;
   const iw = value.width ?? 1;
   const ih = value.height ?? 1;
   return {
     ...value,
-    x: outer.x + ix * outer.width,
-    y: outer.y + iy * outer.height,
+    x: outer.x + (ix - 0.5) * outer.width,
+    y: outer.y + (iy - 0.5) * outer.height,
     width: iw * outer.width,
     height: ih * outer.height,
   };
@@ -872,7 +872,7 @@ function tileCellPos(i: number, count: number): { x: number; y: number; width: n
   }
   const rowSize = Math.floor(n / rows) + (row < extra ? 1 : 0);
   const col = remaining;
-  return { x: col / rowSize, y: row * rowHeight, width: 1 / rowSize, height: rowHeight };
+  return { x: (col + 0.5) / rowSize, y: (row + 0.5) * rowHeight, width: 1 / rowSize, height: rowHeight };
 }
 
 /**
@@ -906,7 +906,7 @@ function circlePos(i: number, count: number, radius: number, startOffset: number
   const angle = Math.PI * 2 * (i / count + startOffset) - Math.PI / 2;
   const cx = 0.5 + radius * Math.cos(angle);
   const cy = 0.5 + radius * Math.sin(angle);
-  return { x: cx - w / 2, y: cy - h / 2, width: w, height: h };
+  return { x: cx, y: cy, width: w, height: h };
 }
 
 function circleElementSize(n: number, r: number): number {
