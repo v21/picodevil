@@ -24,8 +24,7 @@ const TRACE_DURATION_MS = parseInt(flag("trace", "20000"), 10);
 
 // The pattern to investigate
 const SETUP_CODE = ``;
-const PATTERN_CODE = `$: s("<CGI_31.mp4 ~ CGI_32.mp4 ~ CGI_34.mp4 ~ CGI_15.mp4 ~ CGI_16.mp4 ~>, CGI_12.mp4")
-  .index().syncStack(10).shuffleStack(rand.segment(2)).index().tile()`;
+const PATTERN_CODE = `$: s("CGI_12.mp4").cropStack(50, 50).rowscols(50).gridMod()`;
 
 async function main() {
   const server = await createServer({ server: { port: 0 }, logLevel: "warn" });
