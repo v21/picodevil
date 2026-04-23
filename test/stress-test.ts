@@ -132,6 +132,13 @@ const CASES: StressCase[] = [
     maxAvgSeeksAfterWarmup: 0,
     seekWarmupFrames: 10,
   },
+  {
+    name: "rolling with begin(.3): settles at loopStart after loadeddata reset",
+    code: `$: video("hXJaBfcdCKM.mp4").urlBase('/test-assets/').begin(.3).rolling()`,
+    // Allow a couple of drift-correction seeks during initial load, then stable.
+    maxAvgSeeksAfterWarmup: 0,
+    seekWarmupFrames: 30,
+  },
 ];
 
 interface PhaseStats {

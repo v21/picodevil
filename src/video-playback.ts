@@ -82,6 +82,9 @@ export function computeExpectedTime(p: ExpectedTimeParams): number {
 
 /** Max allowed drift in seconds before we correct video position. */
 export const DRIFT_THRESHOLD = 0.15;
+/** Drift threshold for rolling mode. Large enough to ignore natural timing jitter
+ *  but small enough to catch a failed initial seek (e.g. browser resetting after loadeddata). */
+export const ROLLING_DRIFT_THRESHOLD = 3.0;
 
 /**
  * Convert a video position to loop-space offset (0 to loopLen).
@@ -312,6 +315,17 @@ function updateVideoPlayback(
     speed, loopStart, loopEnd, duration: dur, syncOffset, distOffset,
   });
 
+  // Periodic position trace for rolling elements: log every ~60 frames so
+  // we can see ct drifting away from expected without spamming every frame.
+  if (rolling) {
+    const frameIdx = Math.round(currentCycle / (cps / 60));
+    if (frameIdx % 60 === 0) {
+      const src = (el._state.srcUrl ?? el.src).split("/").pop();
+      const err = el.currentTime - expected;
+      console.log(`[pos] ${src} ct=${el.currentTime.toFixed(3)} expected=${expected.toFixed(3)} err=${err.toFixed(3)} loop=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] paused=${el.paused} cycle=${currentCycle.toFixed(3)}`);
+    }
+  }
+
   const now = frameWallTime ?? performance.now();
   const prevExpected = st.lastExpected;
   const wallDt = st.lastExpectedWall != null ? (now - st.lastExpectedWall) / 1000 : 0;
@@ -336,7 +350,14 @@ function updateVideoPlayback(
       // Never drift-correct: rolling means "let it play freely", and drift seeks cause
       // visible judder. The video's native playback handles timing; we only intervene
       // at boundaries.
-      if (isNewEvent || loopWrapped || needsReseek) {
+      const rollingDrift = computeDrift({
+        currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
+      });
+      const rollingDriftSeek = !isNewEvent && !loopWrapped && !needsReseek && rollingDrift > ROLLING_DRIFT_THRESHOLD;
+      if (isNewEvent || loopWrapped || needsReseek || rollingDriftSeek) {
+        const reason = isNewEvent ? "new-element" : loopWrapped ? "loop-wrap" : needsReseek ? "reseek" : `drift(${rollingDrift.toFixed(2)})`;
+        const src = (el._state.srcUrl ?? el.src).split("/").pop();
+        console.log(`[seek] ${src} rolling reason=${reason} ct=${el.currentTime.toFixed(3)} → expected=${expected.toFixed(3)} loop=[${loopStart.toFixed(2)},${loopEnd.toFixed(2)}] cycle=${currentCycle.toFixed(3)} distOffset=${(el._state.syncDistOffset ?? 0).toFixed(3)}`);
         el.currentTime = expected;
         if (onSeek) onSeek();
       }
@@ -345,6 +366,9 @@ function updateVideoPlayback(
         currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
       });
       if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
+        const reason = isNewEvent ? "new-element" : loopWrapped ? "loop-wrap" : `drift(${drift.toFixed(3)})`;
+        const src = (el._state.srcUrl ?? el.src).split("/").pop();
+        console.log(`[seek] ${src} sync reason=${reason} ct=${el.currentTime.toFixed(3)} → expected=${expected.toFixed(3)} loop=[${loopStart.toFixed(2)},${loopEnd.toFixed(2)}] cycle=${currentCycle.toFixed(3)}`);
         el.currentTime = expected;
         if (onSeek) onSeek();
         if (drift > DRIFT_THRESHOLD && !isNewEvent && !loopWrapped && onDriftSeek) onDriftSeek();
@@ -354,6 +378,8 @@ function updateVideoPlayback(
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
     if (Math.abs(el.currentTime - expected) > 0.01) {
+      const src = (el._state.srcUrl ?? el.src).split("/").pop();
+      console.log(`[seek] ${src} manual ct=${el.currentTime.toFixed(3)} → expected=${expected.toFixed(3)} speed=${speed} loop=[${loopStart.toFixed(2)},${loopEnd.toFixed(2)}] cycle=${currentCycle.toFixed(3)}`);
       el.currentTime = expected;
       if (onSeek) onSeek();
     }

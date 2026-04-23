@@ -861,6 +861,89 @@ describe("playback mode selection (multi-frame)", () => {
     assertMostlyManual(results, 0.9, "speed(20)");
   });
 
+  // --- rolling() ---
+
+  it("rolling().begin(.3): positions stay in [loopStart, loopEnd], no backward jumps", () => {
+    // The bug: rolling().begin(.3) was seen to "revert to the very start" shortly after
+    // starting. This test starts at cycle 0 and runs for 2 full loops to check loop points.
+    const loopStart = 0.3 * DUR; // 3s
+    const loopEnd = DUR;          // 10s
+    const results = runFrames({
+      evFn: () => ({ speed: 1, begin: 0.3, end: 1, rolling: true }),
+      frames: 600, // ~10 real seconds at 60fps
+    });
+    // After the initial seek (frame 0), all positions should be within [loopStart, loopEnd]
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      expect(r.currentTime, `frame ${i}: pos=${r.currentTime.toFixed(3)} not in [${loopStart}, ${loopEnd}]`)
+        .toBeGreaterThanOrEqual(loopStart - 0.1);
+      expect(r.currentTime, `frame ${i}: pos=${r.currentTime.toFixed(3)} not in [${loopStart}, ${loopEnd}]`)
+        .toBeLessThanOrEqual(loopEnd + 0.1);
+    }
+    // No big backward jumps (loop wraps are small forward resets to loopStart, not backward)
+    assertNoBigJumps(results, loopEnd - loopStart + 0.5, "rolling().begin(.3)");
+  });
+
+  it("rolling().begin(.3): fresh element at nonzero cycle starts at loopStart, not 0", () => {
+    // Simulates user who has been running for 5 cycles then adds rolling().begin(.3)
+    // The element should start near loopStart (3s), not 0.
+    const loopStart = 0.3 * DUR;
+    const startCycle = 5; // 10s of prior runtime
+    const el = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const ev = { speed: 1, begin: 0.3, end: 1, rolling: true };
+    renderVideoFrame({ ev, el, currentCycle: startCycle, eventBegin: 0, cps: CPS });
+    expect(el.currentTime, `pos=${el.currentTime.toFixed(3)} should be >= loopStart (${loopStart})`).toBeGreaterThanOrEqual(loopStart - 0.1);
+  });
+
+  it("rolling().begin(.3): loop wraps back to loopStart (0.3), not 0", () => {
+    // After running through a full loop, the wrap point should be loopStart = 3s, not 0.
+    const loopStart = 0.3 * DUR;
+    const el = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const wallDt = 1 / FPS;
+    // Run to just before and just after a loop wrap
+    // loopLen = 7s, one loop takes 7/speed * cps = 7 * 0.5 = 3.5 cycles
+    // Start at cycle 0, run 250 frames (~4s real, covering one full 7s loop)
+    for (let i = 0; i < 250; i++) {
+      const cycle = i * dt;
+      renderVideoFrame({ ev: { speed: 1, begin: 0.3, end: 1, rolling: true }, el, currentCycle: cycle, eventBegin: 0, cps: CPS });
+      if (!el.paused) (el as any).currentTime = el.currentTime + el.playbackRate * wallDt;
+    }
+    // After a loop, position should still be >= loopStart, never at 0
+    expect(el.currentTime).toBeGreaterThanOrEqual(loopStart - 0.2);
+  });
+
+  it("sync() with begin(.3): clock-based position at loopStart on first frame", () => {
+    // At cycle 0, isNewEvent fires and seeks to loopStart = 0.3 * DUR = 3s
+    const el = mockVideoEl({ duration: DUR, currentTime: 0 });
+    renderVideoFrame({ ev: { speed: 1, begin: 0.3, end: 1, sync: true }, el, currentCycle: 0, eventBegin: 0, cps: CPS, frameWallTime: 0 });
+    expect(el.currentTime).toBeCloseTo(3, 1);
+  });
+
+  it("sync() + rolling() intersection: no crashes, positions in range", () => {
+    // Both flags set — both continuity paths active. Just verify it's stable.
+    const results = runFrames({
+      evFn: () => ({ speed: 1, begin: 0.3, end: 1, sync: true, rolling: true }),
+      frames: 300,
+    });
+    const loopStart = 0.3 * DUR;
+    for (let i = 1; i < results.length; i++) {
+      const r = results[i];
+      expect(r.currentTime).toBeGreaterThanOrEqual(loopStart - 0.2);
+      expect(r.currentTime).toBeLessThanOrEqual(DUR + 0.2);
+    }
+  });
+
+  it("scrub(0.5): begin===end → position frozen at scrub target", () => {
+    // scrub(0.5) sets begin=end=0.5, loopLen=0 → position is always loopStart = 5s
+    const results = runFrames({
+      evFn: () => ({ speed: 1, begin: 0.5, end: 0.5 }),
+      frames: 60,
+    });
+    for (const r of results) {
+      expect(r.currentTime).toBeCloseTo(5, 0);
+    }
+  });
+
   // --- Edge cases ---
 
   it("begin(.5).end(.5): zero-length range, frozen frame at begin", () => {
