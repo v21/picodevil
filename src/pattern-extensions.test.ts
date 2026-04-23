@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
 import { Pattern, Hap, rand } from "@strudel/core";
+import { rand as perEventRand } from "./event-random";
 import "./pattern-extensions";
 import "./visual-controls";
 import "./index-patterns";
@@ -86,6 +87,37 @@ describe("spline with pattern params", () => {
     const v = queryVal(pat, 0);
     expect(v).toBeTypeOf("number");
     expect(v).not.toBeNaN();
+  });
+});
+
+describe("lerp/spline threading _randSeed through collectEvents", () => {
+  it("rand.segment(n).lerp() produces different interpolated values for different _randSeeds via addOn", () => {
+    // cropStack stamps a unique _randSeed on each tile; addOn re-queries the amount
+    // pattern with each tile's seed. lerp() must thread that seed through its internal
+    // collectEvents queries so each tile sees its own random sequence.
+    const pat = (video("a.mp4") as any)
+      .cropStack(2, 2)
+      .addOn("x", perEventRand.range(-0.1, 0.1).segment(4).lerp());
+
+    // Query at a mid-segment time (0.15) where lerp is actively interpolating
+    const evs = pat.queryArc(0.15, 0.15);
+    expect(evs).toHaveLength(4);
+    const xValues: number[] = evs.map((e: any) => e.value.x);
+    // All 4 tiles must have different x offsets — decorrelated by _randSeed
+    const unique = new Set(xValues.map((v) => v.toFixed(8)));
+    expect(unique.size).toBeGreaterThan(1);
+  });
+
+  it("spline also threads _randSeed through collectEvents", () => {
+    const pat = (video("a.mp4") as any)
+      .cropStack(2, 2)
+      .addOn("x", perEventRand.range(-0.1, 0.1).segment(4).spline());
+
+    const evs = pat.queryArc(0.15, 0.15);
+    expect(evs).toHaveLength(4);
+    const xValues: number[] = evs.map((e: any) => e.value.x);
+    const unique = new Set(xValues.map((v) => v.toFixed(8)));
+    expect(unique.size).toBeGreaterThan(1);
   });
 });
 

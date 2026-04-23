@@ -1,5 +1,5 @@
 import {
-  Hap, Pattern as CorePattern, reify,
+  Hap, Pattern as CorePattern, reify, TimeSpan, Fraction,
 } from "@strudel/core";
 import { warn } from "./warnings";
 import { resolveMedia } from "./media-registry";
@@ -437,9 +437,11 @@ function toNumEvent(ev: any): NumEvent | null {
 // value for that time step and cannot distinguish between the simultaneous events.
 // As a result, interpolating transforms (lerp, spline) applied via mapOn to a
 // stacked pattern will silently collapse to one tile's value for all tiles.
-function eventsInCycle(src: any, t: number): NumEvent[] {
+function eventsInCycle(src: any, t: number, state?: any): NumEvent[] {
   const cycle = Math.floor(t);
-  const raw = src.queryArc(cycle, cycle + 1);
+  const raw = state
+    ? src.query(state.setSpan(new TimeSpan(Fraction(cycle), Fraction(cycle + 1))))
+    : src.queryArc(cycle, cycle + 1);
   const result: NumEvent[] = [];
   for (const ev of raw) {
     const ne = toNumEvent(ev);
@@ -457,8 +459,8 @@ function eventsInCycle(src: any, t: number): NumEvent[] {
 
 // Find the event whose begin is nearest to targetBegin, by querying the cycle
 // that contains targetBegin. Works for patterns with arbitrarily long spans.
-function nearestOnset(src: any, targetBegin: number): NumEvent | null {
-  const evs = eventsInCycle(src, targetBegin);
+function nearestOnset(src: any, targetBegin: number, state?: any): NumEvent | null {
+  const evs = eventsInCycle(src, targetBegin, state);
   let best: NumEvent | null = null;
   for (const ne of evs) {
     if (!best || Math.abs(ne.begin - targetBegin) < Math.abs(best.begin - targetBegin)) {
@@ -475,9 +477,9 @@ function nearestOnset(src: any, targetBegin: number): NumEvent | null {
 // Because eventsInCycle deduplicates by begin time, stacked haps at the same
 // onset collapse to one entry here too. lerp and spline only ever see one value
 // per onset — they cannot interpolate across simultaneous (stacked) events.
-function collectEvents(src: any, t: number): NumEvent[] {
+function collectEvents(src: any, t: number, state?: any): NumEvent[] {
   // Find current event via cycle-range query
-  const cycleEvs = eventsInCycle(src, t);
+  const cycleEvs = eventsInCycle(src, t, state);
   let cur: NumEvent | null = null;
   for (const ne of cycleEvs) {
     if (ne.begin <= t + 0.0001 && ne.end > t - 0.0001) {
@@ -488,10 +490,10 @@ function collectEvents(src: any, t: number): NumEvent[] {
 
   const EPS = 0.00001;
   // Chain forward from cur's end to find next events
-  const next  = nearestOnset(src, cur.end);
-  const next2 = next ? nearestOnset(src, next.end) : null;
+  const next  = nearestOnset(src, cur.end, state);
+  const next2 = next ? nearestOnset(src, next.end, state) : null;
   // Chain backward: query just before cur starts to land in the previous event
-  const prev  = nearestOnset(src, cur.begin - EPS);
+  const prev  = nearestOnset(src, cur.begin - EPS, state);
 
   const result: NumEvent[] = [];
   if (prev  && Math.abs(prev.begin  - cur.begin) > 0.0001) result.push(prev);
@@ -525,10 +527,17 @@ PatternProto.lerp = function (curve: any = "linear", direction: any = "inout") {
   const src = this;
   const curvePat = reify(curve);
   const dirPat = reify(direction);
+  let warnedEmpty = false;
   return new CorePattern((state: any) => {
     const t = Number(state.span.begin);
-    const evs = collectEvents(src, t);
-    if (!evs.length) return [];
+    const evs = collectEvents(src, t, state);
+    if (!evs.length) {
+      if (!warnedEmpty) {
+        warnedEmpty = true;
+        warn("lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()");
+      }
+      return [];
+    }
 
     const curveVal = curvePat.queryArc(t, t)[0]?.value ?? "linear";
     const dirVal = dirPat.queryArc(t, t)[0]?.value ?? "inout";
@@ -570,10 +579,17 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number, t
 PatternProto.spline = function (tension: any = 0.5) {
   const src = this;
   const tensionPat = reify(tension);
+  let warnedEmpty = false;
   return new CorePattern((state: any) => {
     const t = Number(state.span.begin);
-    const evs = collectEvents(src, t);
-    if (!evs.length) return [];
+    const evs = collectEvents(src, t, state);
+    if (!evs.length) {
+      if (!warnedEmpty) {
+        warnedEmpty = true;
+        warn("spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()");
+      }
+      return [];
+    }
 
     const tensionVal = Number(tensionPat.queryArc(t, t)[0]?.value ?? 0.5);
 
