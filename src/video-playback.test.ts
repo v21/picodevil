@@ -449,6 +449,183 @@ describe("renderVideoFrame stateful behavior", () => {
 });
 
 /**
+ * rolling().sync() simulation tests.
+ *
+ * Two elements with the same src but different sync offsets should always be
+ * at different video positions — both immediately when duration is available
+ * and after recovering from an initial NaN-duration frame.
+ *
+ * These tests step through multiple frames using a mock element that simulates
+ * browser behaviour: currentTime advances between frames in native-rate mode,
+ * and duration can be changed mid-run to simulate async metadata loading.
+ */
+describe("rolling + sync", () => {
+  const cps = 0.5;
+  const DUR = 10;
+
+  it("rolling+sync seeks fresh element to syncOffset on first frame when duration is available", () => {
+    const el = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const ev = { speed: 1, begin: 0, end: 1, rolling: true, sync: 0.5 };
+    renderVideoFrame({ ev, el, currentCycle: 0, eventBegin: 0, cps });
+    // sync=0.5 → syncOffset = 5s → should seek there on isNewEvent
+    expect(el.currentTime).toBeCloseTo(5, 1);
+  });
+
+  it("two fresh rolling+sync elements with different offsets land at different positions", () => {
+    const el1 = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const el2 = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const ev1 = { speed: 1, begin: 0, end: 1, rolling: true, sync: 0.5 };
+    const ev2 = { speed: 1, begin: 0, end: 1, rolling: true, sync: 0.2 };
+    renderVideoFrame({ ev: ev1, el: el1, currentCycle: 0, eventBegin: 0, cps });
+    renderVideoFrame({ ev: ev2, el: el2, currentCycle: 0, eventBegin: 0, cps });
+    // el1 should be at 5s, el2 at 2s — not in sync
+    expect(el1.currentTime).toBeCloseTo(5, 1);
+    expect(el2.currentTime).toBeCloseTo(2, 1);
+  });
+
+  it("rolling+sync still seeks to correct position when duration was NaN on the first frame", () => {
+    // Simulate browser: duration not yet available on frame 1, becomes available on frame 2
+    const state = { currentTime: 0, duration: NaN, paused: true, playbackRate: 1 };
+    const el = {
+      _state: createVideoState(),
+      get currentTime() { return state.currentTime; },
+      set currentTime(v: number) { state.currentTime = v; },
+      get duration() { return state.duration; },
+      get paused() { return state.paused; },
+      get playbackRate() { return state.playbackRate; },
+      set playbackRate(v: number) { state.playbackRate = v; },
+      get src() { return "test.mp4"; },
+      play() { state.paused = false; return Promise.resolve(); },
+      pause() { state.paused = true; },
+    } as unknown as VideoEl;
+
+    const ev = { speed: 1, begin: 0, end: 1, rolling: true, sync: 0.5 };
+
+    // Frame 1: duration NaN — seek can't land correctly
+    renderVideoFrame({ ev, el, currentCycle: 0, eventBegin: 0, cps });
+
+    // Duration becomes available (e.g. metadata loaded)
+    state.duration = DUR;
+
+    // Frame 2+: should recover and seek to syncOffset × duration
+    renderVideoFrame({ ev, el, currentCycle: 0.01, eventBegin: 0, cps });
+
+    expect(el.currentTime).toBeCloseTo(5, 0);
+  });
+
+  /**
+   * Multi-frame harness for two rolling+sync elements running in parallel.
+   * Simulates browser behaviour: currentTime advances between frames in native mode,
+   * duration can start as NaN and be set later (async metadata loading).
+   */
+  function runRollingSync(opts: {
+    sync1: number;
+    sync2: number;
+    frames: number;
+    /** Frame index at which duration becomes available (0 = immediately). */
+    durationAvailableAtFrame?: number;
+  }) {
+    const { sync1, sync2, frames, durationAvailableAtFrame = 0 } = opts;
+    const FPS = 60;
+    const wallDt = 1 / FPS;
+
+    // Mutable state objects so we can change duration mid-run
+    const s1 = { currentTime: 0, duration: durationAvailableAtFrame === 0 ? DUR : NaN, paused: true, playbackRate: 1 };
+    const s2 = { currentTime: 0, duration: durationAvailableAtFrame === 0 ? DUR : NaN, paused: true, playbackRate: 1 };
+
+    function makeEl(s: typeof s1): VideoEl {
+      return {
+        _state: createVideoState(),
+        get currentTime() { return s.currentTime; },
+        set currentTime(v: number) { s.currentTime = v; },
+        get duration() { return s.duration; },
+        get paused() { return s.paused; },
+        get playbackRate() { return s.playbackRate; },
+        set playbackRate(v: number) { s.playbackRate = v; },
+        get src() { return "test.mp4"; },
+        play() { s.paused = false; return Promise.resolve(); },
+        pause() { s.paused = true; },
+      } as unknown as VideoEl;
+    }
+
+    const el1 = makeEl(s1);
+    const el2 = makeEl(s2);
+    const ev1 = { speed: 1, begin: 0, end: 1, rolling: true, sync: sync1 };
+    const ev2 = { speed: 1, begin: 0, end: 1, rolling: true, sync: sync2 };
+
+    const results: { cycle: number; ct1: number; ct2: number }[] = [];
+
+    for (let i = 0; i < frames; i++) {
+      const cycle = (i * cps) / FPS;
+
+      // Simulate async metadata loading
+      if (i === durationAvailableAtFrame) {
+        s1.duration = DUR;
+        s2.duration = DUR;
+      }
+
+      renderVideoFrame({ ev: ev1, el: el1, currentCycle: cycle, eventBegin: 0, cps });
+      renderVideoFrame({ ev: ev2, el: el2, currentCycle: cycle, eventBegin: 0, cps });
+
+      results.push({ cycle, ct1: s1.currentTime, ct2: s2.currentTime });
+
+      // Advance currentTime between frames (browser native playback simulation)
+      if (!s1.paused) s1.currentTime = Math.min(DUR, s1.currentTime + s1.playbackRate * wallDt);
+      if (!s2.paused) s2.currentTime = Math.min(DUR, s2.currentTime + s2.playbackRate * wallDt);
+    }
+
+    return { results, s1, s2 };
+  }
+
+  /** Circular distance on [0, DUR). */
+  function circDist(a: number, b: number) {
+    const d = Math.abs(a - b) % DUR;
+    return Math.min(d, DUR - d);
+  }
+
+  it("two rolling+sync elements stay ~(sync1-sync2)*DUR apart after duration loads immediately", () => {
+    const { results } = runRollingSync({ sync1: 0.5, sync2: 0.2, frames: 120 });
+    const expectedGap = Math.abs(0.5 - 0.2) * DUR; // 3s
+    // Check after a warm-up frame
+    for (let i = 2; i < results.length; i++) {
+      const gap = circDist(results[i].ct1, results[i].ct2);
+      expect(gap, `frame ${i}: gap=${gap.toFixed(3)} expected ≈${expectedGap}`).toBeGreaterThan(expectedGap * 0.5);
+    }
+  });
+
+  it("two rolling+sync elements diverge correctly after NaN-duration initial frames", () => {
+    // Duration becomes available at frame 5 (~83ms), simulating slow metadata load
+    const { results } = runRollingSync({ sync1: 0.5, sync2: 0.2, frames: 120, durationAvailableAtFrame: 5 });
+    const expectedGap = Math.abs(0.5 - 0.2) * DUR; // 3s
+
+    // Before duration: both at 0 (in sync) — this is the known unavoidable initial state
+    for (let i = 0; i < 5; i++) {
+      expect(results[i].ct1, `frame ${i} pre-duration ct1`).toBeCloseTo(0, 1);
+      expect(results[i].ct2, `frame ${i} pre-duration ct2`).toBeCloseTo(0, 1);
+    }
+
+    // After duration loads and recovery fires: elements should be at different positions
+    for (let i = 7; i < results.length; i++) {
+      const gap = circDist(results[i].ct1, results[i].ct2);
+      expect(gap, `frame ${i}: gap=${gap.toFixed(3)} expected ≈${expectedGap}`).toBeGreaterThan(expectedGap * 0.5);
+    }
+  });
+
+  it("rolling+sync offset is preserved across loop wraps", () => {
+    // Run for 3+ full loops (30s = 900 frames @ 60fps, CPS=0.5)
+    // After each loop wrap, elements should seek to their respective phase-offset positions
+    const { results } = runRollingSync({ sync1: 0.5, sync2: 0.2, frames: 900 });
+    const expectedGap = Math.abs(0.5 - 0.2) * DUR; // 3s
+
+    // Sample every 60 frames after warm-up — they should stay apart across all loops
+    for (let i = 60; i < results.length; i += 60) {
+      const gap = circDist(results[i].ct1, results[i].ct2);
+      expect(gap, `frame ${i}: gap=${gap.toFixed(3)} expected ≈${expectedGap}`).toBeGreaterThan(expectedGap * 0.5);
+    }
+  });
+});
+
+/**
  * Multi-frame playback mode tests.
  * Simulate N frames through renderVideoFrame, verify mode selection,
  * effective playback rate, and position continuity.

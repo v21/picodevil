@@ -169,8 +169,11 @@ function findShareable(
     if (ns.kind !== candidate.kind) continue;
     if (ns.srcUrl !== candidate.srcUrl) continue;
     if (ns.speed !== candidate.speed) continue;
-    // Both rolling → share
-    if (ns.expectedTime === null && candidate.expectedTime === null) return ns;
+    // Both rolling → share only if same sync phase
+    if (ns.expectedTime === null && candidate.expectedTime === null) {
+      if (ns.ev.sync === candidate.ev.sync) return ns;
+      continue;
+    }
     // One rolling, one not → don't share
     if (ns.expectedTime === null || candidate.expectedTime === null) continue;
     // Both sync: share if close enough

@@ -15,6 +15,8 @@ sortStack('val') - opposite of shuffle stack. keeps order of elements where val 
 
 i guess this also implies sortIndex('val') ?
 
+`stackNWith(n, p => p.speed(i % n))` - like stackN, but runs a mthod on each pattern made to allow them to vary. can we inject `i` into this pattern? or do we need to do `stackNWith(n, (p,i) => p.speed(i % n))` ?
+
 
 shift TileParams so it carries a transform instead
 WelGL renders in clip space - weirdness with rotating non square stuff?
@@ -26,9 +28,9 @@ easy to run code like `$: s("dvsa3,dvsa2").index().tile().syncStack(10).tile()` 
 
 
 
-`$: s("<dvsa3 dvsa2>, dvsa3").index().syncStack(10).tile().alpha(.7)` halts whenever it loads new videos - keep old sources around for a bit, and do prewarming so we don't judder when loading them
+/ `$: s("<dvsa3 dvsa2>, dvsa3").index().syncStack(10).tile().alpha(.7)` halts whenever it loads new videos - keep old sources around for a bit, and do prewarming so we don't judder when loading them
 
-let's do the prewarm slowly - only seek one video per frame
+/ let's do the prewarm slowly - only seek one video per frame
 
 
 right now, our deduplication means that 
@@ -39,7 +41,7 @@ $: s("hXJaBfcdCKM.mp4").rolling().sync(.2).alpha(.2)
 doesn't apply the sync param. it should! maybe this is an extra bit of state to track when looking through video sources?
 
 
-change x & y to encode center positions, not top left
+/ change x & y to encode center positions, not top left
 
 can we make a signal called i, which returns the current value of i for this hap?
 

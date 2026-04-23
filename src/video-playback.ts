@@ -201,6 +201,12 @@ function updateVideoPlayback(
   frameWallTime?: number,
 ): void {
   const dur = el.duration;
+  // Skip until the video has loaded enough to report a usable duration.
+  // Proceeding with NaN/0 duration would produce NaN seeks (corrupting el.currentTime)
+  // and consume the isNewEvent signal prematurely — so lastEventBegin stays undefined
+  // until the first frame with a real duration, letting isNewEvent fire correctly then.
+  if (!isFinite(dur) || dur <= 0) return;
+
   const loopStart = beginVal * dur;
   const loopEnd = endVal * dur;
   const loopLen = computeLoopLen(loopStart, loopEnd, dur);
@@ -246,6 +252,20 @@ function updateVideoPlayback(
       st.syncDistOffset = 0;
     }
     st.lastSyncOffset = syncOffset;
+  }
+
+  // Recovery: if a rolling+synced element's syncOffset has changed since its last frame
+  // (most commonly because duration was NaN on the first frame, making syncOffset=NaN,
+  // and duration is now available), reset and seek to the correct phase.
+  // Uses isFinite(syncOffset) to skip the NaN-to-NaN case (NaN !== NaN in JS).
+  let needsReseek = false;
+  if (!isNewEvent && rolling && synced && loopLen > 0 && isFinite(syncOffset) && st.lastSyncOffset !== syncOffset) {
+    st.lastSyncSpeed = undefined;
+    st.lastSyncBegin = undefined;
+    st.lastSyncEnd = undefined;
+    st.syncDistOffset = 0;
+    st.lastSyncOffset = syncOffset;
+    needsReseek = true;
   }
 
   // Sync/rolling continuity: recompute distance offset when speed/begin/end change
@@ -316,7 +336,7 @@ function updateVideoPlayback(
       // Never drift-correct: rolling means "let it play freely", and drift seeks cause
       // visible judder. The video's native playback handles timing; we only intervene
       // at boundaries.
-      if (isNewEvent || loopWrapped) {
+      if (isNewEvent || loopWrapped || needsReseek) {
         el.currentTime = expected;
         if (onSeek) onSeek();
       }
