@@ -489,70 +489,32 @@ PatternProto.loopat = PatternProto.loopAt;
 export const urlBase = createMixParam("urlBase");
 
 /**
- * Shifts the horizontal position of the pattern (additive — 0 by default, so top-level
- * `.x(0.5)` still places at x=0.5). Additive behaviour lets nested grids be shifted
- * as a unit: `inner.gridMod().x(0.1)` shifts the whole inner group within its outer cell.
+ * Sets the horizontal position of the pattern (0 = left edge, 0.5 = centre, 1 = right edge).
+ * To shift a group by an amount rather than setting an absolute position, use `.addOn('x', amount)`.
  *
- * @param {number | string | Pattern} value x offset
- * @returns {Pattern} pattern with x offset applied
+ * @param {number | string | Pattern} value x position
+ * @returns {Pattern} pattern with x position set
  * @example
  * $: color("red").x(0.5).width(0.5)       // right half of screen
  * $: video("clip.mp4").x(sine).width(0.5)  // slides left to right
- * $: stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().x(0.1)
+ * $: stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().addOn('x', 0.1)
  *    // shift inner group 0.1 units right within its outer cell
  *
  */
-// x and y are additive (use addOn / appBoth) rather than replacement (createMixParam / appLeft).
-// This lets .x(v) shift position relative to whatever the current x is — so nested grids
-// composed by gridMod() can be shifted as a unit: inner.gridMod().x(0.1) shifts the whole
-// inner group within its outer cell, rather than jumping to an absolute position.
-// Top-level usage is unchanged: 0 (default) + v = v.
-//
-// Exception: _perEvent controls (rand, irand, choose) use appLeft instead of appBoth.
-// appBoth samples the control at frame time (flickering rand values), whereas appLeft
-// samples at the hap's onset — giving stable per-event random values. The additive
-// merge is still applied; only the combining strategy differs.
-function makeXY(field: 'x' | 'y') {
-  const method = function (this: any, value: any) {
-    const valPat = reify(value);
-    if ((valPat as any)._perEvent) {
-      return new (Pattern as any)((state: any) => {
-        return this.query(state).flatMap((hap: any) => {
-          const ctrl = samplePerEvent(valPat, hap, state);
-          if (ctrl === undefined) return [hap];
-          const base = typeof hap.value === 'object' && hap.value !== null ? hap.value : {};
-          return [hap.withValue(() => ({ ...base, [field]: (base[field] ?? 0) + ctrl }))];
-        });
-      });
-    }
-    return this.addOn(field, value);
-  };
-  (PatternProto as any)[field] = method;
-}
-makeXY('x');
-makeXY('y');
-
-export const x = function (value: any, pat?: any) {
-  if (!pat) return reify(value).withValue((v: any) => ({ x: v }));
-  return (pat as any).x(value);
-};
+export const x = createMixParam("x");
 PatternProto.left = PatternProto.x;
 
 /**
- * Shifts the vertical position of the pattern (additive — 0 by default, so top-level
- * `.y(0.5)` still places at y=0.5). Additive behaviour lets nested grids be shifted
- * as a unit: `inner.gridMod().y(0.1)` shifts the whole inner group within its outer cell.
+ * Sets the vertical position of the pattern (0 = top edge, 0.5 = centre, 1 = bottom edge).
+ * To shift a group by an amount rather than setting an absolute position, use `.addOn('y', amount)`.
  *
- * @param {number | string | Pattern} value y offset
- * @returns {Pattern} pattern with y offset applied
+ * @param {number | string | Pattern} value y position
+ * @returns {Pattern} pattern with y position set
  * @example
  * $: color("red").y(0.5).height(0.5)       // bottom half of screen
  *
  */
-export const y = function (value: any, pat?: any) {
-  if (!pat) return reify(value).withValue((v: any) => ({ y: v }));
-  return (pat as any).y(value);
-};
+export const y = createMixParam("y");
 PatternProto.top = PatternProto.y;
 
 /**

@@ -368,17 +368,17 @@ describe("nested gridMod", () => {
   });
 });
 
-// ─── additive .x() and .y() ───────────────────────────────────────────────────
+// ─── replacement .x() and .y() ────────────────────────────────────────────────
 
-describe("additive .x() and .y()", () => {
-  it(".x(0.5) on a plain pattern sets x to 0.5 (default 0 + 0.5)", () => {
+describe("replacement .x() and .y()", () => {
+  it(".x(0.5) on a plain pattern sets x to 0.5", () => {
     const evs = queryAll(color("red").x(0.5), 0.1);
     expect(evs[0].x).toBeCloseTo(0.5);
   });
 
-  it(".x() is additive: pat.x(0.3).x(0.2) => x = 0.5", () => {
+  it(".x() is replacement: pat.x(0.3).x(0.2) => x = 0.2 (last wins)", () => {
     const evs = queryAll(color("red").x(0.3).x(0.2), 0.1);
-    expect(evs[0].x).toBeCloseTo(0.5);
+    expect(evs[0].x).toBeCloseTo(0.2);
   });
 
   it(".y(0.5) on a plain pattern sets y to 0.5", () => {
@@ -386,19 +386,19 @@ describe("additive .x() and .y()", () => {
     expect(evs[0].y).toBeCloseTo(0.5);
   });
 
-  it("inner gridMod().x(0.1) shifts inner group, preserved through outer gridMod", () => {
+  it("inner gridMod().addOn('x', 0.1) shifts inner group, preserved through outer gridMod", () => {
     const inner = stack(color("cyan"), color("magenta"))
       .index()
       .rowscols(2)
       .gridMod()
-      .x(0.1); // additive shift within outer cell space
+      .addOn('x', 0.1); // explicit additive shift within outer cell space
     const pat = stack(inner, color("red"))
       .index()
       .rowscols(2)
       .gridMod();
     const evs = queryAll(pat, 0.1);
     const cyans = evs.filter((v: any) => v.color === "cyan");
-    // cyan inner cell 0 centre=(0.25,0.25); after .x(0.1) additive: x=0.35
+    // cyan inner cell 0 centre=(0.25,0.25); after .addOn('x', 0.1): x=0.35
     // outer compose with outer cell 0 centre=(0.25,0.25): x = 0.25 + (0.35-0.5)*0.5 = 0.175
     cyans.sort((a: any, b: any) => a.y - b.y || a.x - b.x);
     expect(cyans[0].x).toBeCloseTo(0.175);

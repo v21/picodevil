@@ -119,7 +119,7 @@ $: video("clip.mp4").x("0 0.5").width(0.5) // bounces left/right
 | `.width(v)`  | Width               | 1       |
 | `.height(v)` | Height              | 1       |
 
-`.x()` and `.y()` are **additive**: each call shifts by the given amount rather than setting an absolute position. This makes them work correctly with nested grids — `inner.gridMod().x(0.1)` shifts the whole inner group by 0.1 within its outer cell without affecting the outer layout. At the top level the behaviour is the same: `0 + v = v`.
+`.x()` and `.y()` set an absolute position (0 = left/top edge, 0.5 = centre, 1 = right/bottom edge). To shift a group additively — e.g. to nudge a nested grid within its outer cell — use `.addOn('x', amount)` instead.
 
 ### Transparency
 
@@ -388,11 +388,11 @@ $: stack(
 
 **Important:** always pass patterns as separate arguments to `stack()`, not as an array. `stack([a, b])` treats the array as a sequence (alternating per cycle) — `stack(a, b)` stacks them simultaneously.
 
-You can shift a nested group within its outer cells using `.x()` / `.y()` before the outer `gridMod()` — because `.x()` is additive, it composes correctly at each level:
+You can shift a nested group within its outer cells using `.addOn('x', amount)` before the outer `gridMod()`:
 
 ```js
 $: stack(
-  stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().x(0.1),
+  stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().addOn('x', 0.1),
   color("red")
 ).index().rowscols(2).gridMod()
 // inner 2×2 is shifted 0.1 units to the right within each of its outer cells
