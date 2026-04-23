@@ -2,50 +2,94 @@ import type { Renderer, TileParams, TileSource } from './renderer-interface';
 import { TextureCache } from './texture-cache';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const MAX_TEX_UNITS = 16;
+
+// Per-instance Float32Array layout (26 floats = 104 bytes):
+//   [0..1]   destOffset  (vec2)
+//   [2..3]   destSize    (vec2)
+//   [4..5]   uvOffset    (vec2)
+//   [6..7]   uvSize      (vec2)
+//   [8]      alpha       (float)
+//   [9]      texIndex    (float)
+//   [10..25] transform   (mat4, column-major)
+const INSTANCE_FLOATS = 26;
+const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
+
+// Attribute locations (fixed via layout(location=N) in shader)
+const LOC_POSITION    = 0;
+const LOC_UV          = 1;
+const LOC_DEST_OFFSET = 2;
+const LOC_DEST_SIZE   = 3;
+const LOC_UV_OFFSET   = 4;
+const LOC_UV_SIZE     = 5;
+const LOC_ALPHA       = 6;
+const LOC_TEX_INDEX   = 7;
+const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
+
+// ---------------------------------------------------------------------------
 // GLSL shaders
 // ---------------------------------------------------------------------------
 
 const VERT_SRC = /* glsl */`#version 300 es
-in vec2 a_position;   // 0..1 quad corner
-in vec2 a_uv;         // 0..1 (matches a_position; remapped to source UV by uniforms)
+layout(location = 0) in vec2 a_position;
+layout(location = 1) in vec2 a_uv;
 
-uniform vec2 u_destOffset;  // dest rect centre in 0..1 canvas coords
-uniform vec2 u_destSize;    // dest rect size in 0..1 canvas coords
-uniform vec2 u_uvOffset;    // UV rect origin in normalised texture coords
-uniform vec2 u_uvSize;      // UV rect size (signed — negative = flip axis)
-uniform mat4 u_transform;   // rotation / scale around cell centre (in clip space)
+// Per-instance attributes (divisor = 1)
+layout(location = 2) in vec2 a_destOffset;
+layout(location = 3) in vec2 a_destSize;
+layout(location = 4) in vec2 a_uvOffset;
+layout(location = 5) in vec2 a_uvSize;
+layout(location = 6) in float a_alpha;
+layout(location = 7) in float a_texIndex;
+layout(location = 8) in mat4 a_transform; // uses locations 8-11
 
+flat out int v_texIndex;
 out vec2 v_uv;
+out float v_alpha;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
-  v_uv = u_uvOffset + a_uv * u_uvSize;
+  v_uv = a_uvOffset + a_uv * a_uvSize;
+  v_texIndex = int(a_texIndex);
+  v_alpha = a_alpha;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
-  vec2 pos = u_destOffset + (a_position - 0.5) * u_destSize;
+  vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
   vec2 clip = pos * 2.0 - 1.0;
   clip.y = -clip.y;  // canvas Y is down; clip Y is up
 
-  gl_Position = u_transform * vec4(clip, 0.0, 1.0);
+  gl_Position = a_transform * vec4(clip, 0.0, 1.0);
 }`;
+
+// Build the sampler if-chain at module load time to avoid repeating 16 cases by hand.
+const TEX_IF_CHAIN = Array.from({ length: MAX_TEX_UNITS }, (_, i) =>
+  `${i === 0 ? 'if' : 'else if'} (v_texIndex == ${i}) color = texture(u_tex[${i}], uv);`
+).join('\n  ');
 
 const FRAG_SRC = /* glsl */`#version 300 es
 precision mediump float;
 
-uniform sampler2D u_texture;
-uniform float u_alpha;
+uniform sampler2D u_tex[${MAX_TEX_UNITS}];
 
+flat in int v_texIndex;
 in vec2 v_uv;
+in float v_alpha;
 out vec4 fragColor;
 
 void main() {
   // fract() gives GL_REPEAT-style tiling for out-of-bounds UV;
   // for normal in-bounds UVs it is a no-op.
   vec2 uv = fract(v_uv);
-  fragColor = texture(u_texture, uv);
+  vec4 color;
+  ${TEX_IF_CHAIN}
+  else color = texture(u_tex[0], uv);
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
-  fragColor.a *= u_alpha;
+  color.a *= v_alpha;
+  fragColor = color;
 }`;
 
 // ---------------------------------------------------------------------------
@@ -186,6 +230,26 @@ function srcSize(source: TileSource): [number, number] {
 }
 
 // ---------------------------------------------------------------------------
+// DrawCommand — intermediate representation accumulated per frame
+// ---------------------------------------------------------------------------
+
+interface DrawCommand {
+  texture: WebGLTexture;
+  blend:   string;
+  // Pre-computed, ready to pack into Float32Array
+  destOffsetX: number;
+  destOffsetY: number;
+  destSizeX:   number;
+  destSizeY:   number;
+  uvOffsetX:   number;
+  uvOffsetY:   number;
+  uvSizeX:     number;
+  uvSizeY:     number;
+  alpha:       number;
+  transform:   Float32Array; // 16 floats, column-major
+}
+
+// ---------------------------------------------------------------------------
 // WebGLRenderer
 // ---------------------------------------------------------------------------
 
@@ -193,48 +257,40 @@ function srcSize(source: TileSource): [number, number] {
  * WebGL2 rendering backend.
  * Implements Renderer — drop-in replacement for Canvas2DRenderer.
  *
- * Each tile is a textured quad drawn with UV-encoded crop and fit.
- * Video frames are uploaded as GPU textures once per frame (no CPU readback).
- * Colour fills use a cached 1×1 RGBA texture.
+ * Tiles are accumulated into a DrawCommand list each frame, then flushed in
+ * batches via drawArraysInstanced. A batch breaks only when the blend mode
+ * changes or a 17th unique source texture would be needed. This reduces GPU
+ * command buffer pressure dramatically for patterns with many tiles
+ * (e.g. cropStack(25,25) = 625 tiles → 1 draw call).
  */
 export class WebGLRenderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
   private readonly vao: WebGLVertexArrayObject;
   private readonly texCache: TextureCache;
+  private readonly instanceVBO: WebGLBuffer;
 
-  // Uniform locations
-  private readonly uDestOffset:  WebGLUniformLocation;
-  private readonly uDestSize:    WebGLUniformLocation;
-  private readonly uUvOffset:    WebGLUniformLocation;
-  private readonly uUvSize:      WebGLUniformLocation;
-  private readonly uTransform:   WebGLUniformLocation;
-  private readonly uTexture:     WebGLUniformLocation;
-  private readonly uAlpha:       WebGLUniformLocation;
+  private instanceData = new Float32Array(256 * INSTANCE_FLOATS);
+  private readonly pendingDraws: DrawCommand[] = [];
 
   private w = 0;
   private h = 0;
-  private currentBlend = 'source-over';
-
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false });
     if (!gl) throw new Error('WebGL2 not supported');
     this.gl = gl;
 
-    this.program  = createProgram(gl, VERT_SRC, FRAG_SRC);
-    this.vao      = createQuadVAO(gl, this.program);
-    this.texCache = new TextureCache(gl);
+    this.program     = createProgram(gl, VERT_SRC, FRAG_SRC);
+    this.instanceVBO = gl.createBuffer()!;
+    this.vao         = createVAO(gl, this.program, this.instanceVBO);
+    this.texCache    = new TextureCache(gl);
 
+    // Bind texture units 0..15 to u_tex[0..15] once at init
     gl.useProgram(this.program);
-    this.uDestOffset  = gl.getUniformLocation(this.program, 'u_destOffset')!;
-    this.uDestSize    = gl.getUniformLocation(this.program, 'u_destSize')!;
-    this.uUvOffset    = gl.getUniformLocation(this.program, 'u_uvOffset')!;
-    this.uUvSize      = gl.getUniformLocation(this.program, 'u_uvSize')!;
-    this.uTransform   = gl.getUniformLocation(this.program, 'u_transform')!;
-    this.uTexture     = gl.getUniformLocation(this.program, 'u_texture')!;
-    this.uAlpha       = gl.getUniformLocation(this.program, 'u_alpha')!;
-
-    gl.uniform1i(this.uTexture, 0);  // texture unit 0
+    for (let i = 0; i < MAX_TEX_UNITS; i++) {
+      const loc = gl.getUniformLocation(this.program, `u_tex[${i}]`);
+      if (loc) gl.uniform1i(loc, i);
+    }
 
     // Handle context loss
     canvas.addEventListener('webglcontextlost', (e) => {
@@ -255,6 +311,7 @@ export class WebGLRenderer implements Renderer {
 
   beginFrame(): void {
     const { gl } = this;
+    this.pendingDraws.length = 0;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
@@ -262,38 +319,102 @@ export class WebGLRenderer implements Renderer {
   }
 
   drawTile(p: TileParams): void {
-    const { gl } = this;
-
     const tex = this.texCache.get(p.source);
     if (!tex) return;  // source not ready
 
-    // Switch blend mode only when it changes
-    if (p.blend !== this.currentBlend) this.setBlend(p.blend);
-
-    // UV rect: fit + crop → signed UV offset/size
     const [srcW, srcH] = srcSize(p.source);
     const cellW = p.w * this.w;
     const cellH = p.h * this.h;
     const { uvOffsetX, uvSizeX, uvOffsetY, uvSizeY } = computeUV(p, srcW, srcH, cellW, cellH);
 
-    // Upload uniforms
-    gl.uniform2f(this.uDestOffset, p.x, p.y);
-    gl.uniform2f(this.uDestSize,   p.w, p.h);
-    gl.uniform2f(this.uUvOffset,   uvOffsetX, uvOffsetY);
-    gl.uniform2f(this.uUvSize,     uvSizeX,   uvSizeY);
-    gl.uniform1f(this.uAlpha,      Math.max(0, Math.min(1, p.alpha)));
-    gl.uniformMatrix4fv(this.uTransform, false, buildTransform(p));
-
-    // Bind texture and draw the quad (6 vertices = 2 triangles)
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.bindVertexArray(this.vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.bindVertexArray(null);
+    this.pendingDraws.push({
+      texture:     tex,
+      blend:       p.blend ?? 'source-over',
+      destOffsetX: p.x,
+      destOffsetY: p.y,
+      destSizeX:   p.w,
+      destSizeY:   p.h,
+      uvOffsetX,
+      uvOffsetY,
+      uvSizeX,
+      uvSizeY,
+      alpha:       Math.max(0, Math.min(1, p.alpha)),
+      transform:   buildTransform(p),
+    });
   }
 
   endFrame(): void {
-    // WebGL auto-presents via the canvas — nothing to do.
+    const { gl } = this;
+    const draws = this.pendingDraws;
+    if (draws.length === 0) return;
+
+    // Greedily batch consecutive commands by blend mode, flushing when blend
+    // changes or a 17th unique texture would be needed.
+    let batchStart = 0;
+    let texUnits   = new Map<WebGLTexture, number>();
+    let blendMode  = draws[0].blend;
+
+    const flush = (end: number) => {
+      if (end <= batchStart) return;
+      const count = end - batchStart;
+
+      // Bind each texture to its assigned unit
+      for (const [tex, unit] of texUnits) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+      }
+
+      // Grow instance buffer if needed
+      const floatsNeeded = count * INSTANCE_FLOATS;
+      if (this.instanceData.length < floatsNeeded) {
+        this.instanceData = new Float32Array(floatsNeeded * 2);
+      }
+
+      // Pack instance data
+      const d = this.instanceData;
+      for (let k = 0; k < count; k++) {
+        const cmd = draws[batchStart + k];
+        const base = k * INSTANCE_FLOATS;
+        d[base + 0]  = cmd.destOffsetX;
+        d[base + 1]  = cmd.destOffsetY;
+        d[base + 2]  = cmd.destSizeX;
+        d[base + 3]  = cmd.destSizeY;
+        d[base + 4]  = cmd.uvOffsetX;
+        d[base + 5]  = cmd.uvOffsetY;
+        d[base + 6]  = cmd.uvSizeX;
+        d[base + 7]  = cmd.uvSizeY;
+        d[base + 8]  = cmd.alpha;
+        d[base + 9]  = texUnits.get(cmd.texture)!;
+        d.set(cmd.transform, base + 10);
+      }
+
+      this.setBlend(blendMode);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceVBO);
+      gl.bufferData(gl.ARRAY_BUFFER, d.subarray(0, floatsNeeded), gl.DYNAMIC_DRAW);
+      gl.bindVertexArray(this.vao);
+      gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count);
+      gl.bindVertexArray(null);
+    };
+
+    for (let i = 0; i < draws.length; i++) {
+      const cmd = draws[i];
+      const blendChange  = cmd.blend !== blendMode;
+      const needsNewUnit = !texUnits.has(cmd.texture) && texUnits.size === MAX_TEX_UNITS;
+
+      if (blendChange || needsNewUnit) {
+        flush(i);
+        batchStart = i;
+        texUnits   = new Map();
+        blendMode  = cmd.blend;
+      }
+
+      if (!texUnits.has(cmd.texture)) {
+        texUnits.set(cmd.texture, texUnits.size);
+      }
+    }
+
+    flush(draws.length);
+    draws.length = 0;
   }
 
   dispose(): void {
@@ -301,6 +422,7 @@ export class WebGLRenderer implements Renderer {
     this.texCache.clear();
     gl.deleteProgram(this.program);
     gl.deleteVertexArray(this.vao);
+    gl.deleteBuffer(this.instanceVBO);
   }
 
   private setBlend(mode: string): void {
@@ -310,7 +432,6 @@ export class WebGLRenderer implements Renderer {
     }
     const [srcRGB, dstRGB, srcA, dstA] = BLEND_MODES[mode] ?? BLEND_MODES['source-over'];
     gl.blendFuncSeparate(srcRGB, dstRGB, srcA, dstA);
-    this.currentBlend = mode;
   }
 }
 
@@ -348,10 +469,20 @@ function createProgram(gl: WebGL2RenderingContext, vertSrc: string, fragSrc: str
 }
 
 /**
- * Create a VAO containing two triangles forming a unit quad.
- * Position and UV both span 0..1.
+ * Create a VAO containing:
+ *   - a static quad VBO (a_position, a_uv) with divisor 0
+ *   - per-instance attrib pointers into instanceVBO with divisor 1
+ *     (buffer is filled each frame in endFrame; only the layout is set up here)
  */
-function createQuadVAO(gl: WebGL2RenderingContext, program: WebGLProgram): WebGLVertexArrayObject {
+function createVAO(
+  gl: WebGL2RenderingContext,
+  _program: WebGLProgram,
+  instanceVBO: WebGLBuffer,
+): WebGLVertexArrayObject {
+  const vao = gl.createVertexArray()!;
+  gl.bindVertexArray(vao);
+
+  // --- Static quad geometry (divisor 0) ---
   // 6 vertices (2 triangles), interleaved [x, y, u, v]
   const verts = new Float32Array([
     0, 0, 0, 0,
@@ -362,22 +493,55 @@ function createQuadVAO(gl: WebGL2RenderingContext, program: WebGLProgram): WebGL
     0, 1, 0, 1,
   ]);
 
-  const vao = gl.createVertexArray()!;
-  gl.bindVertexArray(vao);
-
-  const buf = gl.createBuffer()!;
-  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  const quadBuf = gl.createBuffer()!;
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
   gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
 
-  const stride = 4 * 4;  // 4 floats × 4 bytes
-  const aPos = gl.getAttribLocation(program, 'a_position');
-  const aUV  = gl.getAttribLocation(program, 'a_uv');
+  const quadStride = 4 * 4;  // 4 floats × 4 bytes
+  gl.enableVertexAttribArray(LOC_POSITION);
+  gl.vertexAttribPointer(LOC_POSITION, 2, gl.FLOAT, false, quadStride, 0);
+  gl.vertexAttribDivisor(LOC_POSITION, 0);
 
-  gl.enableVertexAttribArray(aPos);
-  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, stride, 0);
+  gl.enableVertexAttribArray(LOC_UV);
+  gl.vertexAttribPointer(LOC_UV, 2, gl.FLOAT, false, quadStride, 2 * 4);
+  gl.vertexAttribDivisor(LOC_UV, 0);
 
-  gl.enableVertexAttribArray(aUV);
-  gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, stride, 2 * 4);
+  // --- Per-instance attribs (divisor 1) ---
+  gl.bindBuffer(gl.ARRAY_BUFFER, instanceVBO);
+
+  const s = INSTANCE_STRIDE;
+
+  gl.enableVertexAttribArray(LOC_DEST_OFFSET);
+  gl.vertexAttribPointer(LOC_DEST_OFFSET, 2, gl.FLOAT, false, s, 0);
+  gl.vertexAttribDivisor(LOC_DEST_OFFSET, 1);
+
+  gl.enableVertexAttribArray(LOC_DEST_SIZE);
+  gl.vertexAttribPointer(LOC_DEST_SIZE, 2, gl.FLOAT, false, s, 8);
+  gl.vertexAttribDivisor(LOC_DEST_SIZE, 1);
+
+  gl.enableVertexAttribArray(LOC_UV_OFFSET);
+  gl.vertexAttribPointer(LOC_UV_OFFSET, 2, gl.FLOAT, false, s, 16);
+  gl.vertexAttribDivisor(LOC_UV_OFFSET, 1);
+
+  gl.enableVertexAttribArray(LOC_UV_SIZE);
+  gl.vertexAttribPointer(LOC_UV_SIZE, 2, gl.FLOAT, false, s, 24);
+  gl.vertexAttribDivisor(LOC_UV_SIZE, 1);
+
+  gl.enableVertexAttribArray(LOC_ALPHA);
+  gl.vertexAttribPointer(LOC_ALPHA, 1, gl.FLOAT, false, s, 32);
+  gl.vertexAttribDivisor(LOC_ALPHA, 1);
+
+  gl.enableVertexAttribArray(LOC_TEX_INDEX);
+  gl.vertexAttribPointer(LOC_TEX_INDEX, 1, gl.FLOAT, false, s, 36);
+  gl.vertexAttribDivisor(LOC_TEX_INDEX, 1);
+
+  // mat4: 4 consecutive vec4 attrib slots
+  for (let col = 0; col < 4; col++) {
+    const loc = LOC_TRANSFORM + col;
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, s, 40 + col * 16);
+    gl.vertexAttribDivisor(loc, 1);
+  }
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
