@@ -5,7 +5,9 @@ import { TextureCache } from './texture-cache';
 // Constants
 // ---------------------------------------------------------------------------
 
-const MAX_TEX_UNITS = 16;
+// Maximum sampler slots compiled into the shader. The runtime clamps to the
+// device's actual gl.MAX_TEXTURE_IMAGE_UNITS so beefier GPUs get larger batches.
+const MAX_TEX_UNITS = 64;
 
 // Per-instance Float32Array layout (26 floats = 104 bytes):
 //   [0..1]   destOffset  (vec2)
@@ -269,6 +271,7 @@ export class WebGLRenderer implements Renderer {
   private readonly vao: WebGLVertexArrayObject;
   private readonly texCache: TextureCache;
   private readonly instanceVBO: WebGLBuffer;
+  private readonly maxTexUnits: number;
 
   private instanceData = new Float32Array(256 * INSTANCE_FLOATS);
   private readonly pendingDraws: DrawCommand[] = [];
@@ -284,10 +287,13 @@ export class WebGLRenderer implements Renderer {
     this.instanceVBO = gl.createBuffer()!;
     this.vao         = createVAO(gl, this.program, this.instanceVBO);
     this.texCache    = new TextureCache(gl);
+    // Use as many texture units as the device supports, up to the shader's compiled limit.
+    // Beefier GPUs (32+ units) get larger batches; devices with fewer units flush sooner.
+    this.maxTexUnits = Math.min(MAX_TEX_UNITS, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number);
 
-    // Bind texture units 0..15 to u_tex[0..15] once at init
+    // Bind texture units 0..N-1 to u_tex[0..N-1] once at init
     gl.useProgram(this.program);
-    for (let i = 0; i < MAX_TEX_UNITS; i++) {
+    for (let i = 0; i < this.maxTexUnits; i++) {
       const loc = gl.getUniformLocation(this.program, `u_tex[${i}]`);
       if (loc) gl.uniform1i(loc, i);
     }
@@ -399,7 +405,7 @@ export class WebGLRenderer implements Renderer {
     for (let i = 0; i < draws.length; i++) {
       const cmd = draws[i];
       const blendChange  = cmd.blend !== blendMode;
-      const needsNewUnit = !texUnits.has(cmd.texture) && texUnits.size === MAX_TEX_UNITS;
+      const needsNewUnit = !texUnits.has(cmd.texture) && texUnits.size === this.maxTexUnits;
 
       if (blendChange || needsNewUnit) {
         flush(i);

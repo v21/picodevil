@@ -44,18 +44,19 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
     cycleTagged.sort((a, b) => hapOnset(a.hap) - hapOnset(b.hap));
 
     // Assign group indices with same layoutParent grouping as applyIndex
-    const groupOrder: string[] = [];
+    const groupMap = new Map<string, number>();
+    let groupCount = 0;
     const eventGroupIdx: number[] = new Array(cycleTagged.length);
     for (let i = 0; i < cycleTagged.length; i++) {
       const { hap, srcIdx } = cycleTagged[i];
       const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
       const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
-      let gIdx = groupOrder.indexOf(key);
-      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      let gIdx = groupMap.get(key);
+      if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
       eventGroupIdx[i] = gIdx;
     }
 
-    const count = groupOrder.length;
+    const count = groupCount;
 
     // Track sub-index within each (srcIdx, onset) group so multiple haps from the same
     // source at the same onset each get the right slot (one per re-query, taken by index).
@@ -97,18 +98,19 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
 
     // Assign group indices: events with layoutParent share a group key per (srcIdx, layoutParent);
     // events without layoutParent each get their own group (preserves existing behaviour).
-    const groupOrder: string[] = [];
+    const groupMap = new Map<string, number>();
+    let groupCount = 0;
     const eventGroupIdx: number[] = new Array(arcTagged.length);
     for (let i = 0; i < arcTagged.length; i++) {
       const { hap, srcIdx } = arcTagged[i];
       const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
       const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
-      let gIdx = groupOrder.indexOf(key);
-      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      let gIdx = groupMap.get(key);
+      if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
       eventGroupIdx[i] = gIdx;
     }
 
-    const count = groupOrder.length;
+    const count = groupCount;
     const subIdxCounters = new Map<string, number>();
     const result: any[] = [];
 

@@ -28,6 +28,7 @@ export interface VideoPoolManager {
   trimFreePool(): void;
   fetchVideoBlob(srcUrl: string): void;
   evictOldestBlobs(): void;
+  getBlobUrl(srcUrl: string): string | undefined;
   resolveMediaUrl(name: string, base: string): string;
 
   readonly freeVideoPool: Map<string, VideoEl[]>;
@@ -158,6 +159,16 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     for (const el of activeEls) freeVideoEl(el);
   }
 
+  function getBlobUrl(srcUrl: string): string | undefined {
+    const url = videoBlobUrls.get(srcUrl);
+    if (url !== undefined) {
+      // Touch for LRU: delete and re-insert moves entry to Map tail
+      videoBlobUrls.delete(srcUrl);
+      videoBlobUrls.set(srcUrl, url);
+    }
+    return url;
+  }
+
   return {
     takeFromFreePool,
     freeVideoEl,
@@ -167,6 +178,7 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     trimFreePool,
     fetchVideoBlob,
     evictOldestBlobs,
+    getBlobUrl,
     resolveMediaUrl: resolve,
     freeVideoPool,
     videoBlobUrls,

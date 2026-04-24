@@ -259,7 +259,7 @@ export class FrameRenderer {
           // New element from matchSources: set src and start playing
           const srcUrl = a.needed.srcUrl;
           el._state.srcUrl = srcUrl;
-          const blobUrl = pool.videoBlobUrls.get(srcUrl);
+          const blobUrl = pool.getBlobUrl(srcUrl);
           el.src = blobUrl ?? srcUrl;
           if (!blobUrl) pool.fetchVideoBlob(srcUrl);
           el.play().catch((e: DOMException | Error) => {
@@ -268,7 +268,7 @@ export class FrameRenderer {
         } else {
           // Reused element: update src if blob became available
           const srcUrl = a.needed.srcUrl;
-          const blobUrl = pool.videoBlobUrls.get(srcUrl);
+          const blobUrl = pool.getBlobUrl(srcUrl);
           if (blobUrl && el.src !== blobUrl) el.src = blobUrl;
         }
       } else {
@@ -451,7 +451,7 @@ export class FrameRenderer {
         const ns = nsList[available + i];
         const el = pool.makeVideoEl(srcUrl);
         el._state.srcUrl = srcUrl;
-        const blobUrl = pool.videoBlobUrls.get(srcUrl);
+        const blobUrl = pool.getBlobUrl(srcUrl);
         el.src = blobUrl ?? srcUrl;
         el.preload = 'auto';
         if (ns?.expectedTime != null) {
