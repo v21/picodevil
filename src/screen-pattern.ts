@@ -15,6 +15,10 @@ function classifyToken(v: string): object {
   if (VIDEO_EXTS.has(ext)) return { _type: "video", src: v };
   if (IMAGE_EXTS.has(ext)) return { _type: "image", src: v };
 
+  // Looks like a filename (has a dot, no spaces, no parens) but extension wasn't recognised
+  if (v.includes(".") && !v.includes(" ") && !v.includes("(")) {
+    warn(`screen(): "${v}" looks like a filename but has an unrecognised extension — treating as CSS color. Did you mean a video or image?`);
+  }
   return { _type: "color", color: v };
 }
 

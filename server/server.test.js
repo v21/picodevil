@@ -241,7 +241,7 @@ describe('/download', () => {
 
     assert.ok(ffmpegArgs.includes('keyint=1:min-keyint=1:scenecut=0'), 'should pass I-frame-only x264opts');
     assert.ok(ffmpegArgs.includes('1') && ffmpegArgs[ffmpegArgs.indexOf('-g') + 1] === '1', 'should set -g 1');
-    assert.ok(ffmpegArgs.includes('copy') && ffmpegArgs[ffmpegArgs.indexOf('-c:a') + 1] === 'copy', 'should copy audio');
+    assert.ok(ffmpegArgs.includes('aac') && ffmpegArgs[ffmpegArgs.indexOf('-c:a') + 1] === 'aac', 'should encode audio as aac');
   });
 
   it('returns cached file without re-downloading', async () => {
@@ -410,7 +410,7 @@ describe('/upload', () => {
     await stopServer(server);
     assert.equal(res.status, 200);
     const data = res.json();
-    assert.equal(data.ready, true);
+    assert.equal(data.ready, false, 'upload responds immediately with ready:false; poll /ready/<stem> for completion');
     assert.match(data.url, /\/videos\/myclip\.mp4$/);
   });
 
@@ -426,7 +426,7 @@ describe('/upload', () => {
     await stopServer(server);
     assert.ok(ffmpegArgs.includes('keyint=1:min-keyint=1:scenecut=0'), 'should pass I-frame-only x264opts');
     assert.equal(ffmpegArgs[ffmpegArgs.indexOf('-g') + 1], '1', 'should set -g 1');
-    assert.equal(ffmpegArgs[ffmpegArgs.indexOf('-c:a') + 1], 'copy', 'should copy audio');
+    assert.equal(ffmpegArgs[ffmpegArgs.indexOf('-c:a') + 1], 'aac', 'should encode audio as aac');
   });
 
   it('deletes .orig file after successful transcode', async () => {
@@ -443,16 +443,19 @@ describe('/upload', () => {
     assert.equal(fs.existsSync(origPath), false, '.orig file should be deleted after transcode');
   });
 
-  it('deletes .orig file and returns 500 when ffmpeg fails', async () => {
+  it('deletes .orig file when ffmpeg fails (upload always returns 200 immediately)', async () => {
     let origPath;
+    // Upload responds 200 immediately and transcodes async; ffmpeg failure is reported via /ready/<stem>
     const execFileFn = (_cmd, args, _opts, cb) => {
       origPath = args[args.indexOf('-i') + 1];
       cb(new Error('codec not found'), '', 'codec not found');
     };
     const { server, baseURL } = await startServer({ execFileFn });
     const res = await post(`${baseURL}/upload?name=cleanup_fail.mp4`, Buffer.from('fake'));
+    // Wait briefly for the async transcode to fail and clean up
+    await new Promise(r => setTimeout(r, 50));
     await stopServer(server);
-    assert.equal(res.status, 500);
+    assert.equal(res.status, 200, 'upload always returns 200 immediately regardless of transcode outcome');
     assert.ok(origPath, 'should have captured orig path');
     assert.equal(fs.existsSync(origPath), false, '.orig file should be deleted even on failure');
   });

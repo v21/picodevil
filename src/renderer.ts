@@ -456,11 +456,16 @@ export class FrameRenderer {
         el.preload = 'auto';
         if (ns?.expectedTime != null) {
           const cachedDur = pool.videoDurations.get(srcUrl);
-          el.addEventListener('loadedmetadata', () => {
-            const realExpected = computeExpectedFromEvent(ns.ev, futureT, eventBeginFromHap(ns.ev, ns.hap, futureT), cps, el.duration);
-            if (realExpected != null) el.currentTime = realExpected;
-          }, { once: true });
-          if (cachedDur != null) el.currentTime = ns.expectedTime;
+          if (cachedDur != null) {
+            // Duration already known — seek immediately using the precise expected time
+            el.currentTime = ns.expectedTime;
+          } else {
+            // Duration unknown — wait for metadata then compute the accurate position
+            el.addEventListener('loadedmetadata', () => {
+              const realExpected = computeExpectedFromEvent(ns.ev, futureT, eventBeginFromHap(ns.ev, ns.hap, futureT), cps, el.duration);
+              if (realExpected != null) el.currentTime = realExpected;
+            }, { once: true });
+          }
         }
         pool.freeVideoEl(el);
       }
