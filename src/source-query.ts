@@ -48,7 +48,7 @@ export interface QueryResult {
  */
 const SHARE_TIME_THRESHOLD = 0.04;
 
-type Screen = { queryArc(begin: number, end: number): any[] };
+import type { Screen } from "./renderer-interface";
 
 /**
  * Query all screens at cycle position `t` and compute the list of media sources

@@ -6,12 +6,11 @@ import { warn } from './warnings';
 import { getStreamVideoEl } from './stream-manager';
 import { queryNeeded, type FrameEvent, type NeededSource } from './source-query';
 import { matchSources, type FreePool } from './source-matcher';
-import type { Renderer, TileParams, TileSource } from './renderer-interface';
+import type { Renderer, TileParams, TileSource, Screen } from './renderer-interface';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
-type Screen = { queryArc(begin: number, end: number): any[] };
 
 /** Subset of uzuMetrics that the frame renderer updates. */
 export interface FrameMetrics {

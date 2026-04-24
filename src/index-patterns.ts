@@ -1,6 +1,6 @@
 import { reify, Pattern } from "@strudel/core";
 import "./visual-controls";
-import { nextLayoutParent, deriveRandSeed } from "./layout-counter";
+import { nextLayoutParent, deriveRandSeed, getLayoutParent } from "./layout-counter";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -13,6 +13,28 @@ function flattenPats(args: PatOrArr[]): any[] {
 /** The event's onset time — uses whole.begin when available (gives true onset even in clipped queries). */
 function hapOnset(hap: any): number {
   return Number(hap.whole?.begin ?? hap.part.begin);
+}
+
+/**
+ * Assign a stable group index to each tagged hap based on (srcIdx, layoutParent).
+ * Events sharing the same layoutParent from the same source get the same group index,
+ * so an inner gridMod() group counts as one slot to an outer index().
+ * Events without layoutParent each get their own group.
+ * Returns {eventGroupIdx, count} where count = number of distinct groups.
+ */
+function assignGroups(tagged: { hap: any; srcIdx: number }[]): { eventGroupIdx: number[]; count: number } {
+  const groupMap = new Map<string, number>();
+  let groupCount = 0;
+  const eventGroupIdx: number[] = new Array(tagged.length);
+  for (let i = 0; i < tagged.length; i++) {
+    const { hap, srcIdx } = tagged[i];
+    const lp = getLayoutParent(hap.value);
+    const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
+    let gIdx = groupMap.get(key);
+    if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
+    eventGroupIdx[i] = gIdx;
+  }
+  return { eventGroupIdx, count: groupCount };
 }
 
 /**
@@ -44,19 +66,7 @@ function applyIndexCycle(pats: any[], iLabel: string, countLabel: string): any {
     cycleTagged.sort((a, b) => hapOnset(a.hap) - hapOnset(b.hap));
 
     // Assign group indices with same layoutParent grouping as applyIndex
-    const groupMap = new Map<string, number>();
-    let groupCount = 0;
-    const eventGroupIdx: number[] = new Array(cycleTagged.length);
-    for (let i = 0; i < cycleTagged.length; i++) {
-      const { hap, srcIdx } = cycleTagged[i];
-      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
-      const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
-      let gIdx = groupMap.get(key);
-      if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
-      eventGroupIdx[i] = gIdx;
-    }
-
-    const count = groupCount;
+    const { eventGroupIdx, count } = assignGroups(cycleTagged);
 
     // Track sub-index within each (srcIdx, onset) group so multiple haps from the same
     // source at the same onset each get the right slot (one per re-query, taken by index).
@@ -98,19 +108,7 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
 
     // Assign group indices: events with layoutParent share a group key per (srcIdx, layoutParent);
     // events without layoutParent each get their own group (preserves existing behaviour).
-    const groupMap = new Map<string, number>();
-    let groupCount = 0;
-    const eventGroupIdx: number[] = new Array(arcTagged.length);
-    for (let i = 0; i < arcTagged.length; i++) {
-      const { hap, srcIdx } = arcTagged[i];
-      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
-      const key = lp !== undefined ? `lp:${srcIdx}:${lp}` : `ev:${i}`;
-      let gIdx = groupMap.get(key);
-      if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
-      eventGroupIdx[i] = gIdx;
-    }
-
-    const count = groupCount;
+    const { eventGroupIdx, count } = assignGroups(arcTagged);
     const subIdxCounters = new Map<string, number>();
     const result: any[] = [];
 
@@ -124,7 +122,7 @@ function applyIndex(pats: any[], iLabel: string, countLabel: string): any {
       const subIdx = subIdxCounters.get(groupKey) ?? 0;
       subIdxCounters.set(groupKey, subIdx + 1);
 
-      const sourceLp = Object(ev.value) === ev.value ? ev.value.layoutParent : undefined;
+      const sourceLp = getLayoutParent(ev.value);
       const seed = deriveRandSeed(callId, gIdx, state, sourceLp);
       result.push(
         ev.withValue((v: any) => ({

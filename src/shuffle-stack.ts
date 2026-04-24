@@ -12,20 +12,12 @@
  */
 import { reify, Pattern, steady, pure } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
-import { nextLayoutParent, deriveRandSeed } from "./layout-counter";
+import { nextLayoutParent, deriveRandSeed, getLayoutParent, hashStr as hashStrLayout } from "./layout-counter";
 import "./visual-controls";
 
 const PatternProto = Pattern.prototype as any;
 
-// FNV-1a 32-bit hash — same as index-patterns.ts / grid-stack.ts
-function hashStr(s: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = (h * 16777619) >>> 0;
-  }
-  return h;
-}
+const hashStr = hashStrLayout;
 
 // MurmurHash3 finalizer — produces well-distributed 32-bit integers.
 function murmurFinalize(x: number): number {
@@ -191,24 +183,24 @@ PatternProto.shuffleIndex = function (seedPat?: any) {
     if (haps.length === 0) return haps;
 
     // Assign group indices with same layoutParent grouping as applyIndex
-    const groupOrder: string[] = [];
+    const groupMap = new Map<string, number>();
+    let groupCount = 0;
     const eventGroupIdx: number[] = new Array(haps.length);
     for (let i = 0; i < haps.length; i++) {
-      const hap = haps[i];
-      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const lp = getLayoutParent(haps[i].value);
       const key = lp !== undefined ? `lp:0:${lp}` : `ev:${i}`;
-      let gIdx = groupOrder.indexOf(key);
-      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      let gIdx = groupMap.get(key);
+      if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
       eventGroupIdx[i] = gIdx;
     }
 
-    const count = groupOrder.length;
+    const count = groupCount;
     const intSeed = resolveSeed(seed, begin, end, count);
     const perm = shuffledPermutation(count, intSeed);
 
     return haps.map((hap: any, i: number) => {
       const shuffledI = perm[eventGroupIdx[i]];
-      const sourceLp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const sourceLp = getLayoutParent(hap.value);
       const randSeed = deriveRandSeed(callId, shuffledI, state, sourceLp);
       return hap.withValue((v: any) => ({
         ...(Object(v) === v ? v : {}),
@@ -250,18 +242,18 @@ PatternProto.shuffleIndexCycle = function (seedPat?: any) {
       .sort((a: any, b: any) => hapOnset(a.hap) - hapOnset(b.hap));
 
     // Assign group indices with layoutParent grouping (same as applyIndexCycle)
-    const groupOrder: string[] = [];
+    const groupMap = new Map<string, number>();
+    let groupCount = 0;
     const eventGroupIdx: number[] = new Array(sorted.length);
     for (let i = 0; i < sorted.length; i++) {
-      const { hap } = sorted[i];
-      const lp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+      const lp = getLayoutParent(sorted[i].hap.value);
       const key = lp !== undefined ? `lp:0:${lp}` : `ev:${i}`;
-      let gIdx = groupOrder.indexOf(key);
-      if (gIdx === -1) { gIdx = groupOrder.length; groupOrder.push(key); }
+      let gIdx = groupMap.get(key);
+      if (gIdx === undefined) { gIdx = groupCount; groupMap.set(key, groupCount++); }
       eventGroupIdx[i] = gIdx;
     }
 
-    const count = groupOrder.length;
+    const count = groupCount;
     const intSeed = resolveSeed(seed, begin, end, count);
     const perm = shuffledPermutation(count, intSeed);
 
@@ -279,7 +271,7 @@ PatternProto.shuffleIndexCycle = function (seedPat?: any) {
       )
       .map(({ hap, origIdx }: any) => {
         const shuffledI = origIdxToShuffledI.get(origIdx)!;
-        const sourceLp = Object(hap.value) === hap.value ? hap.value.layoutParent : undefined;
+        const sourceLp = getLayoutParent(hap.value);
         const randSeed = deriveRandSeed(callId, shuffledI, state, sourceLp);
         return hap.withValue((v: any) => ({
           ...(Object(v) === v ? v : {}),

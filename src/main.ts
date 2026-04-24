@@ -17,7 +17,7 @@ import { loadCamera, loadScreen } from "./stream-manager";
 import { Canvas2DRenderer } from "./canvas2d-renderer";
 import { WebGLRenderer } from "./webgl-renderer";
 import { FrameRenderer } from "./renderer";
-import type { Renderer } from "./renderer-interface";
+import type { Renderer, Screen } from "./renderer-interface";
 
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
@@ -44,8 +44,6 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- state ---
-/** A screen is anything with queryArc — ScreenPattern subclasses or plain Patterns. */
-type Screen = { queryArc(begin: number, end: number): any[] };
 let screens: Screen[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
 let cpsPattern: Pattern | null = null;

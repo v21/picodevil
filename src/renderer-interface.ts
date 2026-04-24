@@ -1,5 +1,8 @@
 import type { FitMode } from './draw-fit';
 
+/** Minimal interface for a registered screen pattern. */
+export type Screen = { queryArc(begin: number, end: number): any[] };
+
 /**
  * The pixel source for a rendered tile.
  * Each kind maps to a different HTML element that provides pixel data.

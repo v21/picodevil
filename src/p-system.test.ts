@@ -8,7 +8,7 @@ import { reify } from "@strudel/core";
 import { color } from "./color-pattern";
 
 // Mirror the .p() / collectScreens() logic from main.ts for isolated testing
-type Screen = { queryArc(begin: number, end: number): any[] };
+import type { Screen } from "./renderer-interface";
 let pPatterns: Record<string, Screen> = {};
 let anonymousIndex = 0;
 

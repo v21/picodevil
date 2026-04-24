@@ -1,6 +1,11 @@
 let _counter = 0;
 export function nextLayoutParent(): number { return ++_counter; }
 
+/** Extract the layoutParent token from a hap value, or undefined if absent. */
+export function getLayoutParent(value: unknown): number | undefined {
+  return Object(value) === value ? (value as any).layoutParent : undefined;
+}
+
 // FNV-1a 32-bit hash
 export function hashStr(s: string): number {
   let h = 2166136261;
