@@ -219,7 +219,9 @@ async function runCase(
 
 /** Get the codes array from a FailureCase (handles legacy single-code format). */
 function getCodes(f: FailureCase): string[] {
-  return f.codes ?? [f.code];
+  if (f.codes) return f.codes;
+  if (typeof f.code === "string") return [f.code];
+  throw new Error(`Corrupt regression case entry — missing both 'code' and 'codes': ${JSON.stringify(f)}`);
 }
 
 /** Format a sequence for display. */
