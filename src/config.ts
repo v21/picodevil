@@ -30,6 +30,19 @@ export const MAX_FREE_VIDEO_ELEMENTS = 64;
  */
 export const MAX_BLOB_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
 
+/**
+ * Two NeededSources are considered shareable (can reuse the same pool element)
+ * if their expected playhead positions are within this many seconds of each other.
+ */
+export const SHARE_TIME_THRESHOLD = 0.04;
+
+/**
+ * Penalty multiplier for backward seeks when scoring pool element candidates.
+ * A backward seek of distance d costs the same as a forward seek of d * BACKWARD_PENALTY,
+ * biasing the pool toward forward-continuity and reducing visible stutter.
+ */
+export const BACKWARD_PENALTY = 1.5;
+
 /** Runtime CPS — updated each frame by main.ts, read by fit()/loopAt(). */
 let _runtimeCps = CYCLES_PER_SECOND;
 export function getRuntimeCps(): number { return _runtimeCps; }

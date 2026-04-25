@@ -17,36 +17,31 @@ export interface VideoElementState {
   syncDistOffset: number;
 }
 
-/** Create a fresh state object with all tracking fields undefined. */
-export function createVideoState(): VideoElementState {
+/** Default values for all tracking fields except srcUrl. Single source of truth. */
+function defaultTrackingFields() {
   return {
     seeking: false,
-    srcUrl: undefined,
-    lastEventBegin: undefined,
-    lastExpected: undefined,
-    lastExpectedWall: undefined,
-    seekStartTime: undefined,
-    lastLogTime: undefined,
-    lastSyncSpeed: undefined,
-    lastSyncBegin: undefined,
-    lastSyncEnd: undefined,
+    lastEventBegin: undefined as number | undefined,
+    lastExpected: undefined as number | undefined,
+    lastExpectedWall: undefined as number | undefined,
+    seekStartTime: undefined as number | undefined,
+    lastLogTime: undefined as number | undefined,
+    lastSyncSpeed: undefined as number | undefined,
+    lastSyncBegin: undefined as number | undefined,
+    lastSyncEnd: undefined as number | undefined,
     syncDistOffset: 0,
   };
 }
 
-/** Reset all tracking fields so the element behaves as "new" when recycled. */
+/** Create a fresh state object with all tracking fields at their defaults. */
+export function createVideoState(): VideoElementState {
+  return { srcUrl: undefined, ...defaultTrackingFields() };
+}
+
+/** Reset all tracking fields so the element behaves as "new" when recycled.
+ * Note: srcUrl is NOT reset — it's set explicitly by the caller after reset. */
 export function resetVideoState(s: VideoElementState): void {
-  s.seeking = false;
-  s.lastEventBegin = undefined;
-  s.lastExpected = undefined;
-  s.lastExpectedWall = undefined;
-  s.seekStartTime = undefined;
-  s.lastLogTime = undefined;
-  s.lastSyncSpeed = undefined;
-  s.lastSyncBegin = undefined;
-  s.lastSyncEnd = undefined;
-  s.syncDistOffset = 0;
-  // Note: srcUrl is NOT reset here — it's set explicitly by the caller after reset.
+  Object.assign(s, defaultTrackingFields());
 }
 
 export type VideoEl = HTMLVideoElement & { _state: VideoElementState };

@@ -1,4 +1,5 @@
 import { setPlaybackRate, isNativeRate } from "./playback-rate";
+import { CYCLES_PER_SECOND } from "./config";
 import { computeSyncDistOffset } from "./sync-continuity";
 import type { VideoEl } from "./video-element-state";
 export type { VideoEl } from "./video-element-state";
@@ -170,16 +171,11 @@ export function renderVideoFrame(c: VideoFrameContext): void {
     const loopLen = computeLoopLen(loopStart, loopEnd, dur);
     const syncOffset = c.ev.sync != null && c.ev.sync !== true ? Number(c.ev.sync) * dur : 0;
     const expected = computeExpectedTime({
-      currentCycle: c.currentCycle, eventBegin: c.eventBegin, cps: c.cps || 0.5,
+      currentCycle: c.currentCycle, eventBegin: c.eventBegin, cps: c.cps || CYCLES_PER_SECOND,
       speed, loopStart, loopEnd, duration: dur, syncOffset,
     });
     const prevExp = c.el._state.lastExpected;
     const jumped = prevExp != null && loopLen > 0 && (prevExp - expected) > loopLen / 2;
-    const isNew = c.el._state.lastEventBegin !== c.eventBegin;
-    if (jumped || isNew) {
-      const src = (c.el._state.srcUrl ?? c.el.src).split("/").pop();
-      console.log(`[DEBUG] ${src} seek: eventBegin=${c.eventBegin} begin=${beginVal} end=${endVal} speed=${speed.toFixed(3)} expected=${expected.toFixed(3)} ct=${c.el.currentTime.toFixed(3)} loopRange=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] cycle=${c.currentCycle.toFixed(4)} isNew=${isNew} loopWrap=${jumped}`);
-    }
   }
 
   const synced = c.ev.sync != null;
@@ -241,7 +237,7 @@ function updateVideoPlayback(
       // (speed-change detection won't run since lastSyncSpeed=undefined on a fresh element)
       const clampedTime = Math.max(loopStart, Math.min(loopEnd - 1e-9, el.currentTime));
       const targetDistInLoop = speed >= 0 ? clampedTime - loopStart : loopEnd - clampedTime;
-      const elapsedSec = (currentCycle - eventBegin) / (cps || 0.5);
+      const elapsedSec = (currentCycle - eventBegin) / (cps || CYCLES_PER_SECOND);
       const baseDist = speed !== 0 ? elapsedSec * Math.abs(speed) + syncOffset : syncOffset;
       st.syncDistOffset = speed !== 0
         ? targetDistInLoop - (((baseDist % loopLen) + loopLen) % loopLen)
@@ -278,7 +274,7 @@ function updateVideoPlayback(
     const endChanged = st.lastSyncEnd != null && st.lastSyncEnd !== endVal;
 
     if (speedChanged || beginChanged || endChanged) {
-      const elapsedSec = (currentCycle - eventBegin) / (cps || 0.5);
+      const elapsedSec = (currentCycle - eventBegin) / (cps || CYCLES_PER_SECOND);
       const oldBeginSec = (st.lastSyncBegin ?? beginVal) * dur;
       const oldEndSec = (st.lastSyncEnd ?? endVal) * dur;
       st.syncDistOffset = computeSyncDistOffset({
@@ -311,20 +307,9 @@ function updateVideoPlayback(
 
   const distOffset = (synced || rolling) ? st.syncDistOffset : 0;
   const expected = computeExpectedTime({
-    currentCycle, eventBegin, cps: cps || 0.5,
+    currentCycle, eventBegin, cps: cps || CYCLES_PER_SECOND,
     speed, loopStart, loopEnd, duration: dur, syncOffset, distOffset,
   });
-
-  // Periodic position trace for rolling elements: log every ~60 frames so
-  // we can see ct drifting away from expected without spamming every frame.
-  if (rolling) {
-    const frameIdx = Math.round(currentCycle / (cps / 60));
-    if (frameIdx % 60 === 0) {
-      const src = (el._state.srcUrl ?? el.src).split("/").pop();
-      const err = el.currentTime - expected;
-      console.log(`[pos] ${src} ct=${el.currentTime.toFixed(3)} expected=${expected.toFixed(3)} err=${err.toFixed(3)} loop=[${loopStart.toFixed(1)},${loopEnd.toFixed(1)}] paused=${el.paused} cycle=${currentCycle.toFixed(3)}`);
-    }
-  }
 
   const now = frameWallTime ?? performance.now();
   const prevExpected = st.lastExpected;
@@ -355,9 +340,6 @@ function updateVideoPlayback(
       });
       const rollingDriftSeek = !isNewEvent && !loopWrapped && !needsReseek && rollingDrift > ROLLING_DRIFT_THRESHOLD;
       if (isNewEvent || loopWrapped || needsReseek || rollingDriftSeek) {
-        const reason = isNewEvent ? "new-element" : loopWrapped ? "loop-wrap" : needsReseek ? "reseek" : `drift(${rollingDrift.toFixed(2)})`;
-        const src = (el._state.srcUrl ?? el.src).split("/").pop();
-        console.log(`[seek] ${src} rolling reason=${reason} ct=${el.currentTime.toFixed(3)} → expected=${expected.toFixed(3)} loop=[${loopStart.toFixed(2)},${loopEnd.toFixed(2)}] cycle=${currentCycle.toFixed(3)} distOffset=${(el._state.syncDistOffset ?? 0).toFixed(3)}`);
         el.currentTime = expected;
         if (onSeek) onSeek();
       }
@@ -366,9 +348,6 @@ function updateVideoPlayback(
         currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
       });
       if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
-        const reason = isNewEvent ? "new-element" : loopWrapped ? "loop-wrap" : `drift(${drift.toFixed(3)})`;
-        const src = (el._state.srcUrl ?? el.src).split("/").pop();
-        console.log(`[seek] ${src} sync reason=${reason} ct=${el.currentTime.toFixed(3)} → expected=${expected.toFixed(3)} loop=[${loopStart.toFixed(2)},${loopEnd.toFixed(2)}] cycle=${currentCycle.toFixed(3)}`);
         el.currentTime = expected;
         if (onSeek) onSeek();
         if (drift > DRIFT_THRESHOLD && !isNewEvent && !loopWrapped && onDriftSeek) onDriftSeek();
@@ -378,8 +357,6 @@ function updateVideoPlayback(
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
     if (Math.abs(el.currentTime - expected) > 0.01) {
-      const src = (el._state.srcUrl ?? el.src).split("/").pop();
-      console.log(`[seek] ${src} manual ct=${el.currentTime.toFixed(3)} → expected=${expected.toFixed(3)} speed=${speed} loop=[${loopStart.toFixed(2)},${loopEnd.toFixed(2)}] cycle=${currentCycle.toFixed(3)}`);
       el.currentTime = expected;
       if (onSeek) onSeek();
     }

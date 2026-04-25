@@ -1,4 +1,5 @@
 import { computeExpectedTime } from "./video-playback";
+import { BACKWARD_PENALTY } from "./config";
 
 /**
  * Compute expected video currentTime from an event's properties, using
@@ -46,6 +47,5 @@ export function scoreFreeElement(currentTime: number, targetTime: number, durati
   const backwardDist = duration - forwardDist;
 
   // Backward seek requires decoding from nearest keyframe — penalize it
-  const BACKWARD_PENALTY = 1.5;
   return Math.min(forwardDist, backwardDist * BACKWARD_PENALTY);
 }

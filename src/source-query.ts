@@ -1,4 +1,4 @@
-import { VIDEO_BASE, IMAGE_BASE } from "./config";
+import { VIDEO_BASE, IMAGE_BASE, SHARE_TIME_THRESHOLD } from "./config";
 import { eventBeginFromHap } from "./event-begin";
 import { computeExpectedFromEvent } from "./video-pool";
 import { warn } from "./warnings";
@@ -41,12 +41,6 @@ export interface QueryResult {
    */
   allEvents: FrameEvent[];
 }
-
-/**
- * Distance threshold (seconds) below which two video events are considered
- * close enough to share a single media element within a frame.
- */
-const SHARE_TIME_THRESHOLD = 0.04;
 
 import type { Screen } from "./renderer-interface";
 

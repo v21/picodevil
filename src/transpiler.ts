@@ -30,34 +30,21 @@ function wrapInMini(node: any): any {
   };
 }
 
-/** Walk AST and replace double-quoted string literals with mini() calls. */
-function rewriteDoubleQuotedStrings(node: any, source: string): any {
+/**
+ * Single-pass AST walker that:
+ * 1. Collects widget call positions (using original source offsets, before any rewriting)
+ * 2. Rewrites double-quoted string literals to mini() calls in-place
+ * Returns the (possibly replaced) node.
+ */
+function walkAST(node: any, widgets: WidgetCallInfo[]): any {
   if (!node || typeof node !== "object") return node;
 
-  // Check if this is a double-quoted string literal
+  // Double-quoted string → wrap in mini() (return a new node; caller must reassign)
   if (node.type === "Literal" && typeof node.value === "string" && node.raw?.startsWith('"')) {
     return wrapInMini(node);
   }
 
-  // Recurse into all properties
-  for (const key of Object.keys(node)) {
-    if (key === "type" || key === "raw" || key === "start" || key === "end") continue;
-    const val = node[key];
-    if (Array.isArray(val)) {
-      for (let i = 0; i < val.length; i++) {
-        val[i] = rewriteDoubleQuotedStrings(val[i], source);
-      }
-    } else if (val && typeof val === "object" && val.type) {
-      node[key] = rewriteDoubleQuotedStrings(val, source);
-    }
-  }
-  return node;
-}
-
-/** Walk AST and collect widget call info. */
-function extractWidgets(node: any, widgets: WidgetCallInfo[]): void {
-  if (!node || typeof node !== "object") return;
-
+  // Widget call: capture positions from original node before recursing into children
   if (
     node.type === "CallExpression" &&
     node.callee?.type === "Identifier" &&
@@ -78,25 +65,26 @@ function extractWidgets(node: any, widgets: WidgetCallInfo[]): void {
         kind,
         callStart: node.start,
         callEnd: node.end,
-        valueArgStart: firstArg.start,
+        valueArgStart: firstArg.start,  // original offset — captured before child rewriting
         valueArgEnd: firstArg.end,
         args,
       });
     }
   }
 
-  // Recurse into all properties
+  // Recurse into all child properties, replacing nodes that the walker returns new values for
   for (const key of Object.keys(node)) {
     if (key === "type" || key === "raw" || key === "start" || key === "end") continue;
     const val = node[key];
     if (Array.isArray(val)) {
-      for (const item of val) {
-        extractWidgets(item, widgets);
+      for (let i = 0; i < val.length; i++) {
+        val[i] = walkAST(val[i], widgets);
       }
     } else if (val && typeof val === "object" && val.type) {
-      extractWidgets(val, widgets);
+      node[key] = walkAST(val, widgets);
     }
   }
+  return node;
 }
 
 /**
@@ -110,10 +98,6 @@ export function transpile(code: string): TranspileResult {
     ecmaVersion: "latest",
     sourceType: "script",
   }) as any;
-
-  // Extract widget positions before any AST rewrites (positions refer to original source)
-  const widgets: WidgetCallInfo[] = [];
-  extractWidgets(ast, widgets);
 
   // Rewrite labels
   for (let i = 0; i < ast.body.length; i++) {
@@ -141,8 +125,9 @@ export function transpile(code: string): TranspileResult {
     }
   }
 
-  // Rewrite double-quoted strings to mini() calls
-  rewriteDoubleQuotedStrings(ast, code);
+  // Single pass: collect widget positions and rewrite double-quoted strings to mini() calls
+  const widgets: WidgetCallInfo[] = [];
+  walkAST(ast, widgets);
 
   return {
     code: escodegen.generate(ast),
