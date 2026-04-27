@@ -9,7 +9,8 @@
     "test": "node --test server.test.js",
     "download": "node server.js download",
     "add": "node server.js add",
-    "transcode": "node server.js transcode"
+    "transcode": "node server.js transcode",
+    "list": "node server.js list"
   },
   "keywords": [],
   "license": "ISC",

@@ -50,6 +50,12 @@ export function initRegistry(entries: { id: string; name: string; url: string; t
     registry.push({ ...entry, ...(thumb ? { thumbnail: thumb } : {}) } as MediaEntry);
   }
   onChange?.();
+  // Generate thumbnails for entries that don't have one (e.g. first load on a new device)
+  for (const entry of registry) {
+    if (!entry.thumbnail && entry.url && !entry.url.startsWith("blob:") && entry.type !== "stream") {
+      generateThumbnail(entry);
+    }
+  }
 }
 
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi", "ogv"]);

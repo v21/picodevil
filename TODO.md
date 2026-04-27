@@ -6,9 +6,26 @@
 
 regen thumbnails
 
+2c/2f/2g/2h
+3a/3v/3c/3e
+3f/3g/3h/3i/3j
+3d (but let's check)
+
+
+continue session to fix sync & rolling case
+$: stack(s("hXJaBfcdCKM.mp4").rolling().sync(.5), s("hXJaBfcdCKM.mp4").rolling().sync(.2)).index().tile()
+both videos start at 0
+
+
+pixelate
+blur
+huerot
+contrast
+more like this? look at hydra. we'll have a fixed order of application, tho
+
 
 shuffleStack should also run index() after
-or there should be a shuffleIndex which does not reorder the haps, but does assign indices randomly
+/ or there should be a shuffleIndex which does not reorder the haps, but does assign indices randomly
 
 
 sortStack('val') - opposite of shuffle stack. keeps order of elements where val is the same - allowing it to be used multiple times. only sorts within each layoutParent
@@ -24,7 +41,7 @@ add extra objectfit params - notably "none"
 
 
 give up on rendering if our frame takes over a sec to execute - this keeps stuff responsive
-easy to run code like `$: s("dvsa3,dvsa2").index().tile().syncStack(10).tile()` which freezes it up
+easy to run code like `$: s("dvsa3,dvsa2").index().tile().syncStack(10).tile()` which freezes it up (well, okay, not any more - but easy to find bad perf code)
 
 
 
@@ -33,13 +50,14 @@ easy to run code like `$: s("dvsa3,dvsa2").index().tile().syncStack(10).tile()` 
 / let's do the prewarm slowly - only seek one video per frame
 
 
-right now, our deduplication means that 
+/ right now, our deduplication means that 
 ```
 $: s("hXJaBfcdCKM.mp4").rolling().sync(.5)
 $: s("hXJaBfcdCKM.mp4").rolling().sync(.2).alpha(.2)
 ```
 doesn't apply the sync param. it should! maybe this is an extra bit of state to track when looking through video sources?
 
+something that can make `s("dvsa1 ").cropStack(10,10).tile().addOn('x', rand.range(0.01,-0.01).segment(16).lerp())` work
 
 / change x & y to encode center positions, not top left
 

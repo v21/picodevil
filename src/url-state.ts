@@ -90,9 +90,9 @@ export function saveToUrl(code: string, media: MediaEntry[]) {
     try {
       const encoded = encodeUrlState(code, media);
       if (encoded.length > URL_WARN_BYTES) {
-        urlWarnCallback?.(
-          `URL state is large (${encoded.length} chars) — the link may be too long to share reliably`,
-        );
+        // urlWarnCallback?.(
+        //   `URL state is large (${encoded.length} chars) — the link may be too long to share reliably`,
+        // );
       } else {
         urlWarnCallback?.(null);
       }

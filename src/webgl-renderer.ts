@@ -5,8 +5,8 @@ import { TextureCache } from './texture-cache';
 // Constants
 // ---------------------------------------------------------------------------
 
-// Maximum sampler slots compiled into the shader. The runtime clamps to the
-// device's actual gl.MAX_TEXTURE_IMAGE_UNITS so beefier GPUs get larger batches.
+// Default upper bound for sampler slots. The actual count is clamped to
+// gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
 // Per-instance Float32Array layout (26 floats = 104 bytes):
@@ -66,15 +66,15 @@ void main() {
   gl_Position = a_transform * vec4(clip, 0.0, 1.0);
 }`;
 
-// Build the sampler if-chain at module load time to avoid repeating 16 cases by hand.
-const TEX_IF_CHAIN = Array.from({ length: MAX_TEX_UNITS }, (_, i) =>
-  `${i === 0 ? 'if' : 'else if'} (v_texIndex == ${i}) color = texture(u_tex[${i}], uv);`
-).join('\n  ');
-
-const FRAG_SRC = /* glsl */`#version 300 es
+// Build the fragment shader source for a given number of texture units.
+function buildFragSrc(n: number): string {
+  const ifChain = Array.from({ length: n }, (_, i) =>
+    `${i === 0 ? 'if' : 'else if'} (v_texIndex == ${i}) color = texture(u_tex[${i}], uv);`
+  ).join('\n  ');
+  return /* glsl */`#version 300 es
 precision mediump float;
 
-uniform sampler2D u_tex[${MAX_TEX_UNITS}];
+uniform sampler2D u_tex[${n}];
 
 flat in int v_texIndex;
 in vec2 v_uv;
@@ -86,13 +86,14 @@ void main() {
   // for normal in-bounds UVs it is a no-op.
   vec2 uv = fract(v_uv);
   vec4 color;
-  ${TEX_IF_CHAIN}
+  ${ifChain}
   else color = texture(u_tex[0], uv);
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
   color.a *= v_alpha;
   fragColor = color;
 }`;
+}
 
 // ---------------------------------------------------------------------------
 // Blend mode mapping
@@ -283,13 +284,13 @@ export class WebGLRenderer implements Renderer {
     if (!gl) throw new Error('WebGL2 not supported');
     this.gl = gl;
 
-    this.program     = createProgram(gl, VERT_SRC, FRAG_SRC);
+    // Query the device limit before compiling the shader so we don't declare
+    // more samplers than the hardware supports (causes a link error on some GPUs).
+    this.maxTexUnits = Math.min(MAX_TEX_UNITS, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number);
+    this.program     = createProgram(gl, VERT_SRC, buildFragSrc(this.maxTexUnits));
     this.instanceVBO = gl.createBuffer()!;
     this.vao         = createVAO(gl, this.program, this.instanceVBO);
     this.texCache    = new TextureCache(gl);
-    // Use as many texture units as the device supports, up to the shader's compiled limit.
-    // Beefier GPUs (32+ units) get larger batches; devices with fewer units flush sooner.
-    this.maxTexUnits = Math.min(MAX_TEX_UNITS, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number);
 
     // Bind texture units 0..N-1 to u_tex[0..N-1] once at init
     gl.useProgram(this.program);

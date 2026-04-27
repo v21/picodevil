@@ -375,6 +375,18 @@ async function cmdAdd(filePath, { name, transcode = true } = {}) {
   console.log(`URL: http://localhost:${DEFAULT_PORT}/videos/${stem}.mp4`);
 }
 
+function cmdList({ port = DEFAULT_PORT, downloadDir = DOWNLOAD_DIR } = {}) {
+  const files = fs.existsSync(downloadDir)
+    ? fs.readdirSync(downloadDir).filter(f => f.endsWith('.mp4') && !f.endsWith('.orig.mp4'))
+    : [];
+  const result = files.sort().map(file => ({
+    name: file.replace(/\.mp4$/, ''),
+    url: `http://localhost:${port}/videos/${file}`,
+    type: 'video',
+  }));
+  console.log(JSON.stringify(result, null, 2));
+}
+
 async function cmdTranscode(stem) {
   const cleanStem = stem.replace(/\.mp4$/, '');
   const sourcePath = path.join(DOWNLOAD_DIR, `${cleanStem}.mp4`);
@@ -398,7 +410,7 @@ async function cmdTranscode(stem) {
 function parseCLIArgs(argv) {
   // Returns { command, args, flags } or null if no subcommand
   const [cmd, ...rest] = argv;
-  if (!['download', 'add', 'transcode'].includes(cmd)) return null;
+  if (!['download', 'add', 'transcode', 'list'].includes(cmd)) return null;
   const flags = { transcode: true };
   const args = [];
   for (const arg of rest) {
@@ -419,6 +431,8 @@ async function runCLI(parsed) {
   } else if (command === 'transcode') {
     if (!args[0]) throw new Error('Usage: server.js transcode <stem>');
     await cmdTranscode(args[0]);
+  } else if (command === 'list') {
+    cmdList();
   }
 }
 
@@ -472,4 +486,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { createServer, cmdDownload, cmdAdd, cmdTranscode, parseCLIArgs };
+module.exports = { createServer, cmdDownload, cmdAdd, cmdTranscode, cmdList, parseCLIArgs };
