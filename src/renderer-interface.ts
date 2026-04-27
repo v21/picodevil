@@ -40,6 +40,8 @@ export interface TileParams {
   rotateYScale: number;
   scaleX: number;
   scaleY: number;
+  /** Greyscale amount: 0 = full colour (default), 1 = fully greyscale. */
+  grey: number;
 }
 
 /**

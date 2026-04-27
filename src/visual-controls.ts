@@ -30,6 +30,27 @@ const PatternProto = Pattern.prototype as any;
 export const alpha = createMixParam("alpha");
 
 /**
+ * Applies a greyscale filter to the pattern. 0 = full colour (default), 1 = fully greyscale.
+ * Values between 0 and 1 blend between colour and greyscale.
+ *
+ * @param {number | string | Pattern} value greyscale amount (0–1)
+ * @returns {Pattern} pattern with greyscale applied
+ * @example
+ * $: video("clip.mp4").grey(1)           // fully greyscale
+ * $: video("clip.mp4").grey(0.5)         // half desaturated
+ * $: video("clip.mp4").grey(sine)        // pulsing desaturation
+ * $: color("red").grey(1)                // grey
+ *
+ */
+const _greyMix = createMixParam("grey");
+PatternProto.grey = function (value?: any) {
+  if (value === undefined) value = 1;
+  return _greyMix(value, this);
+};
+export const grey = _greyMix;
+PatternProto.gray = PatternProto.grey;
+
+/**
  * Alias for alpha. Sets the transparency of the pattern.
  *
  * @param {number | string | Pattern} value opacity value (0–1)

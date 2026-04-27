@@ -370,6 +370,7 @@ export class FrameRenderer {
       rotateYScale,
       scaleX: ev.scaleX !== undefined ? Number(ev.scaleX) : 1,
       scaleY: ev.scaleY !== undefined ? Number(ev.scaleY) : 1,
+      grey:   ev.grey !== undefined ? Math.max(0, Math.min(1, Number(ev.grey))) : 0,
     };
   }
 

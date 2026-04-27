@@ -9,7 +9,7 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (26 floats = 104 bytes):
+// Per-instance Float32Array layout (27 floats = 108 bytes):
 //   [0..1]   destOffset  (vec2)
 //   [2..3]   destSize    (vec2)
 //   [4..5]   uvOffset    (vec2)
@@ -17,7 +17,8 @@ const MAX_TEX_UNITS = 64;
 //   [8]      alpha       (float)
 //   [9]      texIndex    (float)
 //   [10..25] transform   (mat4, column-major)
-const INSTANCE_FLOATS = 26;
+//   [26]     grey        (float)
+const INSTANCE_FLOATS = 27;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -30,6 +31,7 @@ const LOC_UV_SIZE     = 5;
 const LOC_ALPHA       = 6;
 const LOC_TEX_INDEX   = 7;
 const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
+const LOC_GREY        = 12;
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -47,16 +49,19 @@ layout(location = 5) in vec2 a_uvSize;
 layout(location = 6) in float a_alpha;
 layout(location = 7) in float a_texIndex;
 layout(location = 8) in mat4 a_transform; // uses locations 8-11
+layout(location = 12) in float a_grey;
 
 flat out int v_texIndex;
 out vec2 v_uv;
 out float v_alpha;
+out float v_grey;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
   v_uv = a_uvOffset + a_uv * a_uvSize;
   v_texIndex = int(a_texIndex);
   v_alpha = a_alpha;
+  v_grey = a_grey;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
@@ -79,6 +84,7 @@ uniform sampler2D u_tex[${n}];
 flat in int v_texIndex;
 in vec2 v_uv;
 in float v_alpha;
+in float v_grey;
 out vec4 fragColor;
 
 void main() {
@@ -88,6 +94,10 @@ void main() {
   vec4 color;
   ${ifChain}
   else color = texture(u_tex[0], uv);
+  // Apply greyscale: mix between original and luminance-based grey.
+  // Rec. 601 luma weights.
+  float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
+  color.rgb = mix(color.rgb, vec3(luma), clamp(v_grey, 0.0, 1.0));
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
   color.a *= v_alpha;
@@ -249,6 +259,7 @@ interface DrawCommand {
   uvSizeX:     number;
   uvSizeY:     number;
   alpha:       number;
+  grey:        number;
   transform:   Float32Array; // 16 floats, column-major
 }
 
@@ -346,6 +357,7 @@ export class WebGLRenderer implements Renderer {
       uvSizeX,
       uvSizeY,
       alpha:       Math.max(0, Math.min(1, p.alpha)),
+      grey:        Math.max(0, Math.min(1, p.grey ?? 0)),
       transform:   buildTransform(p),
     });
   }
@@ -393,6 +405,7 @@ export class WebGLRenderer implements Renderer {
         d[base + 8]  = cmd.alpha;
         d[base + 9]  = texUnits.get(cmd.texture)!;
         d.set(cmd.transform, base + 10);
+        d[base + 26] = cmd.grey;
       }
 
       this.setBlend(blendMode);
@@ -549,6 +562,10 @@ function createVAO(
     gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, s, 40 + col * 16);
     gl.vertexAttribDivisor(loc, 1);
   }
+
+  gl.enableVertexAttribArray(LOC_GREY);
+  gl.vertexAttribPointer(LOC_GREY, 1, gl.FLOAT, false, s, 104);
+  gl.vertexAttribDivisor(LOC_GREY, 1);
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
