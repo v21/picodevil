@@ -42,6 +42,8 @@ export interface TileParams {
   scaleY: number;
   /** Greyscale amount: 0 = full colour (default), 1 = fully greyscale. */
   grey: number;
+  /** Pixelation block size in screen pixels. 0 = off (default). */
+  pixelate: number;
 }
 
 /**

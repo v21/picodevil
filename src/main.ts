@@ -4,6 +4,7 @@ import { setupEditor } from "./editor";
 import "./shuffle-stack";
 import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CACHE_BYTES } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
+import { initRegistry as initPatternRegistry, resetRegistry, snapshotRegistry, restoreRegistry, collectScreens, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
 import { isNativeRate } from "./playback-rate";
@@ -50,40 +51,9 @@ let cpsPattern: Pattern | null = null;
 let accumulatedCycle = 0;
 let lastFrameSec = 0;
 
-// --- $: label system ---
-let pPatterns: Record<string, Screen> = {};
-let anonymousIndex = 0;
-
-/** Inject .p() onto Pattern.prototype. */
 import { Pattern, useRNG } from "@strudel/core";
 useRNG('precise');
-(Pattern.prototype as any).p = function (id: string) {
-  if (id.startsWith('_') || id.endsWith('_')) return this;
-  if (id.includes('$')) {
-    id = `${id}${anonymousIndex}`;
-    anonymousIndex++;
-  }
-  pPatterns[id] = this;
-  return this;
-};
-
-function collectScreens(): Screen[] {
-  const patterns: Screen[] = [];
-  let soloActive = false;
-
-  for (const [key, pat] of Object.entries(pPatterns)) {
-    const isSoloed = key.length > 1 && key.startsWith('S');
-    if (isSoloed && !soloActive) {
-      patterns.length = 0;
-      soloActive = true;
-    }
-    if (!soloActive || isSoloed) {
-      patterns.push(pat);
-    }
-  }
-
-  return patterns;
-}
+initPatternRegistry();
 
 // --- performance metrics (exposed for stress testing) ---
 const uzuMetrics = {
@@ -201,8 +171,7 @@ function setCpm(cpm: number | Pattern) {
 
 function hush() {
   screens = [];
-  pPatterns = {};
-  anonymousIndex = 0;
+  resetRegistry();
   return silence;
 }
 
@@ -227,8 +196,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
 
   // Phase 2: Snapshot current state so we can restore on execution failure
   const prevScreens = [...screens];
-  const prevPPatterns = { ...pPatterns };
-  const prevAnonymousIndex = anonymousIndex;
+  const prevRegistry = snapshotRegistry();
   const prevCpsPattern = cpsPattern;
   const prevCyclesPerSecond = cyclesPerSecond;
 
@@ -237,8 +205,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
   clearWarnings();
   if (typeof window !== "undefined") (window as any).uzuWarnings = [];
   screens = [];
-  pPatterns = {};
-  anonymousIndex = 0;
+  resetRegistry();
   cpsPattern = null;
   resetWidgetCounter();
   try {
@@ -246,6 +213,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
       setCps, setCpm, setcps: setCps, setcpm: setCpm,
       hush, loadVideo, loadImage, loadCamera, loadScreen,
       slider: sliderWidget,
+      each, all,
     });
     // Collect $: registered patterns
     const pScreens = collectScreens();
@@ -260,8 +228,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     // Execution failed — restore previous state so old visuals keep rendering
     console.error("eval error:", e);
     screens = prevScreens;
-    pPatterns = prevPPatterns;
-    anonymousIndex = prevAnonymousIndex;
+    restoreRegistry(prevRegistry);
     cpsPattern = prevCpsPattern;
     cyclesPerSecond = prevCyclesPerSecond;
     return { error: e instanceof Error ? e.message : String(e), widgets };

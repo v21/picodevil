@@ -51,6 +51,23 @@ export const grey = _greyMix;
 PatternProto.gray = PatternProto.grey;
 
 /**
+ * Applies a pixelation (mosaic) effect to the tile, computed in texture space.
+ * The pixelation grid rotates with the tile when `.rotateZ()` is applied.
+ *
+ * @param {number | string | Pattern} value block size in screen pixels; 0 = off (default)
+ * @returns {Pattern} pattern with pixelation applied
+ * @example
+ * $: video("clip.mp4").pixelate(20)             // chunky mosaic
+ * $: video("clip.mp4").pixelate(sine.range(1, 40)) // animated pixelation
+ * $: video("clip.mp4").pixelate(10).rotateZ(0.25)  // pixelation rotates with tile
+ */
+export const pixelate = createMixParam("pixelate");
+PatternProto.pixelate = function (value?: any) {
+  if (value === undefined) value = 8;
+  return pixelate(value, this);
+};
+
+/**
  * Alias for alpha. Sets the transparency of the pattern.
  *
  * @param {number | string | Pattern} value opacity value (0–1)

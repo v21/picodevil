@@ -27,6 +27,7 @@ export class Canvas2DRenderer implements Renderer {
   }
 
   drawTile(p: TileParams): void {
+    // TODO: p.pixelate not implemented in Canvas2D renderer (WebGL only)
     const { ctx, w, h } = this;
 
     const hasRotation = p.rotateZ !== 0 || p.rotateXScale !== 1 || p.rotateYScale !== 1;

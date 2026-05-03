@@ -3,6 +3,7 @@ import { EditorState, Prec, Transaction, type Extension } from "@codemirror/stat
 import { javascript } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
+import { uzuHighlight } from "./highlight";
 import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
 
 declare global {
@@ -114,7 +115,7 @@ export function setupEditor(
     parent,
     state: EditorState.create({
       doc: initialCode,
-      extensions: [basicSetup, javascript(), evalKeymap, widgets, changeListener],
+      extensions: [basicSetup, javascript(), uzuHighlight, evalKeymap, widgets, changeListener],
     }),
   });
 

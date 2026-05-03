@@ -258,5 +258,203 @@
       "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch\n    at Object.fetchVideoBlob (http://localhost:5173/src/video-pool-manager.ts:55:15)\n    at prewarmVideos (http://localhost:5173/src/main.ts:567:12)\n    at frame (http://localhost:5173/src/main.ts:621:16)"
     ],
     "timestamp": "2026-03-20T16:04:42.555Z"
+  },
+  {
+    "code": "$: stack(screen(\"red\").scrub(sine.div(2).lerp(\"linear, linear\", \"[in]\")), screen(image(\"redimg\"))).shuffleIndex(sine).rowscols(2).gridMod()",
+    "description": "shrunk from 21 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-04-27T16:24:16.163Z"
+  },
+  {
+    "code": "$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod().scale(sine.range(0.00, 0.00).lerp('linear', \"in, in\"))\n---\n$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod().scale(sine.range(0.00, 0.00).lerp('linear', \"in, in\"))",
+    "codes": [
+      "$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod().scale(sine.range(0.00, 0.00).lerp('linear', \"in, in\"))",
+      "$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod().scale(sine.range(0.00, 0.00).lerp('linear', \"in, in\"))"
+    ],
+    "description": "shrunk from 14 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-04-27T16:24:48.716Z"
+  },
+  {
+    "code": "bg: index(screen(\"red\").begin(sine.lerp(\"{linear}\", 'in'))).rowscols(2).gridMod()\n---\nbg: index(screen(\"red\").begin(sine.lerp(\"{linear}\", 'in'))).rowscols(2).gridMod()",
+    "codes": [
+      "bg: index(screen(\"red\").begin(sine.lerp(\"{linear}\", 'in'))).rowscols(2).gridMod()",
+      "bg: index(screen(\"red\").begin(sine.lerp(\"{linear}\", 'in'))).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 14 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-04-27T16:25:32.110Z"
+  },
+  {
+    "code": "bg: index(image(\"red.png\").urlBase('/test-assets/')).cols(2).rows(2).gridMod().scale(sine.div(2).lerp('linear', 'in'))\n---\n$: image(\"red.png, <<red.png>>\").urlBase('/test-assets/')",
+    "codes": [
+      "bg: index(image(\"red.png\").urlBase('/test-assets/')).cols(2).rows(2).gridMod().scale(sine.div(2).lerp('linear', 'in'))",
+      "$: image(\"red.png, <<red.png>>\").urlBase('/test-assets/')"
+    ],
+    "description": "shrunk from 18 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-04-27T16:26:09.534Z"
+  },
+  {
+    "code": "bg: stack(video(\"[redvid], redvid\").croph(sine.lerp(\"linear\", 'in')), screen(\"red | red\")).shuffleStack(sine).index().rowscols(2).gridMod()",
+    "description": "shrunk from 25 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-04-27T16:26:32.291Z"
+  },
+  {
+    "code": "$: stack(color(\"~\"), video(\"[red.mp4] | red.mp4\").urlBase('/test-assets/')).shuffleIndex(\"1\").rowscols(2).gridMod().scale(sine.range(0.00, 0.00).lerp(\"linear\", \"in\"))\n---\n$: stack(screen(\"~, [red]\").urlBase('/test-assets/'), screen(\"redvid:0.00:0.00\")).shuffleIndex(sine).rowscols(2).gridMod()",
+    "codes": [
+      "$: stack(color(\"~\"), video(\"[red.mp4] | red.mp4\").urlBase('/test-assets/')).shuffleIndex(\"1\").rowscols(2).gridMod().scale(sine.range(0.00, 0.00).lerp(\"linear\", \"in\"))",
+      "$: stack(screen(\"~, [red]\").urlBase('/test-assets/'), screen(\"redvid:0.00:0.00\")).shuffleIndex(sine).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 34 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-03T19:16:17.699Z"
+  },
+  {
+    "code": "bg: screen(\"red.mp4:0.00:0.00\")\n---\n$: screen(\"[[{red}]], red\")",
+    "codes": [
+      "bg: screen(\"red.mp4:0.00:0.00\")",
+      "$: screen(\"[[{red}]], red\")"
+    ],
+    "description": "shrunk from 19 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-03T19:16:52.587Z"
+  },
+  {
+    "code": "$: index(color(mini(\"[red]\"))).cols(2).rows(2).gridMod()\n---\n$: index(color(mini(\"[red]\"))).cols(2).rows(2).gridMod()",
+    "codes": [
+      "$: index(color(mini(\"[red]\"))).cols(2).rows(2).gridMod()",
+      "$: index(color(mini(\"[red]\"))).cols(2).rows(2).gridMod()"
+    ],
+    "description": "shrunk from 10 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:24:21.298Z"
+  },
+  {
+    "code": "bg: index(image(\"redimg\")).rowscols(2).gridMod()",
+    "description": "shrunk from 9 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:27:41.391Z"
+  },
+  {
+    "code": "loadImage('redimg', '/test-assets/red.png')\nbg: index(screen(\"[[red]], ~\")).cols(2).rows(2).gridMod()",
+    "description": "shrunk from 14 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch",
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:29:37.188Z"
+  },
+  {
+    "code": "$: stack(video(\"red.mp4\").urlBase('/test-assets/'), screen(\"redvid:0.00\")).shuffleIndex(\"1\").rowscols(2).gridMod()",
+    "description": "shrunk from 11 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:35:24.039Z"
+  },
+  {
+    "code": "Sbg: s(\"redvid:0.00\")",
+    "description": "shrunk from 4 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:36:32.293Z"
+  },
+  {
+    "code": "$: stack(color(\"{red}\"), screen(\"redvid:0.00:0.00\")).shuffleIndexCycle().rowscols(2).gridMod()",
+    "description": "shrunk from 11 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:37:31.563Z"
+  },
+  {
+    "code": "$: index(video(\"red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "description": "shrunk from 6 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/iDcekQeBGOY.mp4 TypeError: Failed to fetch",
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T19:37:46.203Z"
+  },
+  {
+    "code": "Sbg: screen(\"red\").syncStack(2).rowscols(2).gridMod()",
+    "description": "shrunk from 10 shrinks",
+    "errors": [
+      "pPatterns is not defined"
+    ],
+    "timestamp": "2026-05-03T19:38:12.937Z"
+  },
+  {
+    "code": "$: screen(\"red\").urlBase('/test-assets/').cropStack(1, 1).gridMod()",
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "pPatterns is not defined"
+    ],
+    "timestamp": "2026-05-03T19:38:19.209Z"
+  },
+  {
+    "code": "$: index(screen(color(\"<red>\"))).rowscols(2).gridMod()",
+    "description": "shrunk from 6 shrinks",
+    "errors": [
+      "pPatterns is not defined"
+    ],
+    "timestamp": "2026-05-03T19:38:25.207Z"
+  },
+  {
+    "code": "bg: stack(screen(\"~\"), image(\"red.png\").urlBase('/test-assets/')).shuffleIndex(\"1\").rowscols(2).gridMod()\n---\n$: video(\"redvid\").scaleY(\"0.5\")\n_bg: screen(\"redvid:0.00:0.00\")",
+    "codes": [
+      "bg: stack(screen(\"~\"), image(\"red.png\").urlBase('/test-assets/')).shuffleIndex(\"1\").rowscols(2).gridMod()",
+      "$: video(\"redvid\").scaleY(\"0.5\")\n_bg: screen(\"redvid:0.00:0.00\")"
+    ],
+    "description": "shrunk from 34 shrinks",
+    "errors": [
+      "video blob fetch failed: http://localhost:3456/videos/aGMOFLgB1CU.mp4 TypeError: Failed to fetch"
+    ],
+    "timestamp": "2026-05-03T20:03:53.179Z"
+  },
+  {
+    "code": "_bg: color(mini(\"red, red\")).chopStack(2).rowscols(2).gridMod()\n---\n$: screen(\"red.mp4:0.00:0.00\").chopStack(2).fit().rowscols(2).gridMod()",
+    "codes": [
+      "_bg: color(mini(\"red, red\")).chopStack(2).rowscols(2).gridMod()",
+      "$: screen(\"red.mp4:0.00:0.00\").chopStack(2).fit().rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 12 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-03T20:33:29.599Z"
+  },
+  {
+    "code": "bg: index(image(\"<red.png>\").urlBase('/test-assets/')).cols(2).rows(2).gridMod().alpha(sine.lerp('linear', \"in, <in>\"))",
+    "description": "shrunk from 18 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-03T20:33:51.648Z"
   }
 ]

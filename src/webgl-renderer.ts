@@ -9,7 +9,7 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (27 floats = 108 bytes):
+// Per-instance Float32Array layout (29 floats = 116 bytes):
 //   [0..1]   destOffset  (vec2)
 //   [2..3]   destSize    (vec2)
 //   [4..5]   uvOffset    (vec2)
@@ -18,7 +18,8 @@ const MAX_TEX_UNITS = 64;
 //   [9]      texIndex    (float)
 //   [10..25] transform   (mat4, column-major)
 //   [26]     grey        (float)
-const INSTANCE_FLOATS = 27;
+//   [27..28] pixUVStep   (vec2: UV-space step for pixelation; 0 = off)
+const INSTANCE_FLOATS = 29;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -32,6 +33,7 @@ const LOC_ALPHA       = 6;
 const LOC_TEX_INDEX   = 7;
 const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
 const LOC_GREY        = 12;
+const LOC_PIX_UV_STEP = 13; // vec2
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -50,11 +52,13 @@ layout(location = 6) in float a_alpha;
 layout(location = 7) in float a_texIndex;
 layout(location = 8) in mat4 a_transform; // uses locations 8-11
 layout(location = 12) in float a_grey;
+layout(location = 13) in vec2 a_pixUVStep;
 
 flat out int v_texIndex;
 out vec2 v_uv;
 out float v_alpha;
 out float v_grey;
+out vec2 v_pixUVStep;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
@@ -62,6 +66,7 @@ void main() {
   v_texIndex = int(a_texIndex);
   v_alpha = a_alpha;
   v_grey = a_grey;
+  v_pixUVStep = a_pixUVStep;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
@@ -85,12 +90,19 @@ flat in int v_texIndex;
 in vec2 v_uv;
 in float v_alpha;
 in float v_grey;
+in vec2 v_pixUVStep;
 out vec4 fragColor;
 
 void main() {
+  // Pixelation: quantise UV to a grid in texture space (before fract so
+  // tiling still works). The step is 0 when pixelation is off.
+  vec2 raw = v_uv;
+  if (v_pixUVStep.x > 0.0) {
+    raw = floor(raw / v_pixUVStep + 0.5) * v_pixUVStep;
+  }
   // fract() gives GL_REPEAT-style tiling for out-of-bounds UV;
   // for normal in-bounds UVs it is a no-op.
-  vec2 uv = fract(v_uv);
+  vec2 uv = fract(raw);
   vec4 color;
   ${ifChain}
   else color = texture(u_tex[0], uv);
@@ -260,6 +272,8 @@ interface DrawCommand {
   uvSizeY:     number;
   alpha:       number;
   grey:        number;
+  pixUVStepX:  number;
+  pixUVStepY:  number;
   transform:   Float32Array; // 16 floats, column-major
 }
 
@@ -358,6 +372,8 @@ export class WebGLRenderer implements Renderer {
       uvSizeY,
       alpha:       Math.max(0, Math.min(1, p.alpha)),
       grey:        Math.max(0, Math.min(1, p.grey ?? 0)),
+      pixUVStepX:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeX) / cellW : 0,
+      pixUVStepY:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeY) / cellH : 0,
       transform:   buildTransform(p),
     });
   }
@@ -406,6 +422,8 @@ export class WebGLRenderer implements Renderer {
         d[base + 9]  = texUnits.get(cmd.texture)!;
         d.set(cmd.transform, base + 10);
         d[base + 26] = cmd.grey;
+        d[base + 27] = cmd.pixUVStepX;
+        d[base + 28] = cmd.pixUVStepY;
       }
 
       this.setBlend(blendMode);
@@ -566,6 +584,10 @@ function createVAO(
   gl.enableVertexAttribArray(LOC_GREY);
   gl.vertexAttribPointer(LOC_GREY, 1, gl.FLOAT, false, s, 104);
   gl.vertexAttribDivisor(LOC_GREY, 1);
+
+  gl.enableVertexAttribArray(LOC_PIX_UV_STEP);
+  gl.vertexAttribPointer(LOC_PIX_UV_STEP, 2, gl.FLOAT, false, s, 108);
+  gl.vertexAttribDivisor(LOC_PIX_UV_STEP, 1);
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);

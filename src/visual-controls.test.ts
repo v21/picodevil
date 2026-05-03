@@ -65,6 +65,17 @@ describe("visual controls via createMixParam", () => {
       expect(query(pat, 0).speed).toBe(2);
     });
 
+    it(".pixelate() merges pixelate block size", () => {
+      const pat = src("x").pixelate(10);
+      expect(query(pat, 0).pixelate).toBe(10);
+    });
+
+    it(".pixelate() accepts pattern values", () => {
+      const pat = src("x").pixelate(mini("5 20"));
+      expect(query(pat, 0).pixelate).toBe(5);
+      expect(query(pat, 0.6).pixelate).toBe(20);
+    });
+
     it(".blend() merges blend mode", () => {
       const pat = src("x").blend(mini("multiply"));
       const v = query(pat, 0);
