@@ -123,6 +123,45 @@ describe("screen()", () => {
     });
   });
 
+  describe("inline begin/end offsets", () => {
+    it("clip.mp4:.2:.7 sets begin and end", () => {
+      const evs = screen("clip.mp4:.2:.7").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("video");
+      expect(evs[0].value.src).toBe("clip.mp4");
+      expect(evs[0].value.begin).toBe(0.2);
+      expect(evs[0].value.end).toBe(0.7);
+    });
+
+    it("clip.mp4:.3 sets begin, end defaults to 1", () => {
+      const evs = screen("clip.mp4:.3").queryArc(0, 1);
+      expect(evs[0].value.begin).toBe(0.3);
+      expect(evs[0].value.end).toBe(1);
+    });
+
+    it("registry name with inline offsets", () => {
+      addMedia("http://localhost:3456/videos/clip.mp4", "myclip");
+      const evs = screen("myclip:.1:.9").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("video");
+      expect(evs[0].value.src).toBe("myclip");
+      expect(evs[0].value.begin).toBe(0.1);
+      expect(evs[0].value.end).toBe(0.9);
+    });
+
+    it("color tokens are unaffected by colon syntax", () => {
+      const evs = screen("clip.mp4:.2:.7 red").queryArc(0, 1);
+      const video = evs.find((e: any) => e.value._type === "video");
+      const color = evs.find((e: any) => e.value._type === "color");
+      expect(video.value.begin).toBe(0.2);
+      expect(color.value.color).toBe("red");
+    });
+
+    it(".begin() chain overrides inline begin", () => {
+      const evs = screen("clip.mp4:.2:.7").begin(0.5).queryArc(0, 1);
+      expect(evs[0].value.begin).toBe(0.5);
+      expect(evs[0].value.end).toBe(0.7);
+    });
+  });
+
   describe("controls", () => {
     it("alpha() merges into events", () => {
       addMedia("http://localhost:3456/videos/clip.mp4", "myclip");

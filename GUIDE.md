@@ -67,6 +67,27 @@ $: image("photo.jpg")
 $: image("a.png b.jpg")
 ```
 
+### `screen(mininotation)` / `s(mininotation)`
+
+Auto-detects the type of each token: looks up the media registry first, then checks file extension, then falls back to treating it as a CSS color.
+
+```js
+$: s("myclip")                // registry name → video or image
+$: s("clip.mp4 photo.jpg")   // extension detection
+$: s("red blue clip.mp4")    // mix types in one pattern
+```
+
+**Inline begin/end offsets** — append `:begin:end` to any video token to set its playback range without a separate `.begin()` / `.end()` call. Values are 0–1 fractions of the video duration.
+
+```js
+$: s("clip.mp4:.2:.7")              // play 20%–70% of clip
+$: s("clip.mp4:.3")                 // play from 30% to end
+$: s("a.mp4:.0:.5 b.mp4:.5:1")     // different ranges per token
+$: s("a.mp4:.1:.4 red b.mp4:.6:1") // mix ranges, colors, no-range tokens
+```
+
+Chaining `.begin()` / `.end()` on the whole pattern overrides inline values.
+
 ## Mininotation
 
 uzuvid uses Strudel's mininotation for expressing patterns concisely. **Double-quoted strings** are automatically treated as mininotation. Single-quoted strings are plain strings (used for literal arguments like file paths).

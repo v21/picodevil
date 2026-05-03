@@ -114,6 +114,8 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Sources:** `mini(str)`, `color(str)`, `video(str)`, `image(str)`, `screen(str)` / `s(str)`
 
+`s()` / `screen()` tokens support inline begin/end offsets via `name:begin:end` syntax (uses mininotation's `:` parameter separator): `s("clip.mp4:.2:.7")` plays 20–70%, `s("clip.mp4:.3")` plays from 30% to end. Different tokens can have different offsets: `s("a.mp4:.0:.5 b.mp4:.5:1")`. Values can be overridden by chaining `.begin()`/`.end()` on the pattern.
+
 **Layout:** `gridStack(children, cols, rows)`, `stackN(n, ...patterns)`, `cycle(...args)`
 
 **Indexing:** `index(...patterns)`, `indexCycle(...patterns)`, `indexWith(iLabel, countLabel, ...patterns)`, `indexCycleWith(iLabel, countLabel, ...patterns)`, `autoseed(...patterns)`

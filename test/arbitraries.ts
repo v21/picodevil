@@ -332,6 +332,7 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.double({ min: 0, max: 1, noNaN: true }).map(n => ({ code: `.sync(${n.toFixed(2)})` })),
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
   alphaArg.map(a => ({ code: `.opacity(${a})` })),
+  fc.double({ min: 1, max: 64, noNaN: true }).map(n => ({ code: `.pixelate(${Math.round(n)})` })),
   fc.constantFrom(...FIT_MODES).map(m => ({ code: `.objectfit("${m}")` })),
   fc.constantFrom(...BLEND_MODES).map(m => ({ code: `.blend("${m}")` })),
   miniArb(BLEND_MODES, 1).map(m => ({ code: `.blend("${m}")` })),
@@ -360,6 +361,7 @@ const videoChain: fc.Arbitrary<string> = fc.array(videoMethod, { minLength: 0, m
 const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
   alphaArg.map(a => ({ code: `.opacity(${a})` })),
+  fc.double({ min: 1, max: 64, noNaN: true }).map(n => ({ code: `.pixelate(${Math.round(n)})` })),
   fc.constantFrom(...FIT_MODES).map(m => ({ code: `.objectfit("${m}")` })),
   fc.constantFrom(...BLEND_MODES).map(m => ({ code: `.blend("${m}")` })),
   miniArb(BLEND_MODES, 1).map(m => ({ code: `.blend("${m}")` })),
@@ -537,6 +539,35 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       fc.boolean(),
     ).map(([pat, methods, useAlias]) => ({
       code: `${useAlias ? "s" : "screen"}("${pat}").urlBase('/test-assets/')${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // s() / screen() — inline begin/end offsets via colon syntax: "vid:.2:.7"
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.tuple(
+        fc.constantFrom(...VIDEO_REGISTRY_NAMES, "red.mp4", "blue.mp4"),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+        fc.double({ min: 0, max: 1, noNaN: true }),
+      ).map(([t, b, e]) => `${t}:${b.toFixed(2)}:${e.toFixed(2)}`),
+      fc.array(videoMethod, { minLength: 0, maxLength: 2 }),
+      fc.boolean(),
+    ).map(([tok, methods, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}("${tok}")${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // s() / screen() — inline begin only: "vid:.3"
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.tuple(
+        fc.constantFrom(...VIDEO_REGISTRY_NAMES, "red.mp4", "blue.mp4"),
+        fc.double({ min: 0, max: 0.9, noNaN: true }),
+      ).map(([t, b]) => `${t}:${b.toFixed(2)}`),
+      fc.array(videoMethod, { minLength: 0, maxLength: 2 }),
+      fc.boolean(),
+    ).map(([tok, methods, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}("${tok}")${methods.map(m => m.code).join("")}`,
     }))
   },
 

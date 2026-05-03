@@ -34,6 +34,9 @@ function classifyToken(v: string): object {
  * $: s("myclip red blue")            // mix video and colors
  * $: s("clip.mp4 photo.jpg")         // extension fallback
  * $: s("red blue green")             // solid colors
+ * $: s("clip.mp4:.2:.7")             // inline begin/end: play 20%–70% of clip
+ * $: s("clip.mp4:.3")                // inline begin only: play from 30% to end
+ * $: s("a.mp4:.0:.5 b.mp4:.5:1")    // different ranges per token
  *
  */
 export function screen(pat: string | Pattern): Pattern {
@@ -50,6 +53,17 @@ export function screen(pat: string | Pattern): Pattern {
             return { begin: 0, end: 1, ...typed };
           }
           return v;
+        }
+        // mini() parses "name:begin:end" into [name, begin, end]
+        if (Array.isArray(v)) {
+          const [name, begin, end] = v as [string, number?, number?];
+          const classified = classifyToken(name) as any;
+          const result = classified._type === "video"
+            ? { begin: 0, end: 1, ...classified }
+            : { ...classified };
+          if (begin !== undefined) result.begin = begin;
+          if (end !== undefined) result.end = end;
+          return result;
         }
         if (typeof v !== "string") {
           warn(`screen pattern produced non-string value: ${typeof v}`);
