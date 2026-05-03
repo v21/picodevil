@@ -42,7 +42,7 @@ body {
   font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
   font-size: 20px;
   overflow-x: hidden;
-  text-shadow: oklch(0% 0 0 / 0.5) 0 0 20px, oklch(0% 0 0 / 0.7) 0 0 8px, oklch(0% 0 0) 0 0 2px;
+  text-shadow: oklch(29.707% 0.00794 223.882 / 0.5) 0 0 20px, oklch(29.707% 0.00794 223.882 / 0.7) 0 0 8px, oklch(29.707% 0.00794 223.882 ) 0 0 2px;
 }
 
 .cm-editor .cm-gutters {
@@ -405,7 +405,7 @@ body {
   bottom: 50px;
   left: 15px;
   z-index: 20;
-  background: hsla(40, 80%, 30%, 0.85);
+  background: hsla(49, 100%, 38%, 0.85);
   color: #fff;
   font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
   font-size: 14px;
