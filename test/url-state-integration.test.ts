@@ -190,7 +190,6 @@ async function testWipeHashGivesDefault(browser: Browser, appUrl: string, errors
     const editor = document.querySelector(".cm-content");
     return editor?.textContent ?? "";
   });
-  const defaultCode = `$: video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
   if (!editorCode.includes("video(") && !editorCode.includes("color(")) {
     errors.push(`wipeHash: editor code after hash wipe looks unexpected: "${editorCode.slice(0, 80)}"`);
   }
