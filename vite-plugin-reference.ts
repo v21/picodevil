@@ -71,6 +71,7 @@ function extractFromFile(source: string, filterNames?: Set<string>): RefEntry[] 
     const jsdocBlock = match[1];
     const name = match[2] || match[3] || match[4];
     if (!name) continue;
+    if (name.startsWith("_")) continue;
     if (filterNames && !filterNames.has(name)) continue;
 
     if (jsdocBlock.includes("@internal")) continue;
@@ -137,6 +138,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Iteration", "src/iterators.ts"],
     ["Randomness", "src/event-random.ts"],
     ["Signals", "src/strudel-globals.ts"],
+    ["Transforms", "src/strudel-transforms.ts"],
     ["Media", "src/media-registry.ts"],
     ["Media", "src/stream-manager.ts"],
     ["Global", "src/runtime-globals.ts"],

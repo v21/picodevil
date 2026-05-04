@@ -58,7 +58,7 @@ export function setupReference(container: HTMLElement) {
       const entryId = `ref-${entry.name}`;
 
       const navLink = document.createElement("a");
-      navLink.textContent = entry.isMethod ? `.${entry.name}()` : `${entry.name}()`;
+      navLink.textContent = `${entry.name}()`;
       navLink.href = `#${entryId}`;
       navLink.className = "ref-nav-link";
       navLink.addEventListener("click", (e) => {
@@ -72,14 +72,14 @@ export function setupReference(container: HTMLElement) {
       entryEl.id = entryId;
       entryEl.className = "ref-entry";
 
-      const sig = entry.isMethod ? `.${entry.name}(${entry.params.length ? "..." : ""})` : `${entry.name}(${entry.params.length ? "..." : ""})`;
+      const sig = `${entry.name}(${entry.params.length ? "..." : ""})`;
       const nameEl = document.createElement("div");
       nameEl.className = "ref-entry-name";
       nameEl.textContent = sig;
       if (entry.aliases.length) {
         const aliasSpan = document.createElement("span");
         aliasSpan.className = "ref-entry-aliases";
-        aliasSpan.textContent = `aliases: ${entry.aliases.map((a) => (entry.isMethod ? `.${a}()` : `${a}()`)).join(", ")}`;
+        aliasSpan.textContent = `aliases: ${entry.aliases.map((a) => `${a}()`).join(", ")}`;
         nameEl.appendChild(aliasSpan);
       }
       entryEl.appendChild(nameEl);
@@ -113,7 +113,7 @@ export function setupReference(container: HTMLElement) {
 
       detail.appendChild(entryEl);
 
-      const displayName = entry.isMethod ? `.${entry.name}(` : `${entry.name}(`;
+      const displayName = `${entry.name}(`;
       const queryText = [displayName, entry.name, ...entry.aliases, entry.description].join(" ").toLowerCase();
       filterItems.push({ query: queryText, navLink, detailEntry: entryEl, cat: cat.name });
     }
