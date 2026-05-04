@@ -194,7 +194,7 @@ describe("saveToUrl", () => {
     const warnCb = vi.fn();
     setUrlWarnCallback(warnCb);
     // Generate a large code string
-    const bigCode = "x".repeat(10000);
+    const bigCode = "x".repeat(25000);
     saveToUrl(bigCode, []);
     vi.runAllTimers();
     const [msg] = warnCb.mock.calls[0];

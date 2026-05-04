@@ -4,6 +4,9 @@ import referencePlugin from "./vite-plugin-reference";
 
 export default defineConfig({
   plugins: [referencePlugin()],
+  optimizeDeps: {
+    include: ["fast-check"],
+  },
   test: {
     setupFiles: ["src/test-setup.ts"],
     exclude: ["server/**", "test/**", "node_modules/**"],

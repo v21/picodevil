@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-04-22.
+> This file is machine-authored for use by coding agents. Last updated 2026-05-04.
 
 ## What is this?
 
@@ -54,6 +54,7 @@ uzuvid/
     canvas2d-renderer.ts  — Canvas2DRenderer: Renderer impl using CanvasRenderingContext2D (fallback / dev reference)
     webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2 (default); GPU texture upload, UV/fit on CPU, blend modes
     texture-cache.ts      — TextureCache: manages WebGL textures; videos re-uploaded each frame, images/colors cached
+    playback-simulation-helpers.ts — shared setup and helpers for simulation test files: DUR, CPS, TracePoint, evalPattern, simulateTrace, checkTraceInvariants, assertTracesMatch, setupSimulation()
   test/
     monkey-test.ts              — grammar-based random pattern generator + browser runner
     regression-cases.json       — saved regression cases for conformance replay
@@ -253,7 +254,11 @@ Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest
 
 - **Pipeline tests** (`playback-pipeline.test.ts`) — build real pattern chains, query them, and verify the full eventBeginFromHap → computeExpectedTime pipeline produces correct positions. Good place to add regression tests for specific pattern combos that break.
 - **Invariant tests** (`playback-invariants.test.ts`) — property-based tests via fast-check verifying invariants that must hold for any inputs (position in range, continuity, monotonicity, etc.)
-- **Simulation tests** (`playback-simulation.test.ts`) — step through pattern chains at 60fps, verify trace invariants, and test equivalence classes (e.g. alpha doesn't change position, speed(1) is identity)
+- **Simulation tests** — step through pattern chains at 60fps, verify trace invariants, and test equivalence classes. Split across three files that run in parallel browser iframes:
+  - `playback-simulation.test.ts` — basic, sync, rolling, loopAt, duration, multi-operator chains
+  - `playback-simulation-adversarial.test.ts` — degenerate arguments and conflicting operator combinations
+  - `playback-simulation-equivalence.test.ts` — equivalence class tests, addTo/*To operators, mapOn smoothing
+  - Shared setup lives in `playback-simulation-helpers.ts` — import `setupSimulation()`, `evalPattern`, `simulateTrace`, `checkTraceInvariants`, `assertTracesMatch` from there when adding new simulation test files
 - **Monkey testing** (`test/`):
   - `monkey-test.ts` — grammar-based random pattern generator, checks for crashes/errors
   - `regression-cases.json` — saved monkey failures for conformance replay
