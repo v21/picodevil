@@ -204,7 +204,7 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
         fc.constantFrom(8, 16, 32),
         fc.oneof(
           fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => n.toFixed(2)),
-          miniArb(["0.1", "0.3", "0.5", "0.8", "1"], 1),
+          miniArb(["0.1", "0.3", "0.5", "0.8", "1"], 1).map(m => `"${m}"`),
         ),
       ).map(([n, t]) => `.segment(${n}).spline(${t})`)
     },
@@ -1040,18 +1040,7 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     })
   },
 
-  // stackLeft / stackRight / stackCentre with 2–3 screen sources
-  {
-    weight: 1, arbitrary: fc.tuple(
-      fc.option(cpsValue, { nil: undefined }),
-      fc.constantFrom("stackLeft", "stackRight", "stackCentre"),
-      fc.array(screenExpr, { minLength: 2, maxLength: 3 }),
-      labelPrefix,
-    ).map(([cps, fn, exprs, label]) => {
-      const cpsCode = cps !== undefined ? `${cps}\n` : "";
-      return {
-        code: `${cpsCode}${label}: ${fn}(${exprs.map((e: any) => e.code).join(", ")})`,
-      };
-    })
-  },
+  // stackLeft / stackRight / stackCentre — omitted: Strudel upstream crashes on
+  // polymeter ({x}) and zero-duration clips trigger .eq / .maximum on undefined.
+
 );
