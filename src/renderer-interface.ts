@@ -10,7 +10,8 @@ export type Screen = { queryArc(begin: number, end: number): any[] };
 export type TileSource =
   | { kind: 'video' | 'stream'; el: HTMLVideoElement }
   | { kind: 'image'; el: HTMLImageElement }
-  | { kind: 'color'; r: number; g: number; b: number };
+  | { kind: 'color'; r: number; g: number; b: number }
+  | { kind: 'pattern'; name: string };
 
 /**
  * All parameters needed to render a single tile.
@@ -58,6 +59,12 @@ export interface Renderer {
   drawTile(params: TileParams): void;
   /** Finalise and present the frame. No-op for Canvas 2D; flushes draw list for WebGL. */
   endFrame(): void;
+  /** Bind an offscreen framebuffer for the named pattern. */
+  beginOffscreen(name: string): void;
+  /** Restore the default (canvas) framebuffer. */
+  endOffscreen(): void;
+  /** Blit the current canvas output to the "all" FBO for next-frame feedback. */
+  captureAll(): void;
   /** Release GPU/canvas resources. */
   dispose(): void;
 }

@@ -3,6 +3,7 @@ import { Pattern as PatternClass } from "@strudel/core";
 import { mini } from "@strudel/mini";
 import { warn } from "./warnings";
 import { resolveMedia } from "./media-registry";
+import { isNamedPattern } from "./pattern-registry";
 
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi", "ogv"]);
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "avif"]);
@@ -10,6 +11,8 @@ const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "webp", "svg", "avif"])
 function classifyToken(v: string): object {
   const entry = resolveMedia(v);
   if (entry) return { _type: entry.type, src: v };
+
+  if (isNamedPattern(v)) return { _type: "pattern", src: v };
 
   const ext = v.split(/[?#]/)[0].split(".").pop()?.toLowerCase() ?? "";
   if (VIDEO_EXTS.has(ext)) return { _type: "video", src: v };
@@ -29,6 +32,9 @@ function classifyToken(v: string): object {
  *
  * @param {string | Pattern} pat mininotation string or Pattern of token values
  * @returns {Pattern} pattern of typed source objects
+ * Token resolution order: media registry → named pattern FBO → file extension → CSS color.
+ * Use `s("name")` to reference a named pattern's offscreen framebuffer as a pixel source.
+ * `s("all")` references the previous frame's full composited output (feedback effects).
  * @example
  * $: s("myclip")                     // registry-named video or image
  * $: s("myclip red blue")            // mix video and colors
@@ -37,6 +43,9 @@ function classifyToken(v: string): object {
  * $: s("clip.mp4:.2:.7")             // inline begin/end: play 20%–70% of clip
  * $: s("clip.mp4:.3")                // inline begin only: play from 30% to end
  * $: s("a.mp4:.0:.5 b.mp4:.5:1")    // different ranges per token
+ * mycomp: stack(color("red"), color("blue").alpha(0.5).blend("screen"))
+ * $: s("mycomp")                     // named pattern FBO as source
+ * $: s("all").alpha(0.95)            // feedback from previous frame
  *
  */
 export function screen(pat: string | Pattern): Pattern {

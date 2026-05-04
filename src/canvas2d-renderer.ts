@@ -65,6 +65,7 @@ export class Canvas2DRenderer implements Renderer {
     }
 
     const src = p.source;
+    if (src.kind === 'pattern') return; // FBO sources not supported in Canvas2D
     if (src.kind === 'color') {
       ctx.fillStyle = `rgb(${src.r * 255},${src.g * 255},${src.b * 255})`;
       ctx.fillRect(0, 0, w, h);
@@ -92,6 +93,10 @@ export class Canvas2DRenderer implements Renderer {
   endFrame(): void {
     // Canvas 2D presents automatically — nothing to do.
   }
+
+  beginOffscreen(_name: string): void { /* FBO not supported in Canvas2D */ }
+  endOffscreen(): void { /* FBO not supported in Canvas2D */ }
+  captureAll(): void { /* FBO not supported in Canvas2D */ }
 
   dispose(): void {
     // Nothing to release.

@@ -36,7 +36,7 @@ uzuvid/
     color-pattern.ts      — color() function: wraps mini pattern with {color} values
     video-pattern.ts      — video() function: wraps mini pattern with {src} values
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
-    screen-pattern.ts     — screen()/s() function: auto-detects type per token (registry → extension → color fallback)
+    screen-pattern.ts     — screen()/s() function: auto-detects type per token (registry → named pattern → extension → color fallback)
     draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering in Canvas 2D; FitMode type
     video-playback.ts     — video frame rendering: playback update, seeking (computeExpectedTime, detectWindowMoving, renderVideoFrame)
     event-begin.ts        — eventBeginFromHap: derives playback start cycle from hap + event value
@@ -128,7 +128,9 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Global:** `setCps(n)`, `setCpm(n)`, `hush()`
 
-**Registration:** `$: expr` → `expr.p("$")` (stacking), `name: expr` → `expr.p("name")` (last write wins), `S` prefix = solo, `_` prefix/suffix = mute
+**Registration:** `$: expr` → `expr.p("$")` (stacking), `name: expr` → `expr.p("name")` (last write wins), `S` prefix = solo, `_` prefix/suffix = mute, `H` prefix = hidden (FBO-only, not drawn to main canvas)
+
+**Named framebuffers:** Each non-anonymous named pattern (e.g. `mycomp: expr`) is rendered to an offscreen WebGL framebuffer (FBO) before the main canvas draw. `s("mycomp")` references that FBO as a pixel source — identical to using a video or image. `s("all")` gives the previous frame's full composited output, enabling feedback effects (1-frame latency). `Hname: expr` registers a pattern as FBO-only (not drawn to canvas); `.hide()` on a pattern is equivalent. Render order: named FBOs render in declaration order; patterns later in the list see earlier patterns' current-frame content, earlier patterns see later patterns' previous-frame content.
 
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`

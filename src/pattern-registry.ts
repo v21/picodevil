@@ -4,6 +4,7 @@ let pPatterns: Record<string, Pattern> = {};
 let anonymousIndex = 0;
 let eachFn: ((p: Pattern) => Pattern) | undefined;
 let allFns: ((p: Pattern) => Pattern)[] = [];
+let lastNamedIndices: { name: string; screenIndex: number }[] = [];
 
 export type RegistrySnapshot = {
   pPatterns: Record<string, Pattern>;
@@ -12,9 +13,19 @@ export type RegistrySnapshot = {
   allFns: ((p: Pattern) => Pattern)[];
 };
 
+/** Strip S or H prefix to get the user-facing FBO name. */
+function fboName(id: string): string {
+  if (id.length > 1 && (id.startsWith('S') || id.startsWith('H'))) return id.slice(1);
+  return id;
+}
+
 export function initRegistry(): void {
   (Pattern.prototype as any).p = function(id: string) {
     if (id.startsWith('_') || id.endsWith('_')) return silence;
+    if (id === 'all') {
+      console.warn('.p("all") is reserved for the full-canvas FBO. Choose a different name.');
+      return silence;
+    }
     if (id.includes('$')) {
       id = `${id}${anonymousIndex}`;
       anonymousIndex++;
@@ -25,6 +36,17 @@ export function initRegistry(): void {
 
   (Pattern.prototype as any).q = function(_id: string) {
     return silence;
+  };
+
+  /**
+   * Mark this pattern as FBO-only: it renders to its named offscreen framebuffer
+   * but is not drawn to the main canvas. Equivalent to the `H` label prefix.
+   * @example
+   * mycomp: stack(color("red"), color("blue").alpha(0.5)).hide()
+   * $: s("mycomp")
+   */
+  (Pattern.prototype as any).hide = function() {
+    return (this as any).withValue((v: any) => ({ ...v, _fboOnly: true }));
   };
 
   try {
@@ -48,6 +70,7 @@ export function resetRegistry(): void {
   anonymousIndex = 0;
   eachFn = undefined;
   allFns = [];
+  lastNamedIndices = [];
 }
 
 export function snapshotRegistry(): RegistrySnapshot {
@@ -64,6 +87,25 @@ export function restoreRegistry(snapshot: RegistrySnapshot): void {
   anonymousIndex = snapshot.anonymousIndex;
   eachFn = snapshot.eachFn;
   allFns = snapshot.allFns;
+  lastNamedIndices = [];
+}
+
+/**
+ * Returns true if `name` is a registered non-anonymous pattern (or the reserved "all").
+ * Used by screen() to classify tokens as pattern FBO references.
+ */
+export function isNamedPattern(name: string): boolean {
+  if (name === 'all') return true;
+  if (name.includes('$')) return false;
+  return (name in pPatterns) || (('S' + name) in pPatterns) || (('H' + name) in pPatterns);
+}
+
+/**
+ * Returns the named-screen indices populated by the last collectScreens() call.
+ * Each entry maps a stripped FBO name to its index in the screens array.
+ */
+export function getNamedScreenIndices(): { name: string; screenIndex: number }[] {
+  return lastNamedIndices;
 }
 
 /** Collect registered patterns into a Screen[]. Named patterns are tagged
@@ -83,10 +125,21 @@ export function collectScreens(): Pattern[] {
     }
   }
 
-  return pairs.map(([id, pat]) => {
-    let p: Pattern = id.includes('$')
-      ? pat
-      : (pat as any).withState((s: any) => s.setControls({ id }));
+  lastNamedIndices = [];
+
+  return pairs.map(([id, pat], screenIndex) => {
+    const isAnon = id.includes('$');
+    const isHidden = !isAnon && id.length > 1 && id.startsWith('H');
+    const name = isAnon ? id : fboName(id);
+
+    if (!isAnon) {
+      lastNamedIndices.push({ name, screenIndex });
+    }
+
+    let p: Pattern = pat;
+    if (isHidden) {
+      p = (pat as any).withValue((v: any) => ({ ...v, _fboOnly: true }));
+    }
     if (eachFn) p = eachFn(p);
     for (const fn of allFns) p = fn(p);
     return p;

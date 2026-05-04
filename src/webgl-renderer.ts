@@ -248,7 +248,9 @@ function buildTransform(p: TileParams): Float32Array {
 // Source natural dimensions
 // ---------------------------------------------------------------------------
 
-function srcSize(source: TileSource): [number, number] {
+type MediaTileSource = Exclude<TileSource, { kind: 'pattern' }>;
+
+function srcSize(source: MediaTileSource): [number, number] {
   if (source.kind === 'color') return [1, 1];
   if (source.kind === 'image') return [source.el.naturalWidth, source.el.naturalHeight];
   return [source.el.videoWidth, source.el.videoHeight];
@@ -291,6 +293,8 @@ interface DrawCommand {
  * command buffer pressure dramatically for patterns with many tiles
  * (e.g. cropStack(25,25) = 625 tiles → 1 draw call).
  */
+interface FBOEntry { fbo: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; }
+
 export class WebGLRenderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
@@ -298,6 +302,7 @@ export class WebGLRenderer implements Renderer {
   private readonly texCache: TextureCache;
   private readonly instanceVBO: WebGLBuffer;
   private readonly maxTexUnits: number;
+  private readonly fbos = new Map<string, FBOEntry>();
 
   private instanceData = new Float32Array(256 * INSTANCE_FLOATS);
   private readonly pendingDraws: DrawCommand[] = [];
@@ -339,6 +344,14 @@ export class WebGLRenderer implements Renderer {
     this.w = w;
     this.h = h;
     this.gl.viewport(0, 0, w, h);
+    // Resize existing FBOs to match new canvas dimensions
+    const { gl } = this;
+    for (const entry of this.fbos.values()) {
+      entry.w = w; entry.h = h;
+      gl.bindTexture(gl.TEXTURE_2D, entry.tex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
   }
 
   beginFrame(): void {
@@ -351,13 +364,30 @@ export class WebGLRenderer implements Renderer {
   }
 
   drawTile(p: TileParams): void {
-    const tex = this.texCache.get(p.source);
-    if (!tex) return;  // source not ready
+    let tex: WebGLTexture | null;
+    let srcW: number, srcH: number;
+    let fboSource = false;
 
-    const [srcW, srcH] = srcSize(p.source);
+    if (p.source.kind === 'pattern') {
+      const entry = this.fbos.get(p.source.name);
+      if (!entry) return;
+      tex = entry.tex;
+      srcW = this.w; srcH = this.h;
+      fboSource = true;
+    } else {
+      tex = this.texCache.get(p.source);
+      if (!tex) return;
+      [srcW, srcH] = srcSize(p.source);
+    }
+
     const cellW = p.w * this.w;
     const cellH = p.h * this.h;
-    const { uvOffsetX, uvSizeX, uvOffsetY, uvSizeY } = computeUV(p, srcW, srcH, cellW, cellH);
+    let { uvOffsetX, uvSizeX, uvOffsetY, uvSizeY } = computeUV(p, srcW, srcH, cellW, cellH);
+
+    // FBO textures are Y-flipped relative to HTML element textures.
+    // WebGL renders with Y=0 at bottom, so the visual top of the FBO is at UV y=1.
+    // Flip the Y axis so the image appears right-side up.
+    if (fboSource) { uvOffsetY = uvOffsetY + uvSizeY; uvSizeY = -uvSizeY; }
 
     this.pendingDraws.push({
       texture:     tex,
@@ -432,6 +462,13 @@ export class WebGLRenderer implements Renderer {
       gl.bindVertexArray(this.vao);
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count);
       gl.bindVertexArray(null);
+
+      // Unbind all textures used in this batch so they are never bound when their
+      // FBO is later used as a render target (prevents feedback loop errors).
+      for (const [, unit] of texUnits) {
+        gl.activeTexture(gl.TEXTURE0 + unit);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+      }
     };
 
     for (let i = 0; i < draws.length; i++) {
@@ -455,12 +492,61 @@ export class WebGLRenderer implements Renderer {
     draws.length = 0;
   }
 
+  beginOffscreen(name: string): void {
+    const { gl } = this;
+    const entry = this.getOrCreateFBO(name);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, entry.fbo);
+    gl.viewport(0, 0, entry.w, entry.h);
+  }
+
+  endOffscreen(): void {
+    const { gl } = this;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.w, this.h);
+  }
+
+  captureAll(): void {
+    const { gl, w, h } = this;
+    const entry = this.getOrCreateFBO('all');
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, entry.fbo);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  }
+
   dispose(): void {
     const { gl } = this;
     this.texCache.clear();
+    for (const entry of this.fbos.values()) {
+      gl.deleteFramebuffer(entry.fbo);
+      gl.deleteTexture(entry.tex);
+    }
+    this.fbos.clear();
     gl.deleteProgram(this.program);
     gl.deleteVertexArray(this.vao);
     gl.deleteBuffer(this.instanceVBO);
+  }
+
+  private getOrCreateFBO(name: string): FBOEntry {
+    const { gl, w, h } = this;
+    let entry = this.fbos.get(name);
+    if (entry) return entry;
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w || 1, h || 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    const fbo = gl.createFramebuffer()!;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    entry = { fbo, tex, w: w || 1, h: h || 1 };
+    this.fbos.set(name, entry);
+    return entry;
   }
 
   private setBlend(mode: string): void {

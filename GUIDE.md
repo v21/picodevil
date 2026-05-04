@@ -30,11 +30,19 @@ bg: color("black")
 fg: video("clip.mp4")
 ```
 
-Prefix a name with `_` or add a trailing `_` to mute it. Prefix with `S` to solo it.
+Prefix a name with `_` or add a trailing `_` to mute it. Prefix with `S` to solo it. Prefix with `H` to hide it from the main canvas (it still renders to its own offscreen framebuffer).
 
 ```js
-_bg: color("black")   // muted
-Sfg: video("clip.mp4") // soloed
+_bg: color("black")    // muted — not rendered at all
+Sfg: video("clip.mp4") // soloed — only this renders
+Hmix: stack(color("red"), color("blue").alpha(0.5))  // hidden — FBO only
+```
+
+The `.hide()` method is equivalent to the `H` prefix:
+
+```js
+mix: stack(color("red"), color("blue").alpha(0.5)).hide()
+$: s("mix")
 ```
 
 ## Sources
@@ -87,6 +95,25 @@ $: s("a.mp4:.1:.4 red b.mp4:.6:1") // mix ranges, colors, no-range tokens
 ```
 
 Chaining `.begin()` / `.end()` on the whole pattern overrides inline values.
+
+### `s("name")` — named pattern as source
+
+Any registered named pattern (non-`$`) can be used as a pixel source by passing its name to `s()`. The pattern is rendered to an offscreen framebuffer (FBO) each frame, and that framebuffer is used as a texture.
+
+```js
+mycomp: stack(color("red"), color("blue").alpha(0.5).blend("screen"))
+$: s("mycomp").x(0.25).width(0.5)
+$: s("mycomp").x(0.75).width(0.5).blend("difference")
+```
+
+`s("all")` gives the previous frame's full composited canvas output, enabling feedback and echo effects:
+
+```js
+$: s("all").alpha(0.95)
+$: color("red").width(0.1).height(0.1)
+```
+
+**Forward references** (referencing a pattern declared after the current one) work but show the previous frame's content — imperceptible at 60fps.
 
 ## Mininotation
 

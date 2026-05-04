@@ -4,7 +4,7 @@ import { setupEditor } from "./editor";
 import "./shuffle-stack";
 import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CACHE_BYTES } from "./config";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
-import { initRegistry as initPatternRegistry, resetRegistry, snapshotRegistry, restoreRegistry, collectScreens, each, all } from "./pattern-registry";
+import { initRegistry as initPatternRegistry, resetRegistry, snapshotRegistry, restoreRegistry, collectScreens, getNamedScreenIndices, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
 import { isNativeRate } from "./playback-rate";
@@ -46,6 +46,7 @@ resize();
 
 // --- state ---
 let screens: Screen[] = [];
+let namedScreens: { name: string; screenIndex: number }[] = [];
 let cyclesPerSecond = CYCLES_PER_SECOND;
 let cpsPattern: Pattern | null = null;
 let accumulatedCycle = 0;
@@ -171,6 +172,7 @@ function setCpm(cpm: number | Pattern) {
 
 function hush() {
   screens = [];
+  namedScreens = [];
   resetRegistry();
   return silence;
 }
@@ -196,6 +198,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
 
   // Phase 2: Snapshot current state so we can restore on execution failure
   const prevScreens = [...screens];
+  const prevNamedScreens = [...namedScreens];
   const prevRegistry = snapshotRegistry();
   const prevCpsPattern = cpsPattern;
   const prevCyclesPerSecond = cyclesPerSecond;
@@ -205,6 +208,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
   clearWarnings();
   if (typeof window !== "undefined") (window as any).uzuWarnings = [];
   screens = [];
+  namedScreens = [];
   resetRegistry();
   cpsPattern = null;
   resetWidgetCounter();
@@ -217,6 +221,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     });
     // Collect $: registered patterns
     const pScreens = collectScreens();
+    namedScreens = getNamedScreenIndices();
     if (pScreens.length > 0) {
       screens = [...screens, ...pScreens];
     }
@@ -228,6 +233,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     // Execution failed — restore previous state so old visuals keep rendering
     console.error("eval error:", e);
     screens = prevScreens;
+    namedScreens = prevNamedScreens;
     restoreRegistry(prevRegistry);
     cpsPattern = prevCpsPattern;
     cyclesPerSecond = prevCyclesPerSecond;
@@ -262,7 +268,7 @@ function frame() {
   const cycle = (cpsPattern || cyclesPerSecond === 0) ? accumulatedCycle : nowSec * cyclesPerSecond;
   const t = Math.floor(cycle) + (cycle % 1);
 
-  frameRenderer.render(screens, t, cps, cycle, rafAbsNow);
+  frameRenderer.render(screens, namedScreens, t, cps, cycle, rafAbsNow);
 
   // Record metrics
   const frameEnd = performance.now() - startTime;

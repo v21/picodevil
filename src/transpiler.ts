@@ -1,8 +1,8 @@
 import * as acorn from "acorn";
 import * as escodegen from "escodegen";
 
-/** Label pattern: optional _ or S prefix, then identifier chars, optional trailing _ */
-const LABEL_RE = /^[_S]?[$a-zA-Z]\w*_?$/;
+/** Label pattern: optional _, S, or H prefix, then identifier chars, optional trailing _ */
+const LABEL_RE = /^[_SH]?[$a-zA-Z]\w*_?$/;
 
 /** Widget function names we extract positions for */
 const WIDGET_FUNCTIONS = new Set(["slider"]);

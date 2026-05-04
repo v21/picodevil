@@ -4,10 +4,13 @@ import { addMedia, addStream, clearAll } from "./media-registry";
 import { color } from "./color-pattern";
 import { video } from "./video-pattern";
 import { image } from "./image-pattern";
+import { initRegistry, resetRegistry, collectScreens } from "./pattern-registry";
 import "./visual-controls";
 
 beforeEach(() => {
   clearAll();
+  resetRegistry();
+  initRegistry();
 });
 
 describe("screen()", () => {
@@ -167,6 +170,42 @@ describe("screen()", () => {
       addMedia("http://localhost:3456/videos/clip.mp4", "myclip");
       const evs = screen("myclip").alpha(0.5).queryArc(0, 1);
       expect(evs[0].value.alpha).toBe(0.5);
+    });
+  });
+
+  describe("named pattern FBO resolution", () => {
+    it("classifies a registered named pattern as _type:pattern", () => {
+      color("red").p("mycomp");
+      collectScreens();
+      const evs = screen("mycomp").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("pattern");
+      expect(evs[0].value.src).toBe("mycomp");
+    });
+
+    it("media registry takes priority over named pattern", () => {
+      color("red").p("mycomp");
+      collectScreens();
+      addMedia("http://localhost:3456/videos/clip.mp4", "mycomp");
+      const evs = screen("mycomp").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("video");
+    });
+
+    it("s('all') resolves as _type:pattern", () => {
+      const evs = screen("all").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("pattern");
+      expect(evs[0].value.src).toBe("all");
+    });
+
+    it("unregistered name falls back to color", () => {
+      const evs = screen("notapattern").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("color");
+    });
+
+    it("H-prefixed pattern resolves by stripped name", () => {
+      color("blue").p("Hmycomp");
+      collectScreens();
+      const evs = screen("mycomp").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("pattern");
     });
   });
 });

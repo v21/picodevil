@@ -75,9 +75,9 @@ export class FrameRenderer {
 
   /**
    * Render one full frame.
-   * Phases: query needed sources → match elements → beginFrame → draw → endFrame → prewarm.
+   * Phases: query needed sources → match elements → FBO pre-pass → draw → captureAll → prewarm.
    */
-  render(screens: Screen[], t: number, cps: number, cycle: number, frameWallTime?: number): void {
+  render(screens: Screen[], namedScreens: { name: string; screenIndex: number }[], t: number, cps: number, cycle: number, frameWallTime?: number): void {
     const nowWall = frameWallTime ?? performance.now();
     const frameDt = Math.min((nowWall - this.lastFrameWall) / 1000, 0.1); // cap at 100ms
     this.lastFrameWall = nowWall;
@@ -98,9 +98,29 @@ export class FrameRenderer {
 
     // Phase 3: draw (video frame rendering + GPU dispatch)
     performance.mark('uzu-phase-start');
+    // Shared set: prevent renderVideoFrame from being called twice on the same element
+    // if it appears in both an FBO pre-pass and the main canvas draw.
+    const videoFrameProcessed = new Set<VideoEl>();
+
+    // Phase 3a: FBO pre-pass — render each named pattern to its offscreen framebuffer
+    for (const { name, screenIndex } of namedScreens) {
+      const fboEvents = allEvents.filter(fe => fe.screenIndex === screenIndex);
+      if (fboEvents.length === 0) continue;
+      this.renderer.beginOffscreen(name);
+      this.renderer.beginFrame();
+      this.drawFrame(fboEvents, t, cps, nowWall, videoFrameProcessed, false);
+      this.renderer.endFrame();
+      this.renderer.endOffscreen();
+    }
+
+    // Phase 3b: main canvas draw
     this.renderer.beginFrame();
-    this.drawFrame(allEvents, t, cps, nowWall);
+    this.drawFrame(allEvents, t, cps, nowWall, videoFrameProcessed, true);
     this.renderer.endFrame();
+
+    // Phase 3c: blit canvas → "all" FBO for next-frame feedback
+    this.renderer.captureAll();
+
     this._endPhase('uzu draw', this.metrics.phaseDraw);
 
     // Phase 4: prewarm (lookahead query + element prep)
@@ -350,6 +370,8 @@ export class FrameRenderer {
       const el = getStreamVideoEl(ev.src);
       if (!el || el.videoWidth === 0) return null;
       source = { kind: 'stream', el };
+    } else if (ev._type === 'pattern') {
+      source = { kind: 'pattern', name: String(ev.src) };
     } else {
       warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);
       return null;
@@ -376,15 +398,9 @@ export class FrameRenderer {
   }
 
   /** Phase 3: Build TileParams for each event in draw order and dispatch to the renderer. */
-  private drawFrame(allEvents: FrameEvent[], t: number, cps: number, frameWallTime: number): void {
-    // Track which elements have already had renderVideoFrame called this frame.
-    // Multiple FrameEvents may share the same element (via deduplication in queryNeeded).
-    // renderVideoFrame must only run once per element per frame — it is a stateful
-    // playback-control function, not a pure query. Calling it multiple times per frame
-    // confuses the effective-rate estimator (wallDt≈0 on repeated calls) and can
-    // produce spurious drift seeks on shared rolling elements.
-    const videoFrameProcessed = new Set<VideoEl>();
+  private drawFrame(allEvents: FrameEvent[], t: number, cps: number, frameWallTime: number, videoFrameProcessed: Set<VideoEl>, skipFboOnly: boolean): void {
     for (const fe of allEvents) {
+      if (skipFboOnly && fe.ev._fboOnly) continue;
       let params: TileParams | null;
       try {
         params = this.buildTileParams(fe, t, cps, frameWallTime, videoFrameProcessed);

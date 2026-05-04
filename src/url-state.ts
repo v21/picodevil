@@ -7,7 +7,7 @@ type UrlMediaEntry = Pick<MediaEntry, "id" | "name" | "url" | "type"> &
 type UrlState = { v: number; code: string; media: UrlMediaEntry[] };
 
 /** Maximum hash length (bytes) before we warn the user. */
-const URL_WARN_BYTES = 8000;
+const URL_WARN_BYTES = 32000;
 
 function toBase64url(str: string): string {
   const bytes = new TextEncoder().encode(str);
