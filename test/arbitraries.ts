@@ -186,6 +186,7 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
     { weight: 5, arbitrary: fc.constant("") },
     {
       weight: 2, arbitrary: fc.tuple(
+        fc.constantFrom(8, 16, 32),
         fc.oneof(
           fc.constantFrom(...EASING_CURVES).map(c => `'${c}'`),
           miniArb(EASING_CURVES, 1).map(m => `"${m}"`),
@@ -194,13 +195,16 @@ const continuousSignal: fc.Arbitrary<string> = fc.tuple(
           fc.constantFrom(...EASING_DIRS).map(d => `'${d}'`),
           miniArb(EASING_DIRS, 1).map(m => `"${m}"`),
         ),
-      ).map(([c, d]) => `.lerp(${c}, ${d})`)
+      ).map(([n, c, d]) => `.segment(${n}).lerp(${c}, ${d})`)
     },
     {
-      weight: 1, arbitrary: fc.oneof(
-        fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => `.spline(${n.toFixed(2)})`),
-        miniArb(["0.1", "0.3", "0.5", "0.8", "1"], 1).map(m => `.spline("${m}")`),
-      )
+      weight: 1, arbitrary: fc.tuple(
+        fc.constantFrom(8, 16, 32),
+        fc.oneof(
+          fc.double({ min: 0.1, max: 1.0, noNaN: true }).map(n => n.toFixed(2)),
+          miniArb(["0.1", "0.3", "0.5", "0.8", "1"], 1),
+        ),
+      ).map(([n, t]) => `.segment(${n}).spline(${t})`)
     },
   ),
 ).map(([sig, mod, easing]) => sig + mod + easing);

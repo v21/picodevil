@@ -427,6 +427,17 @@ function toNumEvent(ev: any): NumEvent | null {
   return { begin: Number(ev.whole.begin), end: Number(ev.whole.end), value: Number(ev.value) };
 }
 
+// Returns true when src behaves as a continuous signal: has events but none have
+// a whole span. Distinguishes signal from a genuinely empty pattern (e.g. mapOn
+// on a key that isn't set), which should not trigger a warning.
+function isSignalPattern(src: any, t: number, state?: any): boolean {
+  const cycle = Math.floor(t);
+  const raw = state
+    ? src.query(state.setSpan(new TimeSpan(Fraction(cycle), Fraction(cycle + 1))))
+    : src.queryArc(cycle, cycle + 1);
+  return raw.length > 0 && raw.every((e: any) => !e.whole);
+}
+
 // Return deduplicated events (by begin time) from a cycle-range query around t.
 // Using a cycle-range query (not a point) ensures fieldPat in mapOn returns
 // events with proper non-zero spans.
@@ -532,7 +543,7 @@ PatternProto.lerp = function (curve: any = "linear", direction: any = "inout") {
     const t = Number(state.span.begin);
     const evs = collectEvents(src, t, state);
     if (!evs.length) {
-      if (!warnedEmpty) {
+      if (!warnedEmpty && isSignalPattern(src, t, state)) {
         warnedEmpty = true;
         warn("lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()");
       }
@@ -584,7 +595,7 @@ PatternProto.spline = function (tension: any = 0.5) {
     const t = Number(state.span.begin);
     const evs = collectEvents(src, t, state);
     if (!evs.length) {
-      if (!warnedEmpty) {
+      if (!warnedEmpty && isSignalPattern(src, t, state)) {
         warnedEmpty = true;
         warn("spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()");
       }
