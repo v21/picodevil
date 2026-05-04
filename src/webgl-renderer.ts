@@ -109,7 +109,7 @@ void main() {
   // Apply greyscale: mix between original and luminance-based grey.
   // Rec. 601 luma weights.
   float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-  color.rgb = mix(color.rgb, vec3(luma), clamp(v_grey, 0.0, 1.0));
+  color.rgb = mix(color.rgb, vec3(luma), v_grey);
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
   color.a *= v_alpha;
@@ -401,7 +401,7 @@ export class WebGLRenderer implements Renderer {
       uvSizeX,
       uvSizeY,
       alpha:       Math.max(0, Math.min(1, p.alpha)),
-      grey:        Math.max(0, Math.min(1, p.grey ?? 0)),
+      grey:        p.grey ?? 0,
       pixUVStepX:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeX) / cellW : 0,
       pixUVStepY:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeY) / cellH : 0,
       transform:   buildTransform(p),
