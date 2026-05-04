@@ -70,7 +70,7 @@ PatternProto.pixelate = function (value?: any) {
 /**
  * Rotates the hue of every pixel in the tile. Value is in turns: 0 = no change,
  * 0.5 = opposite hue (red → cyan), 1 = full rotation back to original.
- * Applied after greyscale, before alpha.
+ * Applied after greyscale, before contrast/brightness.
  *
  * @param {number | string | Pattern} value hue rotation in turns (0–1)
  * @returns {Pattern} pattern with hue rotation applied
@@ -80,6 +80,59 @@ PatternProto.pixelate = function (value?: any) {
  * $: color("red").huerot("0 0.33 0.67")            // red → green → blue per cycle
  */
 export const huerot = createMixParam("huerot");
+
+/**
+ * Adjusts contrast, centred at 0.5. 1 = normal (default), 0 = flat 50% grey, -1 = invert.
+ * Values above 1 increase contrast; negative values invert the image.
+ * Applied after greyscale and hue rotation, before alpha.
+ *
+ * @param {number | string | Pattern} value contrast multiplier (default 1)
+ * @returns {Pattern} pattern with contrast applied
+ * @example
+ * $: video("clip.mp4").contrast(2)                        // punch up contrast
+ * $: video("clip.mp4").contrast(-1)                       // invert
+ * $: video("clip.mp4").contrast(0)                        // flat 50% grey
+ * $: video("clip.mp4").contrast(sine.range(0.5, 2))       // pulsing contrast
+ */
+export const contrast = createMixParam("contrast");
+
+/**
+ * Adds a brightness offset after contrast is applied. 0 = no change (default),
+ * positive = brighter, negative = darker. Combine with .contrast(-1) to invert
+ * with a brightness shift.
+ *
+ * @param {number | string | Pattern} value brightness offset
+ * @returns {Pattern} pattern with brightness applied
+ * @example
+ * $: video("clip.mp4").brightness(0.2)                    // slightly brighter
+ * $: video("clip.mp4").brightness(-0.3)                   // darker
+ * $: video("clip.mp4").brightness(sine.range(-0.3, 0.3))  // pulsing brightness
+ * $: video("clip.mp4").contrast(-1).brightness(0)         // invert (same as contrast(-1) alone)
+ */
+export const brightness = createMixParam("brightness");
+
+const _tintHue      = createMixParam("tintHue");
+const _tintStrength = createMixParam("tintStrength");
+
+/**
+ * Colorises the pattern toward a target hue while preserving luminance.
+ * Operates in HSL space in the same pass as huerot (applied before it).
+ * Hue is attracted toward `hue` via the shortest arc; saturation is pulled toward 1.
+ * Values are unclamped — strength > 1 produces hyper-saturated / psychedelic effects.
+ *
+ * @param {number | string | Pattern} hue target hue in [0,1] turns (0/1 = red, 0.33 = green, 0.67 = blue)
+ * @param {number | string | Pattern} [strength=1] tint amount: 0 = no effect, 1 = full colorise
+ * @returns {Pattern} pattern with tint applied
+ * @example
+ * $: video("clip.mp4").tint(0)                         // red tint
+ * $: video("clip.mp4").tint(0.67, 0.5)                 // subtle blue tint
+ * $: video("clip.mp4").tint(sine.range(0, 1))          // cycling hue tint at full strength
+ * $: video("clip.mp4").tint(0.33, 2)                   // hyper-green (unclamped)
+ * $: video("clip.mp4").tint(0.5).huerot(sine)          // tint then spin the result
+ */
+PatternProto.tint = function (hue: any, strength: any = 1) {
+  return _tintStrength(strength, _tintHue(hue, this));
+};
 
 /**
  * Alias for alpha. Sets the transparency of the pattern.

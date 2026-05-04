@@ -176,21 +176,40 @@ $: video("clip.mp4").alpha(0.5)
 $: color("red").alpha("1 0.5 0")   // patterned alpha
 ```
 
-### Greyscale and hue rotation
+### Colour effects
 
-`.grey(amount)` desaturates towards greyscale (0 = full colour, 1 = fully greyscale).
+`.grey(amount)` controls saturation: 0 = full colour, 1 = fully greyscale. Values outside [0,1] also work — negative values boost saturation beyond the original, and values above 1 invert the chroma deviation (complementary hues).
 
-`.huerot(turns)` rotates the hue of every pixel. Value is in turns: 0 = no change, 0.5 = opposite hue (red → cyan), 1 = full rotation back to original. Accepts patterns and signals.
+`.huerot(turns)` rotates the hue of every pixel. Value is in turns: 0 = no change, 0.5 = opposite hue (red → cyan), 1 = full rotation back to original.
 
-Both are applied in the fragment shader after texture sampling.
+`.contrast(n)` adjusts contrast, centred at 0.5. 1 = normal (default), 0 = flat 50% grey, -1 = full invert. Values above 1 increase contrast.
+
+`.brightness(n)` adds a brightness offset after contrast. 0 = no change (default), positive = brighter, negative = darker.
+
+`.tint(hue, strength)` colorises toward a target hue while attracting saturation toward 1. `hue` is in [0,1] turns (0/1 = red, 0.33 = green, 0.67 = blue). `strength` defaults to 1 and is unclamped — values above 1 produce hyper-saturated effects; negative values push away from the hue. Operates in HSL space in a shared pass with `.huerot()` (applied before it, so huerot can further rotate the result).
+
+All are applied in the fragment shader in order: grey → tint+huerot (shared HSL pass) → contrast → brightness → alpha.
 
 ```js
-$: video("clip.mp4").grey(1)                        // fully greyscale
-$: video("clip.mp4").grey(0.5)                      // half desaturated
-$: video("clip.mp4").huerot(0.5)                    // invert hue
-$: video("clip.mp4").huerot(sine.range(0, 1))       // cycling hue
-$: color("red").huerot("0 0.33 0.67")               // red → green → blue per cycle
-$: video("clip.mp4").grey(1).huerot(sine.range(0, 1)) // tint a greyscale video
+$: video("clip.mp4").grey(1)                               // fully greyscale
+$: video("clip.mp4").grey(0.5)                             // half desaturated
+$: video("clip.mp4").grey(-1)                              // 2× saturated
+$: video("clip.mp4").huerot(0.5)                           // invert hue
+$: video("clip.mp4").huerot(sine.range(0, 1))              // cycling hue
+$: color("red").huerot("0 0.33 0.67")                      // red → green → blue per cycle
+$: video("clip.mp4").grey(1).huerot(sine.range(0, 1))      // tint a greyscale video
+$: video("clip.mp4").contrast(2)                           // punch up contrast
+$: video("clip.mp4").contrast(-1)                          // invert
+$: video("clip.mp4").contrast(0)                           // flat 50% grey
+$: video("clip.mp4").contrast(sine.range(0.5, 2))          // pulsing contrast
+$: video("clip.mp4").brightness(0.2)                       // slightly brighter
+$: video("clip.mp4").brightness(sine.range(-0.3, 0.3))     // pulsing brightness
+$: video("clip.mp4").contrast(2).brightness(-0.1)          // high contrast, slightly dark
+$: video("clip.mp4").tint(0)                               // red tint
+$: video("clip.mp4").tint(0.67, 0.5)                       // subtle blue tint
+$: video("clip.mp4").tint(sine.range(0, 1))                // cycling hue tint
+$: video("clip.mp4").tint(0.33, 2)                         // hyper-green (unclamped)
+$: video("clip.mp4").tint(0.5).huerot(sine)                // tint then spin the result
 ```
 
 ### Scale

@@ -36,7 +36,7 @@ export function createMixParam(name: string) {
 
   const func = function (value: any, pat?: any) {
     if (!pat) return reify(value).withValue(withVal);
-    if (value === undefined) return pat.fmap(withVal);
+    if (value === undefined) return pat;
     const valPat = reify(value);
 
     // _perEvent controls (rand, irand, choose): sample at hap onset for stability,

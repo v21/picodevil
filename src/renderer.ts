@@ -392,9 +392,13 @@ export class FrameRenderer {
       rotateYScale,
       scaleX: ev.scaleX !== undefined ? Number(ev.scaleX) : 1,
       scaleY: ev.scaleY !== undefined ? Number(ev.scaleY) : 1,
-      grey:     ev.grey !== undefined ? Number(ev.grey) : 0,
-      pixelate: ev.pixelate !== undefined ? Math.max(0, Number(ev.pixelate)) : 0,
-      huerot:   ev.huerot !== undefined ? Number(ev.huerot) : 0,
+      grey:       ev.grey       !== undefined ? Number(ev.grey)       : 0,
+      pixelate:   ev.pixelate   !== undefined ? Math.max(0, Number(ev.pixelate)) : 0,
+      huerot:     ev.huerot     !== undefined ? Number(ev.huerot)     : 0,
+      contrast:      ev.contrast      !== undefined ? Number(ev.contrast)      : 1,
+      brightness:    ev.brightness    !== undefined ? Number(ev.brightness)    : 0,
+      tintHue:       ev.tintHue       !== undefined ? Number(ev.tintHue)       : 0,
+      tintStrength:  ev.tintStrength  !== undefined ? Number(ev.tintStrength)  : 0,
     };
   }
 

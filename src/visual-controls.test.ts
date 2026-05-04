@@ -65,6 +65,34 @@ describe("visual controls via createMixParam", () => {
       expect(query(pat, 0).speed).toBe(2);
     });
 
+    it(".contrast() merges contrast", () => {
+      const pat = src("x").contrast(2);
+      expect(query(pat, 0).contrast).toBe(2);
+    });
+
+    it(".brightness() merges brightness", () => {
+      const pat = src("x").brightness(0.3);
+      expect(query(pat, 0).brightness).toBeCloseTo(0.3);
+    });
+
+    it(".contrast() and .brightness() compose", () => {
+      const pat = src("x").contrast(-1).brightness(0);
+      expect(query(pat, 0).contrast).toBe(-1);
+      expect(query(pat, 0).brightness).toBe(0);
+    });
+
+    it(".tint() merges tintHue and tintStrength", () => {
+      const pat = src("x").tint(0.3, 0.8);
+      expect(query(pat, 0).tintHue).toBeCloseTo(0.3);
+      expect(query(pat, 0).tintStrength).toBeCloseTo(0.8);
+    });
+
+    it(".tint() strength defaults to 1", () => {
+      const pat = src("x").tint(0.5);
+      expect(query(pat, 0).tintHue).toBeCloseTo(0.5);
+      expect(query(pat, 0).tintStrength).toBe(1);
+    });
+
     it(".pixelate() merges pixelate block size", () => {
       const pat = src("x").pixelate(10);
       expect(query(pat, 0).pixelate).toBe(10);

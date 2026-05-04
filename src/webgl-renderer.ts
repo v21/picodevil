@@ -9,18 +9,22 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (30 floats = 120 bytes):
+// Per-instance Float32Array layout (32 floats = 128 bytes):
 //   [0..1]   destOffset  (vec2)
 //   [2..3]   destSize    (vec2)
 //   [4..5]   uvOffset    (vec2)
 //   [6..7]   uvSize      (vec2)
-//   [8]      alpha       (float)
-//   [9]      texIndex    (float)
-//   [10..25] transform   (mat4, column-major)
-//   [26]     grey        (float)
-//   [27..28] pixUVStep   (vec2: UV-space step for pixelation; 0 = off)
-//   [29]     hueRot      (float: hue rotation in [0,1] turns; 0 = off)
-const INSTANCE_FLOATS = 30;
+//   [8]      alpha       (float) ─┐
+//   [9]      texIndex    (float)  │ packed as vec4 a_scalars (loc 6)
+//   [10]     grey        (float)  │
+//   [11]     hueRot      (float) ─┘
+//   [12..13] pixUVStep   (vec2: UV-space step for pixelation; 0 = off)
+//   [14..29] transform   (mat4, column-major)
+//   [30]     contrast    (float: centred-contrast multiplier; 1 = identity)
+//   [31]     brightness  (float: additive brightness offset; 0 = identity)
+//   [32..33] tint        (vec2: x=tintHue [0,1 turns], y=tintStrength [unclamped])
+//   Loc 15: free for future effects
+const INSTANCE_FLOATS = 34;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -30,12 +34,13 @@ const LOC_DEST_OFFSET = 2;
 const LOC_DEST_SIZE   = 3;
 const LOC_UV_OFFSET   = 4;
 const LOC_UV_SIZE     = 5;
-const LOC_ALPHA       = 6;
-const LOC_TEX_INDEX   = 7;
+const LOC_SCALARS     = 6; // vec4: (alpha, texIndex, grey, hueRot)
+const LOC_PIX_UV_STEP = 7; // vec2
 const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
-const LOC_GREY        = 12;
-const LOC_PIX_UV_STEP = 13; // vec2
-const LOC_HUE_ROT    = 14; // float
+const LOC_CONTRAST    = 12; // float
+const LOC_BRIGHTNESS  = 13; // float
+const LOC_TINT        = 14; // vec2: (tintHue, tintStrength)
+// loc 15: free
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -50,12 +55,13 @@ layout(location = 2) in vec2 a_destOffset;
 layout(location = 3) in vec2 a_destSize;
 layout(location = 4) in vec2 a_uvOffset;
 layout(location = 5) in vec2 a_uvSize;
-layout(location = 6) in float a_alpha;
-layout(location = 7) in float a_texIndex;
+layout(location = 6) in vec4 a_scalars;  // x=alpha, y=texIndex, z=grey, w=hueRot
+layout(location = 7) in vec2 a_pixUVStep;
 layout(location = 8) in mat4 a_transform; // uses locations 8-11
-layout(location = 12) in float a_grey;
-layout(location = 13) in vec2 a_pixUVStep;
-layout(location = 14) in float a_hueRot;
+layout(location = 12) in float a_contrast;
+layout(location = 13) in float a_brightness;
+layout(location = 14) in vec2 a_tint;  // x=tintHue, y=tintStrength
+// location 15: free
 
 flat out int v_texIndex;
 out vec2 v_uv;
@@ -63,15 +69,21 @@ out float v_alpha;
 out float v_grey;
 out vec2 v_pixUVStep;
 flat out float v_hueRot;
+flat out float v_contrast;
+flat out float v_brightness;
+flat out vec2 v_tint;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
   v_uv = a_uvOffset + a_uv * a_uvSize;
-  v_texIndex = int(a_texIndex);
-  v_alpha = a_alpha;
-  v_grey = a_grey;
+  v_texIndex = int(a_scalars.y);
+  v_alpha = a_scalars.x;
+  v_grey = a_scalars.z;
   v_pixUVStep = a_pixUVStep;
-  v_hueRot = a_hueRot;
+  v_hueRot = a_scalars.w;
+  v_contrast = a_contrast;
+  v_brightness = a_brightness;
+  v_tint = a_tint;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
@@ -97,6 +109,9 @@ in float v_alpha;
 in float v_grey;
 in vec2 v_pixUVStep;
 flat in float v_hueRot;
+flat in float v_contrast;
+flat in float v_brightness;
+flat in vec2 v_tint;
 out vec4 fragColor;
 
 vec3 rgb2hsl(vec3 c) {
@@ -145,12 +160,20 @@ void main() {
   // Rec. 601 luma weights.
   float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
   color.rgb = mix(color.rgb, vec3(luma), v_grey);
-  // Hue rotation: convert to HSL, shift hue, convert back.
-  if (v_hueRot != 0.0) {
+  // Tint (hue attraction + saturation pull) and hue rotation share one HSL round-trip.
+  if (v_tint.y != 0.0 || v_hueRot != 0.0) {
     vec3 hsl = rgb2hsl(color.rgb);
+    if (v_tint.y != 0.0) {
+      float d = v_tint.x - hsl.x;
+      d = d - floor(d + 0.5);                        // shortest arc [-0.5, 0.5]
+      hsl.x = fract(hsl.x + v_tint.y * d);
+      hsl.y = hsl.y + v_tint.y * (1.0 - hsl.y);     // pull saturation toward 1, unclamped
+    }
     hsl.x = fract(hsl.x + v_hueRot);
     color.rgb = hsl2rgb(hsl);
   }
+  // Contrast (centred at 0.5) then brightness.
+  color.rgb = (color.rgb - 0.5) * v_contrast + 0.5 + v_brightness;
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
   color.a *= v_alpha;
@@ -318,7 +341,11 @@ interface DrawCommand {
   pixUVStepX:  number;
   pixUVStepY:  number;
   hueRot:      number;
-  transform:   Float32Array; // 16 floats, column-major
+  contrast:     number;
+  brightness:   number;
+  tintHue:      number;
+  tintStrength: number;
+  transform:    Float32Array; // 16 floats, column-major
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +474,11 @@ export class WebGLRenderer implements Renderer {
       pixUVStepX:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeX) / cellW : 0,
       pixUVStepY:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeY) / cellH : 0,
       hueRot:      p.huerot ?? 0,
-      transform:   buildTransform(p),
+      contrast:     p.contrast ?? 1,
+      brightness:   p.brightness ?? 0,
+      tintHue:      p.tintHue ?? 0,
+      tintStrength: p.tintStrength ?? 0,
+      transform:    buildTransform(p),
     });
   }
 
@@ -493,11 +524,15 @@ export class WebGLRenderer implements Renderer {
         d[base + 7]  = cmd.uvSizeY;
         d[base + 8]  = cmd.alpha;
         d[base + 9]  = texUnits.get(cmd.texture)!;
-        d.set(cmd.transform, base + 10);
-        d[base + 26] = cmd.grey;
-        d[base + 27] = cmd.pixUVStepX;
-        d[base + 28] = cmd.pixUVStepY;
-        d[base + 29] = cmd.hueRot;
+        d[base + 10] = cmd.grey;
+        d[base + 11] = cmd.hueRot;
+        d[base + 12] = cmd.pixUVStepX;
+        d[base + 13] = cmd.pixUVStepY;
+        d.set(cmd.transform, base + 14);
+        d[base + 30] = cmd.contrast;
+        d[base + 31] = cmd.brightness;
+        d[base + 32] = cmd.tintHue;
+        d[base + 33] = cmd.tintStrength;
       }
 
       this.setBlend(blendMode);
@@ -695,33 +730,34 @@ function createVAO(
   gl.vertexAttribPointer(LOC_UV_SIZE, 2, gl.FLOAT, false, s, 24);
   gl.vertexAttribDivisor(LOC_UV_SIZE, 1);
 
-  gl.enableVertexAttribArray(LOC_ALPHA);
-  gl.vertexAttribPointer(LOC_ALPHA, 1, gl.FLOAT, false, s, 32);
-  gl.vertexAttribDivisor(LOC_ALPHA, 1);
+  // scalars vec4: (alpha, texIndex, grey, hueRot) packed at offset 32
+  gl.enableVertexAttribArray(LOC_SCALARS);
+  gl.vertexAttribPointer(LOC_SCALARS, 4, gl.FLOAT, false, s, 32);
+  gl.vertexAttribDivisor(LOC_SCALARS, 1);
 
-  gl.enableVertexAttribArray(LOC_TEX_INDEX);
-  gl.vertexAttribPointer(LOC_TEX_INDEX, 1, gl.FLOAT, false, s, 36);
-  gl.vertexAttribDivisor(LOC_TEX_INDEX, 1);
+  gl.enableVertexAttribArray(LOC_PIX_UV_STEP);
+  gl.vertexAttribPointer(LOC_PIX_UV_STEP, 2, gl.FLOAT, false, s, 48);
+  gl.vertexAttribDivisor(LOC_PIX_UV_STEP, 1);
 
   // mat4: 4 consecutive vec4 attrib slots
   for (let col = 0; col < 4; col++) {
     const loc = LOC_TRANSFORM + col;
     gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, s, 40 + col * 16);
+    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, s, 56 + col * 16);
     gl.vertexAttribDivisor(loc, 1);
   }
 
-  gl.enableVertexAttribArray(LOC_GREY);
-  gl.vertexAttribPointer(LOC_GREY, 1, gl.FLOAT, false, s, 104);
-  gl.vertexAttribDivisor(LOC_GREY, 1);
+  gl.enableVertexAttribArray(LOC_CONTRAST);
+  gl.vertexAttribPointer(LOC_CONTRAST, 1, gl.FLOAT, false, s, 120);
+  gl.vertexAttribDivisor(LOC_CONTRAST, 1);
 
-  gl.enableVertexAttribArray(LOC_PIX_UV_STEP);
-  gl.vertexAttribPointer(LOC_PIX_UV_STEP, 2, gl.FLOAT, false, s, 108);
-  gl.vertexAttribDivisor(LOC_PIX_UV_STEP, 1);
+  gl.enableVertexAttribArray(LOC_BRIGHTNESS);
+  gl.vertexAttribPointer(LOC_BRIGHTNESS, 1, gl.FLOAT, false, s, 124);
+  gl.vertexAttribDivisor(LOC_BRIGHTNESS, 1);
 
-  gl.enableVertexAttribArray(LOC_HUE_ROT);
-  gl.vertexAttribPointer(LOC_HUE_ROT, 1, gl.FLOAT, false, s, 116);
-  gl.vertexAttribDivisor(LOC_HUE_ROT, 1);
+  gl.enableVertexAttribArray(LOC_TINT);
+  gl.vertexAttribPointer(LOC_TINT, 2, gl.FLOAT, false, s, 128);
+  gl.vertexAttribDivisor(LOC_TINT, 1);
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);

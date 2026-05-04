@@ -135,7 +135,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
-- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`, `.grey()`, `.huerot(n)` — huerot in [0,1] turns (0.5 = opposite hue); applied in fragment shader after greyscale
+- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`, `.grey()`, `.huerot(n)`, `.contrast(n)`, `.brightness(n)`, `.tint(hue, strength)` — huerot in [0,1] turns (0.5 = opposite hue); contrast centred at 0.5 (1=normal, 0=flat grey, -1=invert); brightness is additive offset (0=normal); tint attracts all pixels toward a hue (HSL space, shared pass with huerot, unclamped strength for hyper-saturation); `.grey()` outside [0,1] adjusts saturation (negative = boost, >1 = chroma inversion)
 - Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.fit()`, `.urlBase()`
 - Crop: `.cropx(n)`, `.cropy(n)`, `.cropw(n)`, `.croph(n)`, `.cropwh(n)`, `.crop(x, y, w, h)` — cropx/cropy are the **centre** of the crop window (default 0.5); cropw/croph are width/height fractions (negative = flip axis; 0 = single-pixel colour fill); crop outside [0,1] tiles the source
 - Scroll: `.scrollx(n)`, `.scrolly(n)`, `.scroll(x, y)` — 0-origin aliases for cropx/cropy (0 = no scroll, 0.5 = shift by half); `.scrollx(n)` = `.cropx(n + 0.5)`

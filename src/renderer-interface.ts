@@ -41,12 +41,20 @@ export interface TileParams {
   rotateYScale: number;
   scaleX: number;
   scaleY: number;
-  /** Greyscale amount: 0 = full colour (default), 1 = fully greyscale. */
+  /** Greyscale amount: 0 = full colour (default), 1 = fully greyscale. Values outside [0,1] adjust saturation. */
   grey: number;
   /** Pixelation block size in screen pixels. 0 = off (default). */
   pixelate: number;
   /** Hue rotation in [0,1] turns (0 = no rotation, 0.5 = opposite hue). */
   huerot: number;
+  /** Contrast multiplier, centred at 0.5: 1 = normal (default), 0 = flat grey, -1 = invert. */
+  contrast: number;
+  /** Brightness offset added after contrast: 0 = no change (default), positive = brighter, negative = darker. */
+  brightness: number;
+  /** Tint hue target in [0,1] turns. Applied before huerot in the shared HSL pass. */
+  tintHue: number;
+  /** Tint strength: 0 = no tint (default), 1 = full colorise, unclamped for hyper-saturation effects. */
+  tintStrength: number;
 }
 
 /**
