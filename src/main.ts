@@ -3,6 +3,8 @@ import "./visual-controls";
 import { setupEditor } from "./editor";
 import "./shuffle-stack";
 import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CACHE_BYTES } from "./config";
+import { CpsController } from "./cps-controller";
+import { createMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
 import { initRegistry as initPatternRegistry, resetRegistry, snapshotRegistry, restoreRegistry, collectScreens, getNamedScreenIndices, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
@@ -47,55 +49,13 @@ resize();
 // --- state ---
 let screens: Screen[] = [];
 let namedScreens: { name: string; screenIndex: number }[] = [];
-let cyclesPerSecond = CYCLES_PER_SECOND;
-let cpsPattern: Pattern | null = null;
-let accumulatedCycle = 0;
-let lastFrameSec = 0;
 
 import { Pattern, useRNG } from "@strudel/core";
 useRNG('precise');
 initPatternRegistry();
 
 // --- performance metrics (exposed for stress testing) ---
-const uzuMetrics = {
-  frameTimes: [] as number[],
-  interFrameTimes: [] as number[],
-  heapSamples: [] as number[],
-  seekCount: 0,
-  poolSize: 0,
-  freePoolSize: 0,
-  shareHits: 0,
-  maxFrameTime: 0,
-  maxInterFrameTime: 0,
-  xLog: [] as number[],
-  naturalCount: 0,
-  seekModeCount: 0,
-  screensCount: 0,
-  eventsPerFrame: 0,
-  seeksThisFrame: 0,
-  driftSeeksThisFrame: 0,
-  seeksHistory: [] as number[],
-  driftSeeksHistory: [] as number[],
-  /** Per-phase rolling frame times (ms, last 300 frames). */
-  phaseQuery: [] as number[],
-  phaseAssign: [] as number[],
-  phaseDraw: [] as number[],
-  phasePrewarm: [] as number[],
-  reset() {
-    this.frameTimes = [];
-    this.interFrameTimes = [];
-    this.heapSamples = [];
-    this.seekCount = 0;
-    this.shareHits = 0;
-    this.maxFrameTime = 0;
-    this.maxInterFrameTime = 0;
-    this.xLog = [];
-    this.phaseQuery = [];
-    this.phaseAssign = [];
-    this.phaseDraw = [];
-    this.phasePrewarm = [];
-  },
-};
+const uzuMetrics = createMetrics();
 (window as any).uzuMetrics = uzuMetrics;
 (window as any).uzuPerfInfo = () => {
   let blobCacheBytes = 0;
@@ -132,6 +92,7 @@ const pool = createVideoPoolManager({
 });
 
 const frameRenderer = new FrameRenderer(activeRenderer, pool, uzuMetrics);
+const cpsController = new CpsController(CYCLES_PER_SECOND, performance.now());
 
 /**
  * Sets the global cycles per second (tempo). Default is 0.5 (one cycle = 2 seconds).
@@ -143,31 +104,11 @@ const frameRenderer = new FrameRenderer(activeRenderer, pool, uzuMetrics);
  *
  */
 function setCps(cps: number | Pattern) {
-  if (typeof cps === "number") {
-    if (cps === 0) {
-      // Freeze at current cycle position
-      const nowSec = (performance.now() - startTime) / 1000;
-      accumulatedCycle = nowSec * cyclesPerSecond;
-      cyclesPerSecond = 0;
-      cpsPattern = null;
-      return;
-    }
-    const nowSec = (performance.now() - startTime) / 1000;
-    const currentCycle = nowSec * cyclesPerSecond;
-    startTime = performance.now() - (currentCycle / cps) * 1000;
-    cyclesPerSecond = cps;
-    cpsPattern = null;
-  } else {
-    cpsPattern = cps;
-  }
+  cpsController.setCps(cps, performance.now());
 }
 
 function setCpm(cpm: number | Pattern) {
-  if (typeof cpm === "number") {
-    setCps(cpm / 60);
-  } else {
-    setCps(cpm.fmap((v: number) => v / 60));
-  }
+  cpsController.setCpm(cpm, performance.now());
 }
 
 function hush() {
@@ -200,8 +141,7 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
   const prevScreens = [...screens];
   const prevNamedScreens = [...namedScreens];
   const prevRegistry = snapshotRegistry();
-  const prevCpsPattern = cpsPattern;
-  const prevCyclesPerSecond = cyclesPerSecond;
+  const prevCps = cpsController.snapshot();
 
   // Phase 3: Clear state and execute
   pool.clearVideos(frameRenderer.activeVideoEls.splice(0));
@@ -210,7 +150,6 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
   screens = [];
   namedScreens = [];
   resetRegistry();
-  cpsPattern = null;
   resetWidgetCounter();
   try {
     runTranspiled(transpiled, {
@@ -235,14 +174,12 @@ window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo
     screens = prevScreens;
     namedScreens = prevNamedScreens;
     restoreRegistry(prevRegistry);
-    cpsPattern = prevCpsPattern;
-    cyclesPerSecond = prevCyclesPerSecond;
+    cpsController.restore(prevCps);
     return { error: e instanceof Error ? e.message : String(e), widgets };
   }
 };
 
 // --- render loop ---
-let startTime = performance.now();
 let lastRafAbsTime = performance.now();
 
 // Expose active video elements for testing/debugging
@@ -252,27 +189,14 @@ function frame() {
   const rafAbsNow = performance.now();
   const interFrameGap = rafAbsNow - lastRafAbsTime;
   lastRafAbsTime = rafAbsNow;
-  const now = rafAbsNow - startTime;
-  const nowSec = now / 1000;
-  const deltaSec = nowSec - lastFrameSec;
-  lastFrameSec = nowSec;
 
-  let cps = cyclesPerSecond;
-  if (cpsPattern) {
-    const haps = cpsPattern.queryArc(accumulatedCycle, accumulatedCycle);
-    if (haps.length > 0) cps = Math.max(0, Number(haps[0].value)) || 0;
-  }
-  accumulatedCycle += deltaSec * cps;
+  const { cps, cycle, t } = cpsController.tick(rafAbsNow);
   setRuntimeCps(cps);
-
-  const cycle = (cpsPattern || cyclesPerSecond === 0) ? accumulatedCycle : nowSec * cyclesPerSecond;
-  const t = Math.floor(cycle) + (cycle % 1);
 
   frameRenderer.render(screens, namedScreens, t, cps, cycle, rafAbsNow);
 
   // Record metrics
-  const frameEnd = performance.now() - startTime;
-  const frameDuration = frameEnd - now;
+  const frameDuration = performance.now() - rafAbsNow;
   const MAX_SAMPLES = 300;
   uzuMetrics.frameTimes.push(frameDuration);
   if (uzuMetrics.frameTimes.length > MAX_SAMPLES) uzuMetrics.frameTimes.shift();
