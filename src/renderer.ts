@@ -448,16 +448,29 @@ export class FrameRenderer {
       const available = activeCount + freeList.length;
       const deficit = nsList.length - available;
 
-      // Seek existing free elements toward their expected positions
+      // Seek existing free elements to the position they'll need at activation time.
+      // Use hap.whole.begin (fixed within a cycle) rather than futureT (advances every
+      // frame) so the target is stable and we only seek once per hap transition instead
+      // of re-seeking every 0.15 s as futureT drifts past the paused element.
       for (let i = 0; i < freeList.length; i++) {
         const ns = nsList[i]; // best-effort: pair free elements with needed sources in order
-        if (!ns || ns.expectedTime == null) continue;
+        if (!ns) continue;
         const el = freeList[i];
+
+        // Upgrade to blob URL if it became available since element was created
+        const blobUrl = pool.getBlobUrl(srcUrl);
+        if (blobUrl && el.src !== blobUrl) el.src = blobUrl;
+
         const dur = isFinite(el.duration) ? el.duration : (pool.videoDurations.get(srcUrl) ?? 0);
+        const activationCycle = Number(ns.hap.whole.begin);
+        const activationTarget = computeExpectedFromEvent(
+          ns.ev, activationCycle, eventBeginFromHap(ns.ev, ns.hap, activationCycle), cps, dur || undefined,
+        );
+        if (activationTarget == null) continue;
         const score = dur > 0
-          ? ((ns.expectedTime - el.currentTime) % dur + dur) % dur
-          : Math.abs(el.currentTime - ns.expectedTime);
-        if (!el._state.seeking && score > 0.15) el.currentTime = ns.expectedTime;
+          ? ((activationTarget - el.currentTime) % dur + dur) % dur
+          : Math.abs(el.currentTime - activationTarget);
+        if (!el._state.seeking && score > 0.15) el.currentTime = activationTarget;
       }
 
       // Create new prewarm elements to cover the deficit, consuming the shared
@@ -471,16 +484,21 @@ export class FrameRenderer {
         const blobUrl = pool.getBlobUrl(srcUrl);
         el.src = blobUrl ?? srcUrl;
         el.preload = 'auto';
-        if (ns?.expectedTime != null) {
+        if (ns) {
+          const activationCycle = Number(ns.hap.whole.begin);
           const cachedDur = pool.videoDurations.get(srcUrl);
           if (cachedDur != null) {
-            // Duration already known — seek immediately using the precise expected time
-            el.currentTime = ns.expectedTime;
+            const activationTarget = computeExpectedFromEvent(
+              ns.ev, activationCycle, eventBeginFromHap(ns.ev, ns.hap, activationCycle), cps, cachedDur,
+            );
+            if (activationTarget != null) el.currentTime = activationTarget;
           } else {
-            // Duration unknown — wait for metadata then compute the accurate position
+            // Duration unknown — wait for metadata then seek to the activation position
             el.addEventListener('loadedmetadata', () => {
-              const realExpected = computeExpectedFromEvent(ns.ev, futureT, eventBeginFromHap(ns.ev, ns.hap, futureT), cps, el.duration);
-              if (realExpected != null) el.currentTime = realExpected;
+              const activationTarget = computeExpectedFromEvent(
+                ns.ev, activationCycle, eventBeginFromHap(ns.ev, ns.hap, activationCycle), cps, el.duration,
+              );
+              if (activationTarget != null) el.currentTime = activationTarget;
             }, { once: true });
           }
         }

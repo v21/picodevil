@@ -23,8 +23,15 @@ const DURATION_MS = parseInt(flag("duration", "35000"), 10);
 const TRACE_DURATION_MS = parseInt(flag("trace", "20000"), 10);
 
 // The pattern to investigate
-const SETUP_CODE = ``;
-const PATTERN_CODE = `$: s("CGI_12.mp4").cropStack(50, 50).rowscols(50).gridMod()`;
+const SETUP_CODE = [
+  `loadVideo('dvsa1', 'http://localhost:3456/videos/CGI_10.mp4')`,
+  `loadVideo('dvsa2', 'http://localhost:3456/videos/CGI_12.mp4')`,
+  `loadVideo('dvsa3', 'http://localhost:3456/videos/CGI_15.mp4')`,
+].join("\n");
+const PATTERN_CODE = [
+  `$: s("all").alpha(1).scale(1.01)`,
+  `dvsa: s("dvsa1 dvsa2 dvsa3").width(0.5).height(0.5).sync()`,
+].join("\n");
 
 async function main() {
   const server = await createServer({ server: { port: 0 }, logLevel: "warn" });
