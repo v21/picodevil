@@ -1,4 +1,3 @@
-import { silence } from "@strudel/core";
 import "./visual-controls";
 import { setupEditor } from "./editor";
 import "./shuffle-stack";
@@ -6,21 +5,23 @@ import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CAC
 import { CpsController } from "./cps-controller";
 import { createMetrics, recordFrameMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
-import { initRegistry as initPatternRegistry, resetRegistry, snapshotRegistry, restoreRegistry, collectScreens, getNamedScreenIndices, each, all } from "./pattern-registry";
+import { initRegistry as initPatternRegistry, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
 import { createVideoPoolManager } from "./video-pool-manager";
-import { transpile, type WidgetCallInfo } from "./transpiler";
-import { runTranspiled } from "./eval-sandbox";
-import { slider as sliderWidget, resetWidgetCounter } from "./widgets";
-import { warn, flushWarnings, clearWarnings } from "./warnings";
+import { slider as sliderWidget } from "./widgets";
+import { warn, flushWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
 import { loadCamera, loadScreen } from "./stream-manager";
 import { Canvas2DRenderer } from "./canvas2d-renderer";
 import { WebGLRenderer } from "./webgl-renderer";
 import { FrameRenderer } from "./renderer";
-import type { Renderer, Screen } from "./renderer-interface";
+import type { Renderer } from "./renderer-interface";
+import { EvalController } from "./eval-controller";
 
+import { Pattern, useRNG } from "@strudel/core";
+useRNG('precise');
+initPatternRegistry();
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 
@@ -44,14 +45,6 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 resize();
-
-// --- state ---
-let screens: Screen[] = [];
-let namedScreens: { name: string; screenIndex: number }[] = [];
-
-import { Pattern, useRNG } from "@strudel/core";
-useRNG('precise');
-initPatternRegistry();
 
 // --- performance metrics (exposed for stress testing) ---
 const uzuMetrics = createMetrics();
@@ -110,73 +103,25 @@ function setCpm(cpm: number | Pattern) {
   cpsController.setCpm(cpm, performance.now());
 }
 
-function hush() {
-  screens = [];
-  namedScreens = [];
-  resetRegistry();
-  return silence;
-}
-
-
 // Expose media registry for monkey tester
 (window as any).uzuAddMedia = addMedia;
 (window as any).uzuClearMedia = clearMediaRegistry;
 
+const evalController = new EvalController({
+  clearActiveVideos: () => pool.clearVideos(frameRenderer.activeVideoEls.splice(0)),
+  prewarmScreen: (s) => frameRenderer.prewarmBlobs(s),
+  snapshotCps: () => cpsController.snapshot(),
+  restoreCps: (snap) => cpsController.restore(snap),
+  globals: {
+    setCps, setCpm, setcps: setCps, setcpm: setCpm,
+    loadVideo, loadImage, loadCamera, loadScreen,
+    slider: sliderWidget,
+    each, all,
+  },
+});
+
 // called from editor on ctrl+enter
-window.uzuEval = (code: string): { error: string | null; widgets: WidgetCallInfo[] } => {
-  // Phase 1: Transpile — if this fails, don't touch running state at all
-  let transpiled: string;
-  let widgets: WidgetCallInfo[] = [];
-  try {
-    const result = transpile(code);
-    transpiled = result.code;
-    widgets = result.widgets;
-  } catch (e) {
-    console.error("transpile error:", e);
-    return { error: e instanceof Error ? e.message : String(e), widgets: [] };
-  }
-
-  // Phase 2: Snapshot current state so we can restore on execution failure
-  const prevScreens = [...screens];
-  const prevNamedScreens = [...namedScreens];
-  const prevRegistry = snapshotRegistry();
-  const prevCps = cpsController.snapshot();
-
-  // Phase 3: Clear state and execute
-  pool.clearVideos(frameRenderer.activeVideoEls.splice(0));
-  clearWarnings();
-  if (typeof window !== "undefined") (window as any).uzuWarnings = [];
-  screens = [];
-  namedScreens = [];
-  resetRegistry();
-  resetWidgetCounter();
-  try {
-    runTranspiled(transpiled, {
-      setCps, setCpm, setcps: setCps, setcpm: setCpm,
-      hush, loadVideo, loadImage, loadCamera, loadScreen,
-      slider: sliderWidget,
-      each, all,
-    });
-    // Collect $: registered patterns
-    const pScreens = collectScreens();
-    namedScreens = getNamedScreenIndices();
-    if (pScreens.length > 0) {
-      screens = [...screens, ...pScreens];
-    }
-    // Prewarm all screens
-    for (const s of screens) frameRenderer.prewarmBlobs(s);
-    console.log("evaluated:", code, "screens:", screens.length);
-    return { error: null, widgets };
-  } catch (e) {
-    // Execution failed — restore previous state so old visuals keep rendering
-    console.error("eval error:", e);
-    screens = prevScreens;
-    namedScreens = prevNamedScreens;
-    restoreRegistry(prevRegistry);
-    cpsController.restore(prevCps);
-    return { error: e instanceof Error ? e.message : String(e), widgets };
-  }
-};
+window.uzuEval = (code) => evalController.eval(code);
 
 // --- render loop ---
 let lastRafAbsTime = performance.now();
@@ -192,14 +137,14 @@ function frame() {
   const { cps, cycle, t } = cpsController.tick(rafAbsNow);
   setRuntimeCps(cps);
 
-  frameRenderer.render(screens, namedScreens, t, cps, cycle, rafAbsNow);
+  frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, rafAbsNow);
 
   const frameDuration = performance.now() - rafAbsNow;
   const perfMem = (performance as any).memory;
   recordFrameMetrics(
     uzuMetrics, frameDuration, interFrameGap,
     frameRenderer.activeVideoEls, pool.freeVideoPool,
-    screens.length, frameRenderer.lastEventCount,
+    evalController.screens.length, frameRenderer.lastEventCount,
     perfMem ? perfMem.usedJSHeapSize : undefined,
   );
 
