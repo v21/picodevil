@@ -456,5 +456,238 @@
       "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
     ],
     "timestamp": "2026-05-03T20:33:51.648Z"
+  },
+  {
+    "code": "_bg: index(color(mini(\"red, red\"))).rowscols(2).gridMod()\n---\n$: screen(\"red\").mapOn('x', x => x.lerp('linear'))",
+    "codes": [
+      "_bg: index(color(mini(\"red, red\"))).rowscols(2).gridMod()",
+      "$: screen(\"red\").mapOn('x', x => x.lerp('linear'))"
+    ],
+    "description": "shrunk from 15 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:01:49.157Z"
+  },
+  {
+    "code": "Sbg: stack(screen(video(\"redvid\")), video(\"red.mp4\").urlBase('/test-assets/').scrub(sine.lerp('linear', \"in, in\"))).shuffleStack(sine).index().rowscols(2).gridMod()",
+    "description": "shrunk from 16 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:02:28.496Z"
+  },
+  {
+    "code": "bg: index(video(\"[red.mp4]\").urlBase('/test-assets/').scale(sine.spline(0.10)), video(\"<red.mp4>\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "description": "shrunk from 20 shrinks",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()"
+    ],
+    "timestamp": "2026-05-04T11:03:30.492Z"
+  },
+  {
+    "code": "Sbg: index(color(mini(\"red\")).opacity(sine.div(2).lerp(\"linear\", \"in\"))).rowscols(2).gridMod()\n---\nSbg: index(color(mini(\"red\")).opacity(sine.div(2).lerp(\"linear\", \"in\"))).rowscols(2).gridMod()",
+    "codes": [
+      "Sbg: index(color(mini(\"red\")).opacity(sine.div(2).lerp(\"linear\", \"in\"))).rowscols(2).gridMod()",
+      "Sbg: index(color(mini(\"red\")).opacity(sine.div(2).lerp(\"linear\", \"in\"))).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 13 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:04:30.098Z"
+  },
+  {
+    "code": "$: screen(\"red.mp4:0.00\")\n$: screen(\"redvid:0.00:0.00\")\n---\n$: image(\"[redimg]\").chopStack(2).rowscols(2).gridMod()",
+    "codes": [
+      "$: screen(\"red.mp4:0.00\")\n$: screen(\"redvid:0.00:0.00\")",
+      "$: image(\"[redimg]\").chopStack(2).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 16 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-04T11:05:12.748Z"
+  },
+  {
+    "code": "$: stack(video(\"{red.mp4}\").urlBase('/test-assets/').rotate(sine.spline(0.10)), video(\"redvid\")).shuffleIndex(0).rowscols(2).gridMod()\n---\n$: stack(video(\"{red.mp4}\").urlBase('/test-assets/').rotate(sine.spline(0.10)), video(\"redvid\")).shuffleIndex(0).rowscols(2).gridMod()",
+    "codes": [
+      "$: stack(video(\"{red.mp4}\").urlBase('/test-assets/').rotate(sine.spline(0.10)), video(\"redvid\")).shuffleIndex(0).rowscols(2).gridMod()",
+      "$: stack(video(\"{red.mp4}\").urlBase('/test-assets/').rotate(sine.spline(0.10)), video(\"redvid\")).shuffleIndex(0).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 16 shrinks",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()",
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()"
+    ],
+    "timestamp": "2026-05-04T11:06:10.698Z"
+  },
+  {
+    "code": "bg: index(image(\"~\").mapOn('x', x => x.lerp('linear')), video(\"~, red.mp4\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "description": "shrunk from 12 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:07:00.074Z"
+  },
+  {
+    "code": "$: stack(color(mini(\"[red]\")), color(\"red, ~\")).shuffleStack(0).index().rowscols(2).gridMod().scale(sine.spline(\"~, ~\"))",
+    "description": "shrunk from 17 shrinks",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()"
+    ],
+    "timestamp": "2026-05-04T11:07:27.006Z"
+  },
+  {
+    "code": "$: index(video(\"red.mp4\").urlBase('/test-assets/').begin(sine.range(0.00, 0.00).lerp('linear', 'in'))).rowscols(2).gridMod()\n---\n$: index(video(\"red.mp4\").urlBase('/test-assets/').begin(sine.range(0.00, 0.00).lerp('linear', 'in'))).rowscols(2).gridMod()",
+    "codes": [
+      "$: index(video(\"red.mp4\").urlBase('/test-assets/').begin(sine.range(0.00, 0.00).lerp('linear', 'in'))).rowscols(2).gridMod()",
+      "$: index(video(\"red.mp4\").urlBase('/test-assets/').begin(sine.range(0.00, 0.00).lerp('linear', 'in'))).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 12 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:08:05.356Z"
+  },
+  {
+    "code": "bg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()\n---\nbg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()",
+    "codes": [
+      "bg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()",
+      "bg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()"
+    ],
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:08:36.936Z"
+  },
+  {
+    "code": "$: index(image(\"redimg\").mapOn('x', x => x.spline())).rowscols(2).gridMod()",
+    "description": "shrunk from 8 shrinks",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()"
+    ],
+    "timestamp": "2026-05-04T11:08:52.357Z"
+  },
+  {
+    "code": "bg: stack(screen(\"[red]\").urlBase('/test-assets/').mapOn('x', x => x.lerp('linear')), video(\"red.mp4\").urlBase('/test-assets/')).shuffleStack().index().rowscols(2).gridMod()",
+    "description": "shrunk from 16 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:09:13.336Z"
+  },
+  {
+    "code": "bg: index(screen(\"blue.mp4:0.00\"), color(\"red, red\")).rowscols(2).gridMod()",
+    "description": "shrunk from 11 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-04T11:09:57.125Z"
+  },
+  {
+    "code": "bg: screen(\"red, red\").urlBase('/test-assets/').cropwh(sine.spline(\"[0.1], 0.1\")).cropStack(1, 1).gridMod()\n---\nbg: screen(\"red, red\").urlBase('/test-assets/').cropwh(sine.spline(\"[0.1], 0.1\")).cropStack(1, 1).gridMod()",
+    "codes": [
+      "bg: screen(\"red, red\").urlBase('/test-assets/').cropwh(sine.spline(\"[0.1], 0.1\")).cropStack(1, 1).gridMod()",
+      "bg: screen(\"red, red\").urlBase('/test-assets/').cropwh(sine.spline(\"[0.1], 0.1\")).cropStack(1, 1).gridMod()"
+    ],
+    "description": "shrunk from 17 shrinks",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()",
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()"
+    ],
+    "timestamp": "2026-05-04T11:10:47.904Z"
+  },
+  {
+    "code": "$: screen(\"red\").urlBase('/test-assets/').syncStack(2).rowscols(2).gridMod().alpha(sine.range(0.00, 0.00).lerp('linear', 'in'))\n---\n$: screen(\"red\").urlBase('/test-assets/').syncStack(2).rowscols(2).gridMod().alpha(sine.range(0.00, 0.00).lerp('linear', 'in'))",
+    "codes": [
+      "$: screen(\"red\").urlBase('/test-assets/').syncStack(2).rowscols(2).gridMod().alpha(sine.range(0.00, 0.00).lerp('linear', 'in'))",
+      "$: screen(\"red\").urlBase('/test-assets/').syncStack(2).rowscols(2).gridMod().alpha(sine.range(0.00, 0.00).lerp('linear', 'in'))"
+    ],
+    "description": "shrunk from 8 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:11:15.464Z"
+  },
+  {
+    "code": "bg: index(screen(\"blue.mp4:0.00:0.00\")).rowscols(2).gridMod()",
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-04T11:11:40.681Z"
+  },
+  {
+    "code": "$: image(\"red.png\").urlBase('/test-assets/').chopStack(2).rowscols(2).gridMod().scale(sine.lerp('linear', \"in\"))\n---\n$: image(\"red.png\").urlBase('/test-assets/').chopStack(2).rowscols(2).gridMod().scale(sine.lerp('linear', \"in\"))",
+    "codes": [
+      "$: image(\"red.png\").urlBase('/test-assets/').chopStack(2).rowscols(2).gridMod().scale(sine.lerp('linear', \"in\"))",
+      "$: image(\"red.png\").urlBase('/test-assets/').chopStack(2).rowscols(2).gridMod().scale(sine.lerp('linear', \"in\"))"
+    ],
+    "description": "shrunk from 18 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:12:44.492Z"
+  },
+  {
+    "code": "bg: stackN(2, screen(\"red.mp4:0.00\")).rowscols(2).gridMod()",
+    "description": "shrunk from 7 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-04T11:13:12.426Z"
+  },
+  {
+    "code": "$: screen(\"red.mp4:0.00\").cropStack(1, 1).gridMod()",
+    "description": "shrunk from 4 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-05-04T11:13:24.128Z"
+  },
+  {
+    "code": "$: stackN(2, color(\"[red] | red\")).rowscols(2).gridMod().scale(sine.spline(0.10))\n---\n$: stackN(2, color(\"[red] | red\")).rowscols(2).gridMod().scale(sine.spline(0.10))",
+    "codes": [
+      "$: stackN(2, color(\"[red] | red\")).rowscols(2).gridMod().scale(sine.spline(0.10))",
+      "$: stackN(2, color(\"[red] | red\")).rowscols(2).gridMod().scale(sine.spline(0.10))"
+    ],
+    "description": "shrunk from 14 shrinks",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()",
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()"
+    ],
+    "timestamp": "2026-05-04T11:14:08.748Z"
+  },
+  {
+    "code": "$: index(screen(image(\"redimg\")).rotateX(sine.lerp('linear', 'in')), color(\"red\")).cols(2).rows(2).gridMod()",
+    "description": "shrunk from 15 shrinks",
+    "errors": [
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T11:14:55.823Z"
+  },
+  {
+    "code": "setCps(0.0)\n$: index(video(\"[HCP-4P0eoOo.mp4@4 blue.mp4@1], blue.mp4!2(5,5,0) ~/2(5,8,6) [~/3*2 ~ ~/2 hXJaBfcdCKM.mp4?0.3!2]?, hXJaBfcdCKM.mp4?0.2? red.mp4@1(2,6,2) ~/2 ~\").urlBase('/test-assets/').begin(rand.spline(0.35)), video(\"[hXJaBfcdCKM.mp4 blue.mp4 red.mp4]? | HCP-4P0eoOo.mp4!4*2\").urlBase('/test-assets/').dur(sine2.lerp(\"cubic [cubic!3 bounce*2 quint quint/3/4]?0.1*4 ~\", 'inout')).pixelate(50).sync(true), s(\"red*3 blue.mp4@1 {blue red.mp4!2/4}%4? red?(5,5,0), ~ red.mp4!2(3,6,4) blue\").urlBase('/test-assets/').scaleX(\"[<1(4,8) 3 1?0.6?> 1.5?0.3] ~, 0.5 1*4 0.5@4/2\").y(\"<0> 0.25(5,5,2)?0.1 0, [{0/4 1!3*3 1?!4 <0.5/3 1 0.75?0.9>?0.4}%4 0.25@1?]!3!3, 1/4*2\")).cols(4).rows(3).gridMod().scale(\"1*2\")\n---\nsetCps(2.0)\n$: screen(\"redvid, clipB!4\").pixelate(64).cropStack(2, 3).gridMod().alpha(\"0*4@4 [0.5(4,6)/4 0.5@4 0?? 0.75]*2*4\")",
+    "codes": [
+      "setCps(0.0)\n$: index(video(\"[HCP-4P0eoOo.mp4@4 blue.mp4@1], blue.mp4!2(5,5,0) ~/2(5,8,6) [~/3*2 ~ ~/2 hXJaBfcdCKM.mp4?0.3!2]?, hXJaBfcdCKM.mp4?0.2? red.mp4@1(2,6,2) ~/2 ~\").urlBase('/test-assets/').begin(rand.spline(0.35)), video(\"[hXJaBfcdCKM.mp4 blue.mp4 red.mp4]? | HCP-4P0eoOo.mp4!4*2\").urlBase('/test-assets/').dur(sine2.lerp(\"cubic [cubic!3 bounce*2 quint quint/3/4]?0.1*4 ~\", 'inout')).pixelate(50).sync(true), s(\"red*3 blue.mp4@1 {blue red.mp4!2/4}%4? red?(5,5,0), ~ red.mp4!2(3,6,4) blue\").urlBase('/test-assets/').scaleX(\"[<1(4,8) 3 1?0.6?> 1.5?0.3] ~, 0.5 1*4 0.5@4/2\").y(\"<0> 0.25(5,5,2)?0.1 0, [{0/4 1!3*3 1?!4 <0.5/3 1 0.75?0.9>?0.4}%4 0.25@1?]!3!3, 1/4*2\")).cols(4).rows(3).gridMod().scale(\"1*2\")",
+      "setCps(2.0)\n$: screen(\"redvid, clipB!4\").pixelate(64).cropStack(2, 3).gridMod().alpha(\"0*4@4 [0.5(4,6)/4 0.5@4 0?? 0.75]*2*4\")"
+    ],
+    "description": "unshrunk (interrupted before shrinking completed)",
+    "errors": [
+      "[runtime warning] spline() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).spline()",
+      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
+    ],
+    "timestamp": "2026-05-04T16:17:36.230Z"
   }
 ]

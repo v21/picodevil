@@ -14,6 +14,7 @@ import { mini } from "@strudel/mini";
 import {
   stack, cat, slowcat, fastcat, sequence, seq,
   arrange, slowcatPrime, polymeter, stepcat,
+  stackLeft, stackRight, stackCentre, stackBy,
   silence, gap, nothing, pure, reify,
   sine, sine2, cosine, cosine2,
   saw, saw2, isaw, isaw2,
@@ -46,7 +47,8 @@ export function getPatternGlobals(): Record<string, unknown> {
     color, video, image, screen, s,
     stackN, index, indexCycle, indexWith, indexCycleWith,
     stack, cat, slowcat, fastcat, sequence, seq, arrange, slowcatPrime, polymeter,
-    stepcat, silence, gap, nothing, pure, reify,
+    stepcat, stackLeft, stackRight, stackCentre, stackBy,
+    silence, gap, nothing, pure, reify,
     useRNG,
     rand, rand2, irand, brand, brandBy, choose, wchoose, scramble,
     degradeBy, degrade, undegradeBy, undegrade,

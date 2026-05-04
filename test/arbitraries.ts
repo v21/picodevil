@@ -235,6 +235,37 @@ const anySignalExpr: fc.Arbitrary<string> = fc.oneof(
   { weight: 1, arbitrary: fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(n => `brandBy(${n.toFixed(2)})`) },
 );
 
+// ============================================================
+// Unconstrained numeric arg helpers
+// ============================================================
+
+/** Wide pool of numeric mini-patternable literals (negatives, fractions, large). */
+const NUMERIC_LITERALS = [
+  "-16", "-8", "-4", "-2", "-1", "-0.5", "-0.25", "-0.125",
+  "0", "0.125", "0.25", "0.5", "0.75", "1", "2", "4", "8", "16",
+];
+
+/** Any numeric argument: unconstrained double, signal, or mini-patterned literal. */
+const numericArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 5, arbitrary: fc.double({ noNaN: true }).map(n => String(n)) },
+  { weight: 4, arbitrary: anySignalExpr },
+  { weight: 3, arbitrary: miniArb(NUMERIC_LITERALS, 1).map(m => `"${m}"`) },
+);
+
+/** Any integer argument: wide-range literal, signal, or mini-patterned literal. */
+const integerArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 5, arbitrary: fc.integer({ min: -16, max: 64 }).map(n => String(n)) },
+  { weight: 3, arbitrary: anySignalExpr },
+  { weight: 2, arbitrary: miniArb(NUMERIC_LITERALS.filter(n => !n.includes(".")), 1).map(m => `"${m}"`) },
+);
+
+/** Binary/boolean pattern: mini 0/1, or signal comparison. */
+const binaryPatArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 4, arbitrary: miniArb(["0", "1"], 2).map(m => `"${m}"`) },
+  { weight: 3, arbitrary: anySignalExpr.map(s => `(${s}).gt(0.5)`) },
+  { weight: 3, arbitrary: anySignalExpr.map(s => `(${s}).lt(0.5)`) },
+);
+
 /** Speed argument: signal or quoted mininotation of speed literals. */
 const speedArg: fc.Arbitrary<string> = fc.oneof(
   { weight: 4, arbitrary: anySignalExpr },
@@ -300,16 +331,113 @@ const shuffleSeed: fc.Arbitrary<string> = fc.oneof(
   { weight: 2, arbitrary: fc.constant("") }, // no arg = default fixed shuffle
 );
 
-/** Strudel methods that work on any pattern. */
-const strudelMethod: fc.Arbitrary<string> = fc.oneof(
-  fc.integer({ min: 2, max: 8 }).map(n => `.slow(${n})`),
-  fc.integer({ min: 2, max: 8 }).map(n => `.fast(${n})`),
-  fc.constant(".rev()"),
-  fc.integer({ min: 2, max: 8 }).map(n => `.chop(${n})`),
-  fc.integer({ min: 2, max: 8 }).map(n => `.chop(${n}).rev()`),
-  fc.integer({ min: 2, max: 5 }).map(n => `.every(${n}, x => x.fast(2))`),
-  fc.integer({ min: 2, max: 5 }).map(n => `.every(${n}, x => x.rev())`),
-);
+/** Strudel methods + transform functions — mutually recursive via fc.letrec. */
+const _strudelBuilders = fc.letrec((tie: any) => ({
+  simpleTransformFn: fc.oneof(
+    { weight: 4, arbitrary: numericArg.map((n: string) => `x => x.fast(${n})`) },
+    { weight: 4, arbitrary: numericArg.map((n: string) => `x => x.slow(${n})`) },
+    { weight: 3, arbitrary: fc.constant("x => x.rev()") },
+    { weight: 2, arbitrary: alphaArg.map((a: string) => `x => x.alpha(${a})`) },
+    { weight: 2, arbitrary: speedArg.map((s: string) => `x => x.speed(${s})`) },
+    { weight: 2, arbitrary: rotArg.map((r: string) => `x => x.rotateZ(${r})`) },
+    { weight: 2, arbitrary: posArg.map((p: string) => `x => x.x(${p})`) },
+    { weight: 1, arbitrary: fc.constant("x => x.palindrome()") },
+    { weight: 1, arbitrary: fc.constant("x => x.brak()") },
+    { weight: 1, arbitrary: integerArg.map((n: string) => `x => x.iter(${n})`) },
+    { weight: 1, arbitrary: (tie("strudelMethod") as fc.Arbitrary<string>).map((m: string) => `x => x${m}`) },
+  ),
+  strudelMethod: fc.oneof(
+    // ── Existing (now use numericArg/integerArg) ────────────────────────────
+    { weight: 3, arbitrary: numericArg.map((n: string) => `.slow(${n})`) },
+    { weight: 3, arbitrary: numericArg.map((n: string) => `.fast(${n})`) },
+    { weight: 3, arbitrary: fc.constant(".rev()") },
+    { weight: 2, arbitrary: integerArg.map((n: string) => `.chop(${n})`) },
+    { weight: 2, arbitrary: integerArg.map((n: string) => `.chop(${n}).rev()`) },
+    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.every(${n}, ${fn})`) },
+
+    // ── Timing offsets ────────────────────────────────────────────────────
+    { weight: 2, arbitrary: numericArg.map((n: string) => `.early(${n})`) },
+    { weight: 2, arbitrary: numericArg.map((n: string) => `.late(${n})`) },
+
+    // ── Direction / no-arg ────────────────────────────────────────────────
+    { weight: 2, arbitrary: fc.constant(".palindrome()") },
+    { weight: 1, arbitrary: fc.constant(".revv()") },
+    { weight: 1, arbitrary: fc.constant(".brak()") },
+    { weight: 1, arbitrary: fc.constant(".press()") },
+    { weight: 1, arbitrary: numericArg.map((f: string) => `.pressBy(${f})`) },
+    { weight: 1, arbitrary: fc.constant(".invert()") },
+
+    // ── Rotation ──────────────────────────────────────────────────────────
+    { weight: 2, arbitrary: integerArg.map((n: string) => `.iter(${n})`) },
+    { weight: 2, arbitrary: integerArg.map((n: string) => `.iterBack(${n})`) },
+
+    // ── Time windows ──────────────────────────────────────────────────────
+    { weight: 2, arbitrary: fc.tuple(numericArg, numericArg)
+        .map(([b, e]: [string, string]) => `.zoom(${b}, ${e})`) },
+    { weight: 2, arbitrary: fc.tuple(numericArg, numericArg)
+        .map(([b, e]: [string, string]) => `.compress(${b}, ${e})`) },
+    { weight: 1, arbitrary: fc.tuple(numericArg, numericArg)
+        .map(([b, e]: [string, string]) => `.focus(${b}, ${e})`) },
+    { weight: 1, arbitrary: numericArg.map((n: string) => `.fastGap(${n})`) },
+    { weight: 1, arbitrary: numericArg.map((f: string) => `.linger(${f})`) },
+    { weight: 1, arbitrary: fc.tuple(numericArg, numericArg)
+        .map(([o, c]: [string, string]) => `.ribbon(${o}, ${c})`) },
+
+    // ── Repetition ────────────────────────────────────────────────────────
+    { weight: 2, arbitrary: integerArg.map((n: string) => `.ply(${n})`) },
+    { weight: 1, arbitrary: integerArg.map((n: string) => `.repeatCycles(${n})`) },
+
+    // ── Rhythm ────────────────────────────────────────────────────────────
+    { weight: 2, arbitrary: numericArg.map((n: string) => `.swing(${n})`) },
+    { weight: 2, arbitrary: fc.tuple(numericArg, numericArg)
+        .map(([f, n]: [string, string]) => `.swingBy(${f}, ${n})`) },
+    { weight: 2, arbitrary: numericArg.map((n: string) => `.hurry(${n})`) },
+
+    // ── Conditional / periodic ────────────────────────────────────────────
+    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.firstOf(${n}, ${fn})`) },
+    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.lastOf(${n}, ${fn})`) },
+    { weight: 2, arbitrary: fc.tuple(binaryPatArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([c, fn]: [string, string]) => `.when(${c}, ${fn})`) },
+
+    // ── Overlay / echo ────────────────────────────────────────────────────
+    { weight: 2, arbitrary: (tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map((fn: string) => `.superimpose(${fn})`) },
+    { weight: 2, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([t, fn]: [string, string]) => `.off(${t}, ${fn})`) },
+    { weight: 2, arbitrary: fc.tuple(integerArg, numericArg)
+        .map(([n, t]: [string, string]) => `.echoWith(${n}, ${t}, (p, i) => p.alpha(1 - i * 0.25))`) },
+
+    // ── Temporal nesting ──────────────────────────────────────────────────
+    { weight: 2, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.inside(${n}, ${fn})`) },
+    { weight: 1, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.outside(${n}, ${fn})`) },
+    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.chunk(${n}, ${fn})`) },
+    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+        .map(([n, fn]: [string, string]) => `.chunkBack(${n}, ${fn})`) },
+
+    // ── Binary structure ──────────────────────────────────────────────────
+    { weight: 1, arbitrary: miniArb(["0", "1"], 2).map((m: string) => `.struct("${m}")`) },
+    { weight: 1, arbitrary: miniArb(["0", "1"], 2).map((m: string) => `.mask("${m}")`) },
+
+    // ── Conditional muting ────────────────────────────────────────────────
+    { weight: 1, arbitrary: binaryPatArg.map((c: string) => `.bypass(${c})`) },
+
+    // ── Step ops ──────────────────────────────────────────────────────────
+    { weight: 1, arbitrary: integerArg.map((n: string) => `.pace(${n})`) },
+    { weight: 1, arbitrary: integerArg.map((n: string) => `.take(${n})`) },
+    { weight: 1, arbitrary: integerArg.map((n: string) => `.drop(${n})`) },
+    { weight: 1, arbitrary: integerArg.map((n: string) => `.shrink(${n})`) },
+    { weight: 1, arbitrary: integerArg.map((n: string) => `.grow(${n})`) },
+  ),
+}));
+
+const strudelMethod = _strudelBuilders.strudelMethod as fc.Arbitrary<string>;
+const simpleTransformFn = _strudelBuilders.simpleTransformFn as fc.Arbitrary<string>;
 
 // ============================================================
 // Method chain arbitraries
@@ -408,10 +536,11 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   // Structural modifiers (per-hap probability filters)
   fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(p => ({ code: `.degradeBy(${p.toFixed(2)})` })),
   fc.constant({ code: `.degrade()` }),
-  fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(p => ({ code: `.sometimesBy(${p.toFixed(2)}, x => x.fast(2))` })),
-  fc.constant({ code: `.sometimes(x => x.fast(2))` }),
-  fc.constant({ code: `.often(x => x.fast(2))` }),
-  fc.constant({ code: `.rarely(x => x.fast(2))` }),
+  fc.tuple(fc.double({ min: 0.1, max: 0.9, noNaN: true }), simpleTransformFn)
+    .map(([p, fn]) => ({ code: `.sometimesBy(${p.toFixed(2)}, ${fn})` })),
+  simpleTransformFn.map(fn => ({ code: `.sometimes(${fn})` })),
+  simpleTransformFn.map(fn => ({ code: `.often(${fn})` })),
+  simpleTransformFn.map(fn => ({ code: `.rarely(${fn})` })),
   // shuffleStack/shuffleStackCycle/shuffleIndex/shuffleIndexCycle — can appear anywhere
   shuffleSeed.map(s => ({ code: `.shuffleStack(${s})` })),
   shuffleSeed.map(s => ({ code: `.shuffleStackCycle(${s})` })),
@@ -883,6 +1012,35 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       const cols = Math.ceil(Math.sqrt(n));
       return {
         code: `${cpsCode}${label}: ${child.code}.chopStack(${n}).fit().rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
+  // stepcat with 2–3 screen sources
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 2, maxLength: 3 }),
+      labelPrefix,
+    ).map(([cps, exprs, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      return {
+        code: `${cpsCode}${label}: stepcat(${exprs.map((e: any) => e.code).join(", ")})`,
+      };
+    })
+  },
+
+  // stackLeft / stackRight / stackCentre with 2–3 screen sources
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.constantFrom("stackLeft", "stackRight", "stackCentre"),
+      fc.array(screenExpr, { minLength: 2, maxLength: 3 }),
+      labelPrefix,
+    ).map(([cps, fn, exprs, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      return {
+        code: `${cpsCode}${label}: ${fn}(${exprs.map((e: any) => e.code).join(", ")})`,
       };
     })
   },
