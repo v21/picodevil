@@ -9,7 +9,7 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (32 floats = 128 bytes):
+// Per-instance Float32Array layout (34 floats = 136 bytes):
 //   [0..1]   destOffset  (vec2)
 //   [2..3]   destSize    (vec2)
 //   [4..5]   uvOffset    (vec2)
@@ -60,8 +60,7 @@ layout(location = 7) in vec2 a_pixUVStep;
 layout(location = 8) in mat4 a_transform; // uses locations 8-11
 layout(location = 12) in float a_contrast;
 layout(location = 13) in float a_brightness;
-layout(location = 14) in vec2 a_tint;  // x=tintHue, y=tintStrength
-// location 15: free
+layout(location = 14) in vec2 a_tint;     // x=tintHue, y=tintStrength
 
 flat out int v_texIndex;
 out vec2 v_uv;
@@ -114,33 +113,45 @@ flat in float v_brightness;
 flat in vec2 v_tint;
 out vec4 fragColor;
 
-vec3 rgb2hsl(vec3 c) {
-  float maxC = max(c.r, max(c.g, c.b));
-  float minC = min(c.r, min(c.g, c.b));
-  float delta = maxC - minC;
-  float l = (maxC + minC) * 0.5;
-  float s = delta == 0.0 ? 0.0 : delta / (1.0 - abs(2.0 * l - 1.0));
-  float h = 0.0;
-  if (delta > 0.0) {
-    if (maxC == c.r)      h = mod((c.g - c.b) / delta, 6.0);
-    else if (maxC == c.g) h = (c.b - c.r) / delta + 2.0;
-    else                  h = (c.r - c.g) / delta + 4.0;
-    h /= 6.0;
-  }
-  return vec3(h, s, l);
+// Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
+// extreme contrast/tint without NaN from negative pow().
+float srgb_to_linear_ch(float c) {
+  float a = abs(c);
+  return sign(c) * (a <= 0.04045 ? a / 12.92 : pow((a + 0.055) / 1.055, 2.4));
 }
-float hue2rgb(float p, float q, float t) {
-  t = fract(t);
-  if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
-  if (t < 0.5)     return q;
-  if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
-  return p;
+float linear_to_srgb_ch(float c) {
+  float a = abs(c);
+  return sign(c) * (a <= 0.0031308 ? 12.92 * a : 1.055 * pow(a, 1.0/2.4) - 0.055);
 }
-vec3 hsl2rgb(vec3 hsl) {
-  if (hsl.y == 0.0) return vec3(hsl.z);
-  float q = hsl.z < 0.5 ? hsl.z * (1.0 + hsl.y) : hsl.z + hsl.y - hsl.z * hsl.y;
-  float p = 2.0 * hsl.z - q;
-  return vec3(hue2rgb(p, q, hsl.x + 1.0/3.0), hue2rgb(p, q, hsl.x), hue2rgb(p, q, hsl.x - 1.0/3.0));
+vec3 srgb_to_linear(vec3 c) {
+  return vec3(srgb_to_linear_ch(c.r), srgb_to_linear_ch(c.g), srgb_to_linear_ch(c.b));
+}
+vec3 linear_to_srgb(vec3 c) {
+  return vec3(linear_to_srgb_ch(c.r), linear_to_srgb_ch(c.g), linear_to_srgb_ch(c.b));
+}
+float scbrt(float x) { return sign(x) * pow(abs(x), 1.0/3.0); }
+
+vec3 linear_rgb_to_oklab(vec3 c) {
+  float l = 0.4122214708*c.r + 0.5363325363*c.g + 0.0514459929*c.b;
+  float m = 0.2119034982*c.r + 0.6806995451*c.g + 0.1073969566*c.b;
+  float s = 0.0883024619*c.r + 0.2817188376*c.g + 0.6299787005*c.b;
+  float l_ = scbrt(l), m_ = scbrt(m), s_ = scbrt(s);
+  return vec3(
+    0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
+    1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
+    0.0259040371*l_ + 0.4072402616*m_ - 0.4329829013*s_
+  );
+}
+vec3 oklab_to_linear_rgb(vec3 lab) {
+  float l_ = lab.x + 0.3963377774*lab.y + 0.2158037573*lab.z;
+  float m_ = lab.x - 0.1055613458*lab.y - 0.0638541728*lab.z;
+  float s_ = lab.x - 0.0894841775*lab.y - 1.2914855480*lab.z;
+  float l = l_*l_*l_, m = m_*m_*m_, s = s_*s_*s_;
+  return vec3(
+     4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+    -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+    -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+  );
 }
 
 void main() {
@@ -156,24 +167,30 @@ void main() {
   vec4 color;
   ${ifChain}
   else color = texture(u_tex[0], uv);
-  // Apply greyscale: mix between original and luminance-based grey.
-  // Rec. 601 luma weights.
-  float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
-  color.rgb = mix(color.rgb, vec3(luma), v_grey);
-  // Tint (hue attraction + saturation pull) and hue rotation share one HSL round-trip.
-  if (v_tint.y != 0.0 || v_hueRot != 0.0) {
-    vec3 hsl = rgb2hsl(color.rgb);
-    if (v_tint.y != 0.0) {
-      float d = v_tint.x - hsl.x;
-      d = d - floor(d + 0.5);                        // shortest arc [-0.5, 0.5]
-      hsl.x = fract(hsl.x + v_tint.y * d);
-      hsl.y = hsl.y + v_tint.y * (1.0 - hsl.y);     // pull saturation toward 1, unclamped
-    }
-    hsl.x = fract(hsl.x + v_hueRot);
-    color.rgb = hsl2rgb(hsl);
-  }
+
   // Contrast (centred at 0.5) then brightness.
   color.rgb = (color.rgb - 0.5) * v_contrast + 0.5 + v_brightness;
+  // Grey, tint, and hue rotation share one OKLab round-trip for perceptual accuracy.
+  if (v_grey != 0.0 || v_tint.y != 0.0 || v_hueRot != 0.0) {
+    vec3 lab = linear_rgb_to_oklab(srgb_to_linear(color.rgb));
+    if (v_tint.y != 0.0) {
+      // Blend ab toward a fully-tinted target in Cartesian OKLab.
+      // No angle arithmetic → no antipodal discontinuity.
+      // strength=0: unchanged; 1: fully tinted at tintCref; unclamped for hyper effects.
+      float targetH = v_tint.x * 6.28318530718;
+      vec2 tinted_ab = abs(v_tint.y) * 0.125 * vec2(cos(targetH), sin(targetH));
+      lab.yz = mix(lab.yz, tinted_ab, v_tint.y);
+    }
+    // Grey: scale chroma (a,b) toward 0. 0=no change, 1=greyscale, <0=amplify.
+    lab.yz *= (1.0 - v_grey);
+    if (v_hueRot != 0.0) {
+      float angle = v_hueRot * 6.28318530718;
+      float cosA = cos(angle), sinA = sin(angle);
+      lab.yz = vec2(cosA * lab.yz.x - sinA * lab.yz.y,
+                    sinA * lab.yz.x + cosA * lab.yz.y);
+    }
+    color.rgb = linear_to_srgb(oklab_to_linear_rgb(lab));
+  }
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
   color.a *= v_alpha;
@@ -476,7 +493,7 @@ export class WebGLRenderer implements Renderer {
       hueRot:      p.huerot ?? 0,
       contrast:     p.contrast ?? 1,
       brightness:   p.brightness ?? 0,
-      tintHue:      p.tintHue ?? 0,
+      tintHue:      p.tintHue      ?? 0,
       tintStrength: p.tintStrength ?? 0,
       transform:    buildTransform(p),
     });

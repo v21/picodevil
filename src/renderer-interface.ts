@@ -51,7 +51,7 @@ export interface TileParams {
   contrast: number;
   /** Brightness offset added after contrast: 0 = no change (default), positive = brighter, negative = darker. */
   brightness: number;
-  /** Tint hue target in [0,1] turns. Applied before huerot in the shared HSL pass. */
+  /** Tint hue target in [0,1] turns. */
   tintHue: number;
   /** Tint strength: 0 = no tint (default), 1 = full colorise, unclamped for hyper-saturation effects. */
   tintStrength: number;
