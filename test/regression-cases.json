@@ -51,17 +51,5 @@
       "pPatterns is not defined"
     ],
     "timestamp": "2026-05-03T19:38:12.937Z"
-  },
-  {
-    "code": "bg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()\n---\nbg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()",
-    "codes": [
-      "bg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()",
-      "bg: color(\"red\").rotate(sine.lerp('linear', 'in')).syncStack(2).rowscols(2).gridMod()"
-    ],
-    "description": "shrunk from 7 shrinks",
-    "errors": [
-      "[runtime warning] lerp() received a signal or empty pattern — no discrete events to interpolate between. Use .segment(n) first, e.g. rand.range(a,b).segment(16).lerp()"
-    ],
-    "timestamp": "2026-05-04T11:08:36.000Z"
   }
 ]

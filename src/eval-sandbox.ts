@@ -26,6 +26,7 @@ import {
   signal, steady,
   useRNG,
 } from "@strudel/core";
+import { sin, cos, tan } from "./strudel-globals";
 import {
   rand, rand2, irand, brand, brandBy,
   choose, wchoose, scramble,
@@ -54,7 +55,8 @@ export function getPatternGlobals(): Record<string, unknown> {
     degradeBy, degrade, undegradeBy, undegrade,
     sometimesBy, sometimes, someCyclesBy, someCycles,
     often, rarely, almostNever, almostAlways, always, never,
-    sine, sine2, cosine, cosine2, saw, saw2, isaw, isaw2,
+    sine, sine2, sin, cosine, cosine2, cos, saw, saw2, isaw, isaw2,
+    tan,
     tri, tri2, itri, itri2, square, square2, perlin,
     time, mouseX, mouseY, run, chooseIn, chooseCycles, signal, steady,
     addOn, subOn, mulOn, divOn, modOn, powOn, setOn, mapOn,

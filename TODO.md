@@ -1,4 +1,38 @@
 
+
+
+hydra style outputs and inputs (named patterns can be used as a source?? and then maybe if they're muted they only get evaluated if they're used elsewhere??)
+
+we render each pattern in order, to named framebuffers (if they're not anonymous). if you reference a framebuffer that comes after the current pattern, read it from the previous frame.
+(does this work? if stuff is stacked...)
+
+
+nicer highlighting / text style
+fix the sidebar offset
+more shader post processing fuckery 
+
+
+
+
+redo echo, but with alpha instead of velocity
+
+
+/ make gray do things with values outside 0-1
+
+
+perf: investigate
+// // 4. Feedback via s("all")
+$: s("all").alpha(1).scale(1.01)
+dvsa: s("dvsa1 dvsa2 dvsa3").width(0.5).height(0.5).sync()
+
+
+
+
+
+
+
+---
+
 - save pattern to url string, not local state
 - also video mapping
 / some kind of helper for re-encoding videos so they're all i frames - allowing drag and dropping videos onto the sidepane to add them to the server video thing, transcoded
@@ -33,6 +67,9 @@ sortStack('val') - opposite of shuffle stack. keeps order of elements where val 
 i guess this also implies sortIndex('val') ?
 
 `stackNWith(n, p => p.speed(i % n))` - like stackN, but runs a mthod on each pattern made to allow them to vary. can we inject `i` into this pattern? or do we need to do `stackNWith(n, (p,i) => p.speed(i % n))` ?
+
+
+the sidebar reference includes a bunch of stuff prefixed with underscores, and doesn't include some stuff it should. also it's inconsistent whether stuff is listed with a prefixed `.`.
 
 
 shift TileParams so it carries a transform instead

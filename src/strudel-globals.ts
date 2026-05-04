@@ -7,6 +7,7 @@
 import { Pattern as CorePattern, sine as _sine, cosine as _cosine,
   saw as _saw, isaw as _isaw, tri as _tri, square as _square,
   perlin as _perlin, time as _time, mouseX as _mouseX, mouseY as _mouseY,
+  signal as _signal,
 } from "@strudel/core";
 
 const PatternProto = CorePattern.prototype as any;
@@ -24,11 +25,33 @@ const PatternProto = CorePattern.prototype as any;
 export const sine = _sine;
 
 /**
+ * Alias for {@link sine}.
+ * @example
+ * $: s("clip.mp4").alpha(sin)
+ */
+export const sin = _sine;
+
+/**
  * Cosine wave oscillating between 0 and 1 per cycle (sine shifted by a quarter cycle).
  * @example
  * $: s("clip.mp4").x(sine).y(cosine)
  */
 export const cosine = _cosine;
+
+/**
+ * Alias for {@link cosine}.
+ * @example
+ * $: s("clip.mp4").x(sin).y(cos)
+ */
+export const cos = _cosine;
+
+/**
+ * Tangent wave — one period per cycle, pole at t=0.5 (values approach ±∞).
+ * Use `.range()` to clip to a useful interval, or combine with `.segment()`.
+ * @example
+ * $: s("clip.mp4").x(tan.range(-2, 2).slow(4))
+ */
+export const tan = _signal((t: number) => Math.tan(Math.PI * t));
 
 /**
  * Sawtooth wave rising from 0 to 1 over each cycle, then resetting.

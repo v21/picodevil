@@ -58,6 +58,8 @@ export const REGISTRY_SEED: Array<{ name: string; url: string }> = [
     name,
     url: `/test-assets/${VIDEOS[i % VIDEOS.length]}`,
   })),
+  // Also seed raw filenames so screen("red.mp4:...") resolves via registry, not VIDEO_BASE
+  ...VIDEOS.map(file => ({ name: file, url: `/test-assets/${file}` })),
   ...IMAGE_REGISTRY_NAMES.map((name, i) => ({
     name,
     url: `/test-assets/${IMAGES[i % IMAGES.length]}`,
