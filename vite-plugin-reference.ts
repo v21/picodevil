@@ -140,6 +140,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Media", "src/media-registry.ts"],
     ["Media", "src/stream-manager.ts"],
     ["Global", "src/runtime-globals.ts"],
+    ["Global", "src/pattern-registry.ts"],
   ];
 
   const catMap = new Map<string, RefEntry[]>();

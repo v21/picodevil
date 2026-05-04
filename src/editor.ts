@@ -1,6 +1,6 @@
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
-import { javascript } from "@codemirror/lang-javascript";
+import { javascriptLanguage } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
 import { uzuHighlight } from "./highlight";
@@ -115,7 +115,7 @@ export function setupEditor(
     parent,
     state: EditorState.create({
       doc: initialCode,
-      extensions: [basicSetup, javascript(), uzuHighlight, evalKeymap, widgets, changeListener],
+      extensions: [basicSetup, javascriptLanguage, uzuHighlight, evalKeymap, widgets, changeListener],
     }),
   });
 
