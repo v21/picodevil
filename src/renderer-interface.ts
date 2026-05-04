@@ -45,6 +45,8 @@ export interface TileParams {
   grey: number;
   /** Pixelation block size in screen pixels. 0 = off (default). */
   pixelate: number;
+  /** Hue rotation in [0,1] turns (0 = no rotation, 0.5 = opposite hue). */
+  huerot: number;
 }
 
 /**

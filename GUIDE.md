@@ -176,6 +176,23 @@ $: video("clip.mp4").alpha(0.5)
 $: color("red").alpha("1 0.5 0")   // patterned alpha
 ```
 
+### Greyscale and hue rotation
+
+`.grey(amount)` desaturates towards greyscale (0 = full colour, 1 = fully greyscale).
+
+`.huerot(turns)` rotates the hue of every pixel. Value is in turns: 0 = no change, 0.5 = opposite hue (red → cyan), 1 = full rotation back to original. Accepts patterns and signals.
+
+Both are applied in the fragment shader after texture sampling.
+
+```js
+$: video("clip.mp4").grey(1)                        // fully greyscale
+$: video("clip.mp4").grey(0.5)                      // half desaturated
+$: video("clip.mp4").huerot(0.5)                    // invert hue
+$: video("clip.mp4").huerot(sine.range(0, 1))       // cycling hue
+$: color("red").huerot("0 0.33 0.67")               // red → green → blue per cycle
+$: video("clip.mp4").grey(1).huerot(sine.range(0, 1)) // tint a greyscale video
+```
+
 ### Scale
 
 ```js
@@ -236,6 +253,25 @@ $: video("clip.mp4").cropx("0.25 0.75").cropw(0.5)              // alternating h
 $: video("clip.mp4").cropw(1.2).objectfit("fill")  // slight tile wrap at edges
 $: video("clip.mp4").crop(0.5, 0.5, 1.2, 1)        // same, explicit centre
 ```
+
+### Scroll
+
+`.scrollx(n)`, `.scrolly(n)`, and `.scroll(x, y)` are convenience aliases for `cropx`/`cropy` with a 0-based origin — 0 means no scroll, 0.5 shifts by half the source, −0.5 shifts the other way. Content wraps/tiles at the edges.
+
+`.scrollx(n)` is exactly `.cropx(n + 0.5)`.
+
+```js
+$: video("clip.mp4").scrollx(0.25)                          // shift right by quarter
+$: video("clip.mp4").scroll(0.25, -0.1)                     // shift right and up
+$: video("clip.mp4").scrollx(sine.range(-0.5, 0.5))         // oscillating horizontal scroll
+$: video("clip.mp4").scrolly(saw.range(-0.5, 0.5))          // continuous vertical scroll
+```
+
+| Method | Description | Default |
+|---|---|---|
+| `.scrollx(v)` | Horizontal scroll; 0 = no scroll, wraps/tiles | 0 |
+| `.scrolly(v)` | Vertical scroll; 0 = no scroll, wraps/tiles | 0 |
+| `.scroll(x, y)` | Shorthand for `.scrollx(x).scrolly(y)` | 0, 0 |
 
 ### Video speed
 

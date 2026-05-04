@@ -51,5 +51,33 @@
       "pPatterns is not defined"
     ],
     "timestamp": "2026-05-03T19:38:12.937Z"
+  },
+  {
+    "code": "_bg: stackN(2, image(\"redimg\")).rowscols(2).gridMod()\n---\n_bg: video(\"<<redvid>>, ~\").rotateX(sine.segment(8).spline(0.1@1)).cropStack(1, 1).gridMod()",
+    "codes": [
+      "_bg: stackN(2, image(\"redimg\")).rowscols(2).gridMod()",
+      "_bg: video(\"<<redvid>>, ~\").rotateX(sine.segment(8).spline(0.1@1)).cropStack(1, 1).gridMod()"
+    ],
+    "description": "shrunk from 17 shrinks",
+    "errors": [
+      "transpile error: SyntaxError: Unexpected character '@' (1:62)\n    at pp$4.raise (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:3290:13)\n    at pp.getTokenFromCode (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:5194:8)\n    at pp.readToken (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:4846:15)\n    at pp.nextToken (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:4839:10)\n    at pp.next (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:4804:8)\n    at pp$5.parseLiteral (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2767:8)\n    at pp$5.parseExprAtom (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2645:19)\n    at pp$5.parseExprSubscripts (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2490:19)\n    at pp$5.parseMaybeUnary (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2458:17)\n    at pp$5.parseExprOps (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2389:19)"
+    ],
+    "timestamp": "2026-05-04T21:26:58.260Z"
+  },
+  {
+    "code": "_bg: index(video(\"red.mp4\").urlBase('/test-assets/').crop(\"0\", sine.div(2).segment(8).spline(0.1!2), sine, \"0.25\"), image(\"red.png\").urlBase('/test-assets/')).rowscols(2).gridMod()",
+    "description": "shrunk from 19 shrinks",
+    "errors": [
+      "transpile error: SyntaxError: Unexpected token (1:96)\n    at pp$4.raise (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:3290:13)\n    at pp$9.unexpected (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:662:8)\n    at pp$9.expect (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:659:26)\n    at pp$5.parseExprList (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:3162:12)\n    at pp$5.parseSubscript (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2561:25)\n    at pp$5.parseSubscripts (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2512:24)\n    at pp$5.parseExprSubscripts (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2494:21)\n    at pp$5.parseMaybeUnary (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2458:17)\n    at pp$5.parseExprOps (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2389:19)\n    at pp$5.parseMaybeConditional (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2373:19)"
+    ],
+    "timestamp": "2026-05-04T21:27:53.900Z"
+  },
+  {
+    "code": "Sbg: color(\"~\").scale(sine.range(0.00, 0.00).segment(8).spline(0.1!2)).chopStack(2).fit().rowscols(2).gridMod()",
+    "description": "shrunk from 10 shrinks",
+    "errors": [
+      "transpile error: SyntaxError: Unexpected token (1:66)\n    at pp$4.raise (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:3290:13)\n    at pp$9.unexpected (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:662:8)\n    at pp$9.expect (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:659:26)\n    at pp$5.parseExprList (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:3162:12)\n    at pp$5.parseSubscript (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2561:25)\n    at pp$5.parseSubscripts (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2512:24)\n    at pp$5.parseExprSubscripts (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2494:21)\n    at pp$5.parseMaybeUnary (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2458:17)\n    at pp$5.parseExprOps (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2389:19)\n    at pp$5.parseMaybeConditional (http://localhost:5176/node_modules/.vite/deps/acorn.js?v=97a3a262:2373:19)"
+    ],
+    "timestamp": "2026-05-04T21:28:13.900Z"
   }
 ]

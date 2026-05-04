@@ -68,6 +68,20 @@ PatternProto.pixelate = function (value?: any) {
 };
 
 /**
+ * Rotates the hue of every pixel in the tile. Value is in turns: 0 = no change,
+ * 0.5 = opposite hue (red → cyan), 1 = full rotation back to original.
+ * Applied after greyscale, before alpha.
+ *
+ * @param {number | string | Pattern} value hue rotation in turns (0–1)
+ * @returns {Pattern} pattern with hue rotation applied
+ * @example
+ * $: video("clip.mp4").huerot(0.5)                 // invert hue
+ * $: video("clip.mp4").huerot(sine.range(0, 1))    // cycling hue
+ * $: color("red").huerot("0 0.33 0.67")            // red → green → blue per cycle
+ */
+export const huerot = createMixParam("huerot");
+
+/**
  * Alias for alpha. Sets the transparency of the pattern.
  *
  * @param {number | string | Pattern} value opacity value (0–1)
@@ -267,6 +281,49 @@ PatternProto.cropwh = function (value: any) {
  */
 PatternProto.crop = function (x: any = 0.5, y: any = 0.5, w: any = 1, h: any = 1) {
   return this.cropx(x).cropy(y).cropw(w).croph(h);
+};
+
+/**
+ * Scrolls the source horizontally within the tile. 0 = no scroll, 0.5 = shift right by half.
+ * Equivalent to `.cropx(value + 0.5)`. Content wraps/tiles at the edges.
+ *
+ * @param {number | string | Pattern} value scroll amount (0 = no scroll)
+ * @returns {Pattern} pattern with scrollx applied
+ * @example
+ * $: video("clip.mp4").scrollx(0.25)                    // shift right by quarter
+ * $: video("clip.mp4").scrollx(sine.range(-0.5, 0.5))   // oscillating scroll
+ */
+PatternProto.scrollx = function (value: any) {
+  return this.cropx(reify(value).fmap((v: number) => v + 0.5));
+};
+
+/**
+ * Scrolls the source vertically within the tile. 0 = no scroll, 0.5 = shift down by half.
+ * Equivalent to `.cropy(value + 0.5)`. Content wraps/tiles at the edges.
+ *
+ * @param {number | string | Pattern} value scroll amount (0 = no scroll)
+ * @returns {Pattern} pattern with scrolly applied
+ * @example
+ * $: video("clip.mp4").scrolly(0.25)                    // shift down by quarter
+ * $: video("clip.mp4").scrolly(saw.range(-0.5, 0.5))    // continuous vertical scroll
+ */
+PatternProto.scrolly = function (value: any) {
+  return this.cropy(reify(value).fmap((v: number) => v + 0.5));
+};
+
+/**
+ * Scrolls the source both horizontally and vertically. Shorthand for `.scrollx(x).scrolly(y)`.
+ * Content wraps/tiles at the edges.
+ *
+ * @param {number | string | Pattern} [x=0] horizontal scroll (0 = no scroll)
+ * @param {number | string | Pattern} [y=0] vertical scroll (0 = no scroll)
+ * @returns {Pattern} pattern with scroll applied
+ * @example
+ * $: video("clip.mp4").scroll(0.25, 0.1)
+ * $: video("clip.mp4").scroll(sine.range(-0.5, 0.5), saw.range(-0.5, 0.5))
+ */
+PatternProto.scroll = function (x: any = 0, y: any = 0) {
+  return this.scrollx(x).scrolly(y);
 };
 
 /**

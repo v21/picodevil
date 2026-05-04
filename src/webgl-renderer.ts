@@ -9,7 +9,7 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (29 floats = 116 bytes):
+// Per-instance Float32Array layout (30 floats = 120 bytes):
 //   [0..1]   destOffset  (vec2)
 //   [2..3]   destSize    (vec2)
 //   [4..5]   uvOffset    (vec2)
@@ -19,7 +19,8 @@ const MAX_TEX_UNITS = 64;
 //   [10..25] transform   (mat4, column-major)
 //   [26]     grey        (float)
 //   [27..28] pixUVStep   (vec2: UV-space step for pixelation; 0 = off)
-const INSTANCE_FLOATS = 29;
+//   [29]     hueRot      (float: hue rotation in [0,1] turns; 0 = off)
+const INSTANCE_FLOATS = 30;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -34,6 +35,7 @@ const LOC_TEX_INDEX   = 7;
 const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
 const LOC_GREY        = 12;
 const LOC_PIX_UV_STEP = 13; // vec2
+const LOC_HUE_ROT    = 14; // float
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -53,12 +55,14 @@ layout(location = 7) in float a_texIndex;
 layout(location = 8) in mat4 a_transform; // uses locations 8-11
 layout(location = 12) in float a_grey;
 layout(location = 13) in vec2 a_pixUVStep;
+layout(location = 14) in float a_hueRot;
 
 flat out int v_texIndex;
 out vec2 v_uv;
 out float v_alpha;
 out float v_grey;
 out vec2 v_pixUVStep;
+flat out float v_hueRot;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
@@ -67,6 +71,7 @@ void main() {
   v_alpha = a_alpha;
   v_grey = a_grey;
   v_pixUVStep = a_pixUVStep;
+  v_hueRot = a_hueRot;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
@@ -91,7 +96,37 @@ in vec2 v_uv;
 in float v_alpha;
 in float v_grey;
 in vec2 v_pixUVStep;
+flat in float v_hueRot;
 out vec4 fragColor;
+
+vec3 rgb2hsl(vec3 c) {
+  float maxC = max(c.r, max(c.g, c.b));
+  float minC = min(c.r, min(c.g, c.b));
+  float delta = maxC - minC;
+  float l = (maxC + minC) * 0.5;
+  float s = delta == 0.0 ? 0.0 : delta / (1.0 - abs(2.0 * l - 1.0));
+  float h = 0.0;
+  if (delta > 0.0) {
+    if (maxC == c.r)      h = mod((c.g - c.b) / delta, 6.0);
+    else if (maxC == c.g) h = (c.b - c.r) / delta + 2.0;
+    else                  h = (c.r - c.g) / delta + 4.0;
+    h /= 6.0;
+  }
+  return vec3(h, s, l);
+}
+float hue2rgb(float p, float q, float t) {
+  t = fract(t);
+  if (t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+  if (t < 0.5)     return q;
+  if (t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+  return p;
+}
+vec3 hsl2rgb(vec3 hsl) {
+  if (hsl.y == 0.0) return vec3(hsl.z);
+  float q = hsl.z < 0.5 ? hsl.z * (1.0 + hsl.y) : hsl.z + hsl.y - hsl.z * hsl.y;
+  float p = 2.0 * hsl.z - q;
+  return vec3(hue2rgb(p, q, hsl.x + 1.0/3.0), hue2rgb(p, q, hsl.x), hue2rgb(p, q, hsl.x - 1.0/3.0));
+}
 
 void main() {
   // Pixelation: quantise UV to a grid in texture space (before fract so
@@ -110,6 +145,12 @@ void main() {
   // Rec. 601 luma weights.
   float luma = dot(color.rgb, vec3(0.299, 0.587, 0.114));
   color.rgb = mix(color.rgb, vec3(luma), v_grey);
+  // Hue rotation: convert to HSL, shift hue, convert back.
+  if (v_hueRot != 0.0) {
+    vec3 hsl = rgb2hsl(color.rgb);
+    hsl.x = fract(hsl.x + v_hueRot);
+    color.rgb = hsl2rgb(hsl);
+  }
   // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
   // RGB here too would apply alpha twice and darken the result.
   color.a *= v_alpha;
@@ -276,6 +317,7 @@ interface DrawCommand {
   grey:        number;
   pixUVStepX:  number;
   pixUVStepY:  number;
+  hueRot:      number;
   transform:   Float32Array; // 16 floats, column-major
 }
 
@@ -404,6 +446,7 @@ export class WebGLRenderer implements Renderer {
       grey:        p.grey ?? 0,
       pixUVStepX:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeX) / cellW : 0,
       pixUVStepY:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeY) / cellH : 0,
+      hueRot:      p.huerot ?? 0,
       transform:   buildTransform(p),
     });
   }
@@ -454,6 +497,7 @@ export class WebGLRenderer implements Renderer {
         d[base + 26] = cmd.grey;
         d[base + 27] = cmd.pixUVStepX;
         d[base + 28] = cmd.pixUVStepY;
+        d[base + 29] = cmd.hueRot;
       }
 
       this.setBlend(blendMode);
@@ -674,6 +718,10 @@ function createVAO(
   gl.enableVertexAttribArray(LOC_PIX_UV_STEP);
   gl.vertexAttribPointer(LOC_PIX_UV_STEP, 2, gl.FLOAT, false, s, 108);
   gl.vertexAttribDivisor(LOC_PIX_UV_STEP, 1);
+
+  gl.enableVertexAttribArray(LOC_HUE_ROT);
+  gl.vertexAttribPointer(LOC_HUE_ROT, 1, gl.FLOAT, false, s, 116);
+  gl.vertexAttribDivisor(LOC_HUE_ROT, 1);
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);

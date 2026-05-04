@@ -394,6 +394,7 @@ export class FrameRenderer {
       scaleY: ev.scaleY !== undefined ? Number(ev.scaleY) : 1,
       grey:     ev.grey !== undefined ? Number(ev.grey) : 0,
       pixelate: ev.pixelate !== undefined ? Math.max(0, Number(ev.pixelate)) : 0,
+      huerot:   ev.huerot !== undefined ? Number(ev.huerot) : 0,
     };
   }
 
