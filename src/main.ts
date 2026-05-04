@@ -4,12 +4,11 @@ import { setupEditor } from "./editor";
 import "./shuffle-stack";
 import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CACHE_BYTES } from "./config";
 import { CpsController } from "./cps-controller";
-import { createMetrics } from "./frame-metrics";
+import { createMetrics, recordFrameMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
 import { initRegistry as initPatternRegistry, resetRegistry, snapshotRegistry, restoreRegistry, collectScreens, getNamedScreenIndices, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
-import { isNativeRate } from "./playback-rate";
 import { createVideoPoolManager } from "./video-pool-manager";
 import { transpile, type WidgetCallInfo } from "./transpiler";
 import { runTranspiled } from "./eval-sandbox";
@@ -195,37 +194,14 @@ function frame() {
 
   frameRenderer.render(screens, namedScreens, t, cps, cycle, rafAbsNow);
 
-  // Record metrics
   const frameDuration = performance.now() - rafAbsNow;
-  const MAX_SAMPLES = 300;
-  uzuMetrics.frameTimes.push(frameDuration);
-  if (uzuMetrics.frameTimes.length > MAX_SAMPLES) uzuMetrics.frameTimes.shift();
-  if (frameDuration > uzuMetrics.maxFrameTime) uzuMetrics.maxFrameTime = frameDuration;
-  uzuMetrics.interFrameTimes.push(interFrameGap);
-  if (uzuMetrics.interFrameTimes.length > MAX_SAMPLES) uzuMetrics.interFrameTimes.shift();
-  if (interFrameGap > uzuMetrics.maxInterFrameTime) uzuMetrics.maxInterFrameTime = interFrameGap;
   const perfMem = (performance as any).memory;
-  if (perfMem) uzuMetrics.heapSamples.push(perfMem.usedJSHeapSize);
-  if (uzuMetrics.heapSamples.length > MAX_SAMPLES) uzuMetrics.heapSamples.shift();
-  uzuMetrics.poolSize = frameRenderer.activeVideoEls.length;
-  let freeCount = 0;
-  for (const list of pool.freeVideoPool.values()) freeCount += list.length;
-  uzuMetrics.freePoolSize = freeCount;
-  uzuMetrics.screensCount = screens.length;
-  uzuMetrics.eventsPerFrame = frameRenderer.lastEventCount;
-  let naturalCount = 0, seekModeCount = 0;
-  for (const el of frameRenderer.activeVideoEls) {
-    if (el.paused) seekModeCount++;
-    else if (isNativeRate(el.playbackRate)) naturalCount++;
-    else seekModeCount++;
-  }
-  uzuMetrics.naturalCount = naturalCount;
-  uzuMetrics.seekModeCount = seekModeCount;
-  uzuMetrics.seeksHistory.push(uzuMetrics.seeksThisFrame);
-  if (uzuMetrics.seeksHistory.length > 300) uzuMetrics.seeksHistory.shift();
-  uzuMetrics.driftSeeksHistory.push(uzuMetrics.driftSeeksThisFrame);
-  if (uzuMetrics.driftSeeksHistory.length > 300) uzuMetrics.driftSeeksHistory.shift();
-  uzuMetrics.driftSeeksThisFrame = 0;
+  recordFrameMetrics(
+    uzuMetrics, frameDuration, interFrameGap,
+    frameRenderer.activeVideoEls, pool.freeVideoPool,
+    screens.length, frameRenderer.lastEventCount,
+    perfMem ? perfMem.usedJSHeapSize : undefined,
+  );
 
   flushWarnings();
   requestAnimationFrame(frame);
