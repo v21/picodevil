@@ -5,6 +5,7 @@ import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
 import { uzuHighlight } from "./highlight";
 import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
+import type { WidgetCallInfo } from "./transpiler";
 
 declare global {
   interface Window {
@@ -13,7 +14,7 @@ declare global {
   }
 }
 
-export const defaultCode = `$: video("iDcekQeBGOY.mp4 aGMOFLgB1CU.mp4").speed("0.5 1 -1")`;
+export const defaultCode = ``;
 
 export function setupEditor(
   parent: HTMLElement,
