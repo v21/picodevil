@@ -1,4 +1,4 @@
-export type FitMode = "cover" | "contain" | "fill" | "none";
+export type FitMode = "cover" | "contain" | "fill" | "none" | "tile" | "tilecenter";
 
 /**
  * Draw `source` into the canvas context at the given fit mode, optionally
@@ -33,6 +33,28 @@ export function drawFit(
   const vsw = Math.max(1, halfW * 2 * sw);
   const vsh = Math.max(1, halfH * 2 * sh);
 
+  // Source top-left in source pixels (centre ± half-size)
+  const sxOrigin = (cropx - halfW) * sw;
+  const syOrigin = (cropy - halfH) * sh;
+
+  if (fit === 'tile' || fit === 'tilecenter' || fit === 'none') {
+    // Native resolution, always tiled via createPattern — scale=1 (1 source px = 1 dest px)
+    // tile: crop origin anchored to cell top-left
+    // tilecenter / none: cropx,cropy centred on cell centre
+    const pat = ctx.createPattern(source, "repeat");
+    if (!pat) return;
+    const tx = fit === 'tile' ? -sxOrigin : cw / 2 - cropx * sw;
+    const ty = fit === 'tile' ? -syOrigin : ch / 2 - cropy * sh;
+    pat.setTransform(new DOMMatrix().translate(tx, ty));
+    ctx.save();
+    ctx.translate(flipX ? cw : 0, flipY ? ch : 0);
+    ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+    (ctx as any).fillStyle = pat;
+    ctx.fillRect(0, 0, cw, ch);
+    ctx.restore();
+    return;
+  }
+
   let dx: number, dy: number, dw: number, dh: number;
 
   switch (fit) {
@@ -47,11 +69,6 @@ export function drawFit(
     case "fill":
       dx = 0; dy = 0; dw = cw; dh = ch;
       break;
-    case "none":
-      dw = vsw; dh = vsh;
-      dx = (cw - dw) / 2;
-      dy = (ch - dh) / 2;
-      break;
     case "cover":
     default: {
       const scale = Math.max(cw / vsw, ch / vsh);
@@ -62,10 +79,6 @@ export function drawFit(
       break;
     }
   }
-
-  // Source top-left in source pixels (centre ± half-size)
-  const sxOrigin = (cropx - halfW) * sw;
-  const syOrigin = (cropy - halfH) * sh;
 
   const needsTiling =
     sxOrigin < 0 || syOrigin < 0 ||

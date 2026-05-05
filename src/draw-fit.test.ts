@@ -93,27 +93,71 @@ describe("drawFit", () => {
     });
   });
 
-  describe("none", () => {
-    it("draws at natural size, centered", () => {
+  describe("tilecenter / none", () => {
+    it("fills cell at native resolution, source centre aligned to cell centre, using createPattern", () => {
       const ctx = mockCtx();
-      drawFit(ctx, dummySource, 100, 50, 300, 400, "none");
-      const [, _sx, _sy, _sw, _sh, , , dw, dh] = (ctx.drawImage as any).mock.calls[0];
-      expect(dw).toBe(100);
-      expect(dh).toBe(50);
-      const [tx, ty] = translateArgs(ctx);
-      expect(tx).toBe(100); // (300 - 100) / 2
-      expect(ty).toBe(175); // (400 - 50) / 2
+      // 100x50 source, 300x400 cell; default cropx=0.5,cropy=0.5
+      // centre of source = (50, 25); centre of cell = (150, 200)
+      // pattern offset = (150-50, 200-25) = (100, 175)
+      drawFit(ctx, dummySource, 100, 50, 300, 400, "tilecenter");
+      expect(ctx.drawImage).not.toHaveBeenCalled();
+      expect(ctx.createPattern).toHaveBeenCalledWith(dummySource, "repeat");
+      expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 300, 400);
+      const pat = (ctx as any)._pat;
+      const transform: DOMMatrix = (pat.setTransform as any).mock.calls[0][0];
+      expect(transform.e).toBeCloseTo(100); // cw/2 - cropx*sw = 150 - 50
+      expect(transform.f).toBeCloseTo(175); // ch/2 - cropy*sh = 200 - 25
+      expect(transform.a).toBeCloseTo(1);   // native scale
     });
 
-    it("source larger than canvas overflows centered", () => {
+    it("none is an alias for tilecenter", () => {
+      const ctx1 = mockCtx();
+      const ctx2 = mockCtx();
+      drawFit(ctx1, dummySource, 100, 50, 300, 400, "tilecenter");
+      drawFit(ctx2, dummySource, 100, 50, 300, 400, "none");
+      const t1: DOMMatrix = ((ctx1 as any)._pat.setTransform as any).mock.calls[0][0];
+      const t2: DOMMatrix = ((ctx2 as any)._pat.setTransform as any).mock.calls[0][0];
+      expect(t1.e).toBeCloseTo(t2.e);
+      expect(t1.f).toBeCloseTo(t2.f);
+    });
+
+    it("cropx/cropy shift the centred anchor point", () => {
       const ctx = mockCtx();
-      drawFit(ctx, dummySource, 500, 600, 200, 200, "none");
-      const [, , , , , , , dw, dh] = (ctx.drawImage as any).mock.calls[0];
-      expect(dw).toBe(500);
-      expect(dh).toBe(600);
-      const [tx, ty] = translateArgs(ctx);
-      expect(tx).toBe(-150); // (200 - 500) / 2
-      expect(ty).toBe(-200); // (200 - 600) / 2
+      // cropx=0.75 → centre aligns at 0.75*100=75 px in source → offset = 150-75=75
+      drawFit(ctx, dummySource, 100, 100, 300, 300, "tilecenter", 0.75, 0.25);
+      const pat = (ctx as any)._pat;
+      const transform: DOMMatrix = (pat.setTransform as any).mock.calls[0][0];
+      expect(transform.e).toBeCloseTo(75);  // 150 - 0.75*100
+      expect(transform.f).toBeCloseTo(125); // 150 - 0.25*100
+    });
+  });
+
+  describe("tile", () => {
+    it("fills cell at native resolution, top-left anchored, using createPattern", () => {
+      const ctx = mockCtx();
+      // 100x50 source, 300x400 cell
+      drawFit(ctx, dummySource, 100, 50, 300, 400, "tile");
+      expect(ctx.drawImage).not.toHaveBeenCalled();
+      expect(ctx.createPattern).toHaveBeenCalledWith(dummySource, "repeat");
+      expect(ctx.fillRect).toHaveBeenCalledWith(0, 0, 300, 400);
+      // pattern transform: translate(-sxOrigin, -syOrigin) = translate(0, 0) for default cropx=0.5, cropw=1
+      const pat = (ctx as any)._pat;
+      const transform: DOMMatrix = (pat.setTransform as any).mock.calls[0][0];
+      expect(transform.e).toBeCloseTo(0); // translateX
+      expect(transform.f).toBeCloseTo(0); // translateY
+      // scale = 1 (native resolution)
+      expect(transform.a).toBeCloseTo(1);
+      expect(transform.d).toBeCloseTo(1);
+    });
+
+    it("offsets pattern when cropx/cropy shift the crop origin", () => {
+      const ctx = mockCtx();
+      // cropx=0.75, cropw=0.5 → cropLeft=(0.75-0.25)=0.5 → sxOrigin=0.5*100=50
+      drawFit(ctx, dummySource, 100, 100, 200, 200, "tile", 0.75, 0.25, 0.5, 0.5);
+      const pat = (ctx as any)._pat;
+      const transform: DOMMatrix = (pat.setTransform as any).mock.calls[0][0];
+      expect(transform.e).toBeCloseTo(-50); // -sxOrigin
+      expect(transform.f).toBeCloseTo(0);   // -(0.25-0.25)*100 = 0
     });
   });
 

@@ -84,7 +84,7 @@ const CONTINUOUS_SIGNALS = [
 const DISCRETE_NUMERIC_SIGNALS = ["time"];
 const DISCRETE_BOOLEAN_SIGNALS = ["brand"];
 
-const FIT_MODES = ["cover", "contain", "fill", "none"];
+const FIT_MODES = ["cover", "contain", "fill", "none", "tile", "tilecenter"];
 
 const BLEND_MODES = [
   "source-over", "multiply", "screen", "overlay",

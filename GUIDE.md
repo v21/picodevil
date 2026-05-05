@@ -221,17 +221,20 @@ $: video("clip.mp4").scaleX(2).scaleY(0.5) // stretch/squash
 
 ### Fit mode
 
-Controls how video/image content fits within its cell. Options: `cover` (default), `contain`, `fill`, `none`.
+Controls how video/image content fits within its cell. Options: `cover` (default), `contain`, `fill`, `tile`, `tilecenter` / `none`.
 
 ```js
 $: video("clip.mp4").fit("contain")
+$: video("clip.mp4").fit("tile")           // native res, top-left, repeating
+$: video("clip.mp4").fit("tilecenter")     // native res, centred, repeating
 $: video("clip.mp4").fit("cover contain")  // alternates
 ```
 
 - **cover** — fills the cell, cropping as needed (no letterboxing)
 - **contain** — fits entirely within the cell (may letterbox)
 - **fill** — stretches to fill exactly (may distort)
-- **none** — draws at native resolution, centered
+- **tile** — draws at native resolution, anchored to top-left, tiles to fill the cell
+- **tilecenter** / **none** — draws at native resolution with `cropx`/`cropy` centred on the cell, tiles outward in all directions
 
 ### Crop
 

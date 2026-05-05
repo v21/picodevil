@@ -241,6 +241,23 @@ function computeUV(p: TileParams, srcW: number, srcH: number, cellW: number, cel
   let fitW: number;
   let fitH: number;
 
+  if (p.fit === 'tile' || p.fit === 'tilecenter' || p.fit === 'none') {
+    // Native resolution, repeating — UV size = cell size / source size;
+    // fract() in the shader handles GL_REPEAT-style tiling for UVs outside [0,1].
+    // tile: crop origin (cropLeft,cropTop) anchored to cell top-left
+    // tilecenter / none: cropx,cropy centred on cell centre
+    fitW = cellW / srcW;
+    fitH = cellH / srcH;
+    const isTile = p.fit === 'tile';
+    const left = isTile ? cropLeft       : p.cropx - fitW / 2;
+    const top  = isTile ? cropTop        : p.cropy - fitH / 2;
+    const uvOffsetX = p.cropw >= 0 ? left        : left + fitW;
+    const uvSizeX   = p.cropw >= 0 ? fitW        : -fitW;
+    const uvOffsetY = p.croph >= 0 ? top         : top + fitH;
+    const uvSizeY   = p.croph >= 0 ? fitH        : -fitH;
+    return { uvOffsetX, uvSizeX, uvOffsetY, uvSizeY };
+  }
+
   if (p.fit === 'fill') {
     fitW = absCropw;
     fitH = absCroph;

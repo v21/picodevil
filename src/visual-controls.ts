@@ -102,13 +102,16 @@ export const scaleX = createMixParam("scaleX");
 export const scaleY = createMixParam("scaleY");
 
 /**
- * Controls how video/image content fits within its cell. Options: "cover" (default), "contain", "fill", "none".
+ * Controls how video/image content fits within its cell. Options: "cover" (default), "contain", "fill", "tile", "tilecenter" / "none".
  *
  * @param {string | Pattern} value fit mode: "cover" fills cell (crops), "contain" fits inside (may letterbox),
- *   "fill" stretches to fill (may distort), "none" draws at native resolution
+ *   "fill" stretches to fill (may distort), "tile" draws at native resolution top-left anchored tiling to fill the cell,
+ *   "tilecenter" / "none" draws at native resolution with cropx,cropy centred on the cell centre, tiling outward
  * @returns {Pattern} pattern with fit mode applied
  * @example
  * $: video("clip.mp4").objectfit("contain")
+ * $: video("clip.mp4").objectfit("tile")           // native res, top-left, tiled
+ * $: video("clip.mp4").objectfit("tilecenter")     // native res, centred, tiled
  * $: video("clip.mp4").objectfit("cover contain")  // alternates per cycle
  *
  */
