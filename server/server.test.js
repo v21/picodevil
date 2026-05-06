@@ -7,6 +7,7 @@ const { EventEmitter } = require('node:events');
 const { createServer } = require('./server.js');
 
 const TEST_DIR = path.join(__dirname, '.test-videos');
+const TEST_IMAGES_DIR = path.join(__dirname, '.test-images');
 
 function fetch(url, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -475,6 +476,74 @@ describe('/upload', () => {
   it('sets CORS headers on response', async () => {
     const { server, baseURL } = await startServer({ execFileFn: makeExecFile(0) });
     const res = await post(`${baseURL}/upload?name=corstest.mp4`, Buffer.from('fake'));
+    await stopServer(server);
+    assert.equal(res.headers['access-control-allow-origin'], '*');
+  });
+});
+
+describe('/images serving', () => {
+  before(() => {
+    if (fs.existsSync(TEST_IMAGES_DIR)) fs.rmSync(TEST_IMAGES_DIR, { recursive: true });
+    fs.mkdirSync(TEST_IMAGES_DIR);
+  });
+
+  after(() => {
+    if (fs.existsSync(TEST_IMAGES_DIR)) fs.rmSync(TEST_IMAGES_DIR, { recursive: true });
+  });
+
+  it('serves a PNG with correct content-type', async () => {
+    fs.writeFileSync(path.join(TEST_IMAGES_DIR, 'test.png'), 'fake png data');
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/test.png`);
+    await stopServer(server);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['content-type'], 'image/png');
+    assert.equal(res.body, 'fake png data');
+  });
+
+  it('serves a JPG with correct content-type', async () => {
+    fs.writeFileSync(path.join(TEST_IMAGES_DIR, 'photo.jpg'), 'fake jpg data');
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/photo.jpg`);
+    await stopServer(server);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['content-type'], 'image/jpeg');
+  });
+
+  it('serves a WEBP with correct content-type', async () => {
+    fs.writeFileSync(path.join(TEST_IMAGES_DIR, 'anim.webp'), 'fake webp data');
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/anim.webp`);
+    await stopServer(server);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers['content-type'], 'image/webp');
+  });
+
+  it('returns 404 for missing files', async () => {
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/nonexistent.png`);
+    await stopServer(server);
+    assert.equal(res.status, 404);
+  });
+
+  it('rejects unsupported extensions', async () => {
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/script.exe`);
+    await stopServer(server);
+    assert.equal(res.status, 400);
+  });
+
+  it('rejects path traversal', async () => {
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/../etc/passwd`);
+    await stopServer(server);
+    assert.notEqual(res.status, 200);
+  });
+
+  it('sets CORS headers', async () => {
+    fs.writeFileSync(path.join(TEST_IMAGES_DIR, 'cors.png'), 'data');
+    const { server, baseURL } = await startServer({ imagesDir: TEST_IMAGES_DIR });
+    const res = await fetch(`${baseURL}/images/cors.png`);
     await stopServer(server);
     assert.equal(res.headers['access-control-allow-origin'], '*');
   });

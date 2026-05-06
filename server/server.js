@@ -8,7 +8,16 @@ const ffmpegPath = require('ffmpeg-static');
 
 const DEFAULT_PORT = 3456;
 const DOWNLOAD_DIR = path.join(__dirname, 'videos');
+const IMAGES_DIR = path.join(__dirname, 'images');
 const YTDLP_PATH = path.join(__dirname, 'bin', 'yt-dlp');
+
+const IMAGE_MIME = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+};
 
 // Stems currently being transcoded (ffmpeg in progress)
 const activeTranscodes = new Set();
@@ -17,7 +26,8 @@ const transcodeErrors = new Map();
 
 // Shared promise wrappers around child processes
 
-function ytdlpDownload(youtubeURL, outPath, { spawnFn = spawn } = {}) {
+function ytdlpDownload(youtubeURL, outPath, { spawnFn = spawn, browser } = {}) {
+  const cookieArgs = browser ? ['--cookies-from-browser', browser] : [];
   return new Promise((resolve, reject) => {
     const proc = spawnFn(YTDLP_PATH, [
       '--ffmpeg-location', ffmpegPath,
@@ -25,6 +35,7 @@ function ytdlpDownload(youtubeURL, outPath, { spawnFn = spawn } = {}) {
       '--merge-output-format', 'mp4',
       '-o', outPath,
       '--js-runtimes', 'node',
+      ...cookieArgs,
       youtubeURL,
     ]);
     let stderr = '';
@@ -58,6 +69,7 @@ function ffmpegTranscode(inPath, outPath, { execFileFn = execFile, streamingFlag
 }
 
 if (!fs.existsSync(DOWNLOAD_DIR)) fs.mkdirSync(DOWNLOAD_DIR);
+if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR);
 if (!fs.existsSync(path.join(__dirname, 'bin'))) fs.mkdirSync(path.join(__dirname, 'bin'));
 
 function parseURL(req, port) {
@@ -109,7 +121,8 @@ function handleDownload(req, res, { port, downloadDir, spawnFn, execFileFn }) {
   let id;
   try {
     const parsed = new URL(videoURL);
-    id = parsed.searchParams.get('v') || parsed.pathname.split('/').pop();
+    const segments = parsed.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    id = parsed.searchParams.get('v') || segments.pop();
   } catch {
     id = videoURL;
   }
@@ -269,6 +282,26 @@ function handleServeVideo(req, res, { port, downloadDir }) {
   }
 }
 
+function handleServeImage(req, res, { port, imagesDir }) {
+  const url = parseURL(req, port);
+  const filename = path.basename(url.pathname);
+  const ext = path.extname(filename).toLowerCase();
+  const mime = IMAGE_MIME[ext];
+  if (!mime || !/^[\w.-]+$/.test(filename)) return json(res, 400, { error: 'Invalid filename' });
+
+  const filePath = path.join(imagesDir, filename);
+  if (!fs.existsSync(filePath)) return json(res, 404, { error: 'Not found' });
+
+  const stat = fs.statSync(filePath);
+  cors(res);
+  res.writeHead(200, {
+    'Content-Length': stat.size,
+    'Content-Type': mime,
+    'Cache-Control': 'public, max-age=3600',
+  });
+  fs.createReadStream(filePath).pipe(res);
+}
+
 function handleReadyCheck(req, res, { downloadDir, port }) {
   const url = parseURL(req, port);
   const stem = path.basename(url.pathname);
@@ -282,12 +315,14 @@ function handleReadyCheck(req, res, { downloadDir, port }) {
 function createServer(opts = {}) {
   const port = opts.port || DEFAULT_PORT;
   const downloadDir = opts.downloadDir || DOWNLOAD_DIR;
+  const imagesDir = opts.imagesDir || IMAGES_DIR;
   const spawnFn = opts.spawnFn || spawn;
   const execFileFn = opts.execFileFn || execFile;
 
   if (!fs.existsSync(downloadDir)) fs.mkdirSync(downloadDir, { recursive: true });
+  if (!fs.existsSync(imagesDir)) fs.mkdirSync(imagesDir, { recursive: true });
 
-  const ctx = { port, downloadDir, spawnFn, execFileFn };
+  const ctx = { port, downloadDir, imagesDir, spawnFn, execFileFn };
 
   const server = http.createServer((req, res) => {
     try {
@@ -306,6 +341,7 @@ function createServer(opts = {}) {
     if (req.method === 'GET' && url.pathname === '/download') return handleDownload(req, res, ctx);
     if (req.method === 'POST' && url.pathname === '/upload') return handleUpload(req, res, ctx);
     if (req.method === 'GET' && url.pathname.startsWith('/videos/')) return handleServeVideo(req, res, ctx);
+    if (req.method === 'GET' && url.pathname.startsWith('/images/')) return handleServeImage(req, res, ctx);
     if (req.method === 'GET' && url.pathname.startsWith('/ready/')) return handleReadyCheck(req, res, ctx);
 
     json(res, 404, { error: 'Not found' });
@@ -320,11 +356,12 @@ function createServer(opts = {}) {
 
 // ── CLI commands ──────────────────────────────────────────────────────────────
 
-async function cmdDownload(youtubeURL, { transcode = true } = {}) {
+async function cmdDownload(youtubeURL, { transcode = true, browser } = {}) {
   let id;
   try {
     const parsed = new URL(youtubeURL);
-    id = parsed.searchParams.get('v') || parsed.pathname.split('/').pop();
+    const segments = parsed.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
+    id = parsed.searchParams.get('v') || segments.pop();
   } catch {
     id = youtubeURL;
   }
@@ -340,13 +377,13 @@ async function cmdDownload(youtubeURL, { transcode = true } = {}) {
   if (transcode) {
     const origPath = path.join(DOWNLOAD_DIR, `${id}.orig.mp4`);
     console.log(`Downloading ${youtubeURL} ...`);
-    await ytdlpDownload(youtubeURL, origPath);
+    await ytdlpDownload(youtubeURL, origPath, { browser });
     console.log(`Transcoding to I-frame-only...`);
     await ffmpegTranscode(origPath, outPath);
     fs.unlink(origPath, () => {});
   } else {
     console.log(`Downloading ${youtubeURL} (no transcode)...`);
-    await ytdlpDownload(youtubeURL, outPath);
+    await ytdlpDownload(youtubeURL, outPath, { browser });
   }
   console.log(`Done: ${outPath}`);
   console.log(`URL: http://localhost:${DEFAULT_PORT}/videos/${id}.mp4`);
@@ -375,15 +412,25 @@ async function cmdAdd(filePath, { name, transcode = true } = {}) {
   console.log(`URL: http://localhost:${DEFAULT_PORT}/videos/${stem}.mp4`);
 }
 
-function cmdList({ port = DEFAULT_PORT, downloadDir = DOWNLOAD_DIR } = {}) {
-  const files = fs.existsSync(downloadDir)
+function cmdList({ port = DEFAULT_PORT, downloadDir = DOWNLOAD_DIR, imagesDir = IMAGES_DIR } = {}) {
+  const videos = fs.existsSync(downloadDir)
     ? fs.readdirSync(downloadDir).filter(f => f.endsWith('.mp4') && !f.endsWith('.orig.mp4'))
     : [];
-  const result = files.sort().map(file => ({
-    name: file.replace(/\.mp4$/, ''),
-    url: `http://localhost:${port}/videos/${file}`,
-    type: 'video',
-  }));
+  const images = fs.existsSync(imagesDir)
+    ? fs.readdirSync(imagesDir).filter(f => /\.(png|jpe?g|gif|webp)$/i.test(f))
+    : [];
+  const result = [
+    ...videos.sort().map(file => ({
+      name: file.replace(/\.mp4$/, ''),
+      url: `http://localhost:${port}/videos/${file}`,
+      type: 'video',
+    })),
+    ...images.sort().map(file => ({
+      name: file.replace(/\.[^.]+$/, ''),
+      url: `http://localhost:${port}/images/${file}`,
+      type: 'image',
+    })),
+  ];
   console.log(JSON.stringify(result, null, 2));
 }
 
@@ -413,9 +460,10 @@ function parseCLIArgs(argv) {
   if (!['download', 'add', 'transcode', 'list'].includes(cmd)) return null;
   const flags = { transcode: true };
   const args = [];
-  for (const arg of rest) {
-    if (arg === '--no-transcode') flags.transcode = false;
-    else args.push(arg);
+  for (let i = 0; i < rest.length; i++) {
+    if (rest[i] === '--no-transcode') flags.transcode = false;
+    else if (rest[i] === '--browser' && rest[i + 1]) flags.browser = rest[++i];
+    else args.push(rest[i]);
   }
   return { command: cmd, args, flags };
 }
@@ -424,7 +472,7 @@ async function runCLI(parsed) {
   const { command, args, flags } = parsed;
   if (command === 'download') {
     if (!args[0]) throw new Error('Usage: server.js download <youtube-url> [--no-transcode]');
-    await cmdDownload(args[0], { transcode: flags.transcode });
+    await cmdDownload(args[0], { transcode: flags.transcode, browser: flags.browser });
   } else if (command === 'add') {
     if (!args[0]) throw new Error('Usage: server.js add <file> [name] [--no-transcode]');
     await cmdAdd(args[0], { name: args[1], transcode: flags.transcode });
