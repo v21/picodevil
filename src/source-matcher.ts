@@ -98,6 +98,7 @@ function createFreshElement(
 ): VideoEl | HTMLImageElement {
   if (ns.kind === "image") {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.src = ns.srcUrl;
     return img;
   }

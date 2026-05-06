@@ -1,4 +1,5 @@
 node_modules
 videos
+images
 dist/
 .DS_Store
