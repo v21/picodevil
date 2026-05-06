@@ -457,8 +457,12 @@ PatternProto.fit = function (...args: any[]) {
       // createMixParam preserves source whole, so hap.whole is never clipped
       const hapDur = Number(hap.whole.end) - Number(hap.whole.begin);
       if (hapDur <= 0) return hap;
-      const sliceDur = (v.end ?? 1) - (v.begin ?? 0);
-      const speed = sliceDur * dur * cps / hapDur;
+      const beginFrac = v.begin ?? 0;
+      const endFrac = v.end ?? 1;
+      // Inverted range (begin > end) wraps through the video boundary: the actual
+      // content length is (1 - begin + end), not (end - begin) which would be negative.
+      const sliceFrac = beginFrac <= endFrac ? endFrac - beginFrac : 1 - beginFrac + endFrac;
+      const speed = sliceFrac * dur * cps / hapDur;
       return hap.withValue((val: any) => ({ ...val, speed }));
     });
   });
@@ -492,8 +496,10 @@ PatternProto.loopAt = function (n: any) {
       const dur = entry?.duration;
       if (!dur) return hap;
       const cps = getRuntimeCps();
-      const sliceDur = (v.end ?? 1) - (v.begin ?? 0);
-      const speed = sliceDur * dur * cps / nVal;
+      const beginFrac = v.begin ?? 0;
+      const endFrac = v.end ?? 1;
+      const sliceFrac = beginFrac <= endFrac ? endFrac - beginFrac : 1 - beginFrac + endFrac;
+      const speed = sliceFrac * dur * cps / nVal;
       return hap.withValue((val: any) => ({ ...val, speed }));
     });
   });

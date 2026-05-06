@@ -91,6 +91,15 @@ describe("playback pipeline: pattern → eventBegin → expectedTime", () => {
     expect(expectedPosition(pat, 0.5, DUR)).toBeCloseTo(2.5);
   });
 
+  it("fit() with inverted range: speed is positive and correct", () => {
+    // begin=0.5, end=0.2 on 10s video → plays [5,10) then [0,2) = 7s of content
+    // sliceFrac = 1 - 0.5 + 0.2 = 0.7, speed = 0.7 * 10 * 0.5 / 1 = 3.5
+    const pat = video("test.mp4").begin(0.5).end(0.2).fit();
+    const hap = queryAt(pat, 0.5);
+    expect(hap.value.speed).toBeGreaterThan(0);
+    expect(hap.value.speed).toBeCloseTo(3.5);
+  });
+
   it("fit() ≡ fit().chop(N): same positions at every sample point", () => {
     const base = video("test.mp4").slow(2).begin(0.4).end(0.8).fit();
     const chopped = video("test.mp4").slow(2).begin(0.4).end(0.8).fit().chop(8);
@@ -414,6 +423,15 @@ describe("loopAt pipeline", () => {
     expect(pos2).toBeLessThanOrEqual(DUR);
     // They should be in different halves of the video
     expect(pos2).toBeGreaterThan(pos1);
+  });
+
+  it("loopAt(4) with inverted range: speed is positive and correct", () => {
+    // begin=0.5, end=0.2 on 10s video → plays [5,10) then [0,2) = 7s of content
+    // sliceFrac = 1 - 0.5 + 0.2 = 0.7, speed = 0.7 * 10 * 0.5 / 4 = 0.875
+    const pat = video("test.mp4").begin(0.5).end(0.2).loopAt(4);
+    const hap = queryAt(pat, 0.5);
+    expect(hap.value.speed).toBeGreaterThan(0);
+    expect(hap.value.speed).toBeCloseTo(0.875);
   });
 });
 

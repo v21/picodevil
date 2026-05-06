@@ -1,5 +1,8 @@
 
 
+tidy up the colour funcs? - huerot vs tint vs contrast vs grey all overlap a bit
+
+
 
 hydra style outputs and inputs (named patterns can be used as a source?? and then maybe if they're muted they only get evaluated if they're used elsewhere??)
 
@@ -10,6 +13,8 @@ we render each pattern in order, to named framebuffers (if they're not anonymous
 nicer highlighting / text style
 fix the sidebar offset
 more shader post processing fuckery 
+
+
 
 
 

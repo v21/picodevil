@@ -238,5 +238,30 @@
     "name": "fallenangels",
     "url": "http://localhost:3456/videos/RM9u0TkwqMk.mp4",
     "type": "video"
+  },
+  {
+    "name": "algorhythms1",
+    "url": "http://localhost:3456/videos/DXkSPGcjwHR.mp4",
+    "type": "video"
+  },
+  {
+    "name": "algorhythms2",
+    "url": "http://localhost:3456/videos/DW44JPSjIcV.mp4",
+    "type": "video"
+  },
+  {
+    "name": "algorave",
+    "url": "http://localhost:3456/videos/DViY8aBDE8a.mp4",
+    "type": "video"
+  },
+  {
+    "name": "algorhythms3",
+    "url": "http://localhost:3456/videos/DVhE0ObDQOf.mp4",
+    "type": "video"
+  },
+  {
+    "name": "algoravelogo",
+    "url": "http://localhost:3456/images/algorave_london.png",
+    "type": "image"
   }
 ]
