@@ -13,6 +13,7 @@ import { slider as sliderWidget } from "./widgets";
 import { warn, flushWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
 import { loadCamera, loadScreen } from "./stream-manager";
+import { fft, updateFrame as fftUpdateFrame, applyFftConfig, getFftConfig, onFftConfigChange } from "./fft-audio";
 import { Canvas2DRenderer } from "./canvas2d-renderer";
 import { WebGLRenderer } from "./webgl-renderer";
 import { FrameRenderer } from "./renderer";
@@ -117,6 +118,7 @@ const evalController = new EvalController({
     loadVideo, loadImage, loadCamera, loadScreen,
     slider: sliderWidget,
     each, all,
+    fft,
   },
 });
 
@@ -136,6 +138,7 @@ function frame() {
 
   const { cps, cycle, t } = cpsController.tick(rafAbsNow);
   setRuntimeCps(cps);
+  fftUpdateFrame();
 
   frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, rafAbsNow);
 
@@ -161,10 +164,13 @@ const urlState = loadFromUrl();
 if (urlState) {
   initRegistry(urlState.media);
   currentCode = urlState.code;
+  if (urlState.fft) applyFftConfig(urlState.fft);
 }
 
 setUrlWarnCallback((msg) => { if (msg) warn(msg); });
-addOnChange(() => saveToUrl(currentCode, getAllEntries()));
+const saveUrl = () => saveToUrl(currentCode, getAllEntries(), getFftConfig());
+addOnChange(saveUrl);
+onFftConfigChange(saveUrl);
 
 // --- editor ---
 setupEditor(
@@ -172,7 +178,7 @@ setupEditor(
   currentCode,
   (code) => {
     currentCode = code;
-    saveToUrl(code, getAllEntries());
+    saveUrl();
   },
 );
 setupSidebar();

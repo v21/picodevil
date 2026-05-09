@@ -125,6 +125,8 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Randomness (per-event stable):** `rand`, `rand2`, `irand(n)`, `brand`, `brandBy(p)`, `choose(...xs)`, `chooseWith(pat, xs)`, `wchoose(...pairs)`, `scramble(n)` / `.scramble(n)` — all stable for the duration of each hap, not per-frame flickering
 
+**Audio reactive:** `fft[n]`, `fft.bass/mid/treble`, `fft.vol`, `fft.centroid`, `fft.flatness`, `fft.chroma['C'|n]`, `fft.chroma(str)`, `fft.bin(n|str)` — live signals driven by mic/system audio; `fft.setSource('mic'|'system'|'screen:name'|deviceId)`, `fft.setBins(n)`, `fft.setSmooth(v)`, `fft.setCutoff(v)`, `fft.setScale(v)`; see `src/fft-audio.ts`
+
 **Strudel pattern transforms (re-exported):** `degradeBy(p)`, `degrade`, `undegradeBy(p)`, `undegrade`, `sometimesBy(p, fn)`, `sometimes(fn)`, `someCyclesBy(p, fn)`, `someCycles(fn)`, `often(fn)`, `rarely(fn)`, `almostNever(fn)`, `almostAlways(fn)`, `always(fn)`, `never(fn)`
 
 **Media loading (imperative, idempotent):** `loadVideo(name, url)`, `loadImage(name, url)`, `loadCamera(name)`, `loadScreen(name)`

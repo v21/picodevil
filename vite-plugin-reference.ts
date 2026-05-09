@@ -139,6 +139,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Indexing", "src/index-patterns.ts"],
     ["Iteration", "src/iterators.ts"],
     ["Randomness", "src/event-random.ts"],
+    ["Audio", "src/fft-audio.ts"],
     ["Signals", "src/strudel-globals.ts"],
     ["Transforms", "src/strudel-transforms.ts"],
     ["Media", "src/media-registry.ts"],

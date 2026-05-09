@@ -4,7 +4,8 @@ import type { MediaEntry } from "./media-registry";
 type UrlMediaEntry = Pick<MediaEntry, "id" | "name" | "url" | "type"> &
   Partial<Pick<MediaEntry, "duration" | "streamKind" | "deviceId">>;
 
-type UrlState = { v: number; code: string; media: UrlMediaEntry[] };
+type FftConfig = { bins: number; smooth: number; cutoff: number; scale: number };
+type UrlState = { v: number; code: string; media: UrlMediaEntry[]; fft?: FftConfig };
 
 /** Maximum hash length (bytes) before we warn the user. */
 const URL_WARN_BYTES = 32000;
@@ -43,8 +44,8 @@ function stripEntry(e: MediaEntry): UrlMediaEntry {
  * Encode pattern code + media registry into a URL hash string (without the leading #).
  * Thumbnails, transient state, and blob URLs are stripped.
  */
-export function encodeUrlState(code: string, media: MediaEntry[]): string {
-  const state: UrlState = { v: 1, code, media: media.map(stripEntry) };
+export function encodeUrlState(code: string, media: MediaEntry[], fft?: FftConfig): string {
+  const state: UrlState = { v: 1, code, media: media.map(stripEntry), ...(fft ? { fft } : {}) };
   return PREFIX + toBase64url(JSON.stringify(state, (key, value) => {
     if (typeof value === 'bigint') {
       console.warn(`[uzu] unexpected BigInt in URL state field "${key}":`, value);
@@ -58,21 +59,21 @@ export function encodeUrlState(code: string, media: MediaEntry[]): string {
  * Decode a URL hash string (with or without the leading #) into code + media.
  * Returns null if the hash is absent, malformed, or the wrong version.
  */
-export function decodeUrlState(hash: string): { code: string; media: UrlMediaEntry[] } | null {
+export function decodeUrlState(hash: string): { code: string; media: UrlMediaEntry[]; fft?: FftConfig } | null {
   try {
     const content = hash.startsWith("#") ? hash.slice(1) : hash;
     if (!content.startsWith(PREFIX)) return null;
     const json = fromBase64url(content.slice(PREFIX.length));
     const state: UrlState = JSON.parse(json);
     if (state.v !== 1 || typeof state.code !== "string" || !Array.isArray(state.media)) return null;
-    return { code: state.code, media: state.media };
+    return { code: state.code, media: state.media, fft: state.fft };
   } catch {
     return null;
   }
 }
 
 /** Load state from the current page's URL hash. Returns null if no valid state. */
-export function loadFromUrl(): { code: string; media: UrlMediaEntry[] } | null {
+export function loadFromUrl(): { code: string; media: UrlMediaEntry[]; fft?: FftConfig } | null {
   return decodeUrlState(window.location.hash);
 }
 
@@ -89,12 +90,12 @@ export function setUrlWarnCallback(cb: ((msg: string | null) => void) | null) {
  * If the encoded state exceeds the warn limit, calls the registered warn callback.
  * Calls are coalesced within a 500ms window.
  */
-export function saveToUrl(code: string, media: MediaEntry[]) {
+export function saveToUrl(code: string, media: MediaEntry[], fft?: FftConfig) {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveTimer = null;
     try {
-      const encoded = encodeUrlState(code, media);
+      const encoded = encodeUrlState(code, media, fft);
       if (encoded.length > URL_WARN_BYTES) {
         urlWarnCallback?.(
           `URL state is large (${encoded.length} chars) — the link may be too long to share reliably`,

@@ -705,6 +705,83 @@ $: video("clip.mp4").x(sine).width(0.5) // slides back and forth
 $: video("clip.mp4").speed(sine.range(0.5, 2)) // speed varies smoothly
 ```
 
+## Audio
+
+The `fft` object gives you live audio signals, updated every frame. Values typically range 0–1 but can exceed 1 for loud audio, so use `.range()` or `.clamp()` to map them where needed.
+
+Auto-starts on first use: the first time `fft` appears in evaluated code, the browser requests microphone permission.
+
+### Frequency bins
+
+`fft[n]` is a signal for frequency bin `n`. Bins are log-spaced across 20 Hz–20 kHz. With the default of 4 bins, bin 0 covers bass and bin 3 covers treble.
+
+```js
+$: s("clip").alpha(fft[0])                   // bass drives opacity
+$: s("clip").scale(fft[0].range(1, 2))       // bass scales 1×–2×
+```
+
+Named shortcuts for first, middle, and last bin:
+
+```js
+$: s("clip").x(fft.bass.range(-0.5, 0.5))
+$: s("clip").y(fft.mid.range(-0.5, 0.5))
+$: s("clip").scale(fft.treble.range(0.5, 2))
+```
+
+`fft.bin()` is the explicit form. Pass a mini-notation string to alternate between bins within a cycle — both values are always live:
+
+```js
+$: s("clip").alpha(fft.bin("bass treble"))   // first half: bass; second half: treble
+```
+
+### Volume, centroid, flatness
+
+```js
+$: s("clip").scale(fft.vol.range(0.5, 2))   // overall RMS volume
+$: s("clip").huerot(fft.centroid)           // 0=bass-heavy, 1=treble-heavy
+$: s("clip").alpha(fft.flatness)            // 0=tonal/pitched, 1=noise
+```
+
+### Chroma (pitch classes)
+
+`fft.chroma[name]` gives a signal for a specific pitch class. Values are normalised relative to the strongest active pitch class, so the loudest note is always 1.
+
+```js
+$: s("clip").alpha(fft.chroma['C'])
+$: s("clip").alpha(fft.chroma['F#'])
+$: s("clip").alpha(fft.chroma[9])           // A (numeric index 0=C, 11=B)
+```
+
+Pass a mini-notation string to alternate between pitch classes — values are live in each half:
+
+```js
+$: s("clip").huerot(fft.chroma("C A"))      // first half: C chroma; second half: A chroma
+```
+
+### Configuration
+
+Configuration survives re-eval — `fft` is a singleton:
+
+```js
+fft.setBins(8)       // number of frequency bands (default 4)
+fft.setSmooth(0.8)   // temporal smoothing 0–1: 0=instant, 1=frozen (default 0.5)
+fft.setCutoff(0.05)  // noise floor — values below this map to 0 (default 0.001)
+fft.setScale(2)      // gain multiplier (default 0.5; values can exceed 1)
+```
+
+### Audio source
+
+Use the **Audio tab** in the sidebar to switch source with buttons and see a live level meter. Or switch from code:
+
+```js
+fft.setSource('mic')               // microphone (default)
+fft.setSource('system')            // system audio — browser prompts to pick a tab or screen
+fft.setSource('screen:myscreen')   // tap audio from an existing loadScreen() stream
+fft.setSource(deviceId)            // specific microphone by device ID
+```
+
+`'system'` always shows a fresh picker, separate from any existing screen share video. `'screen:name'` reuses an existing stream without an extra permission dialog.
+
 ## Interpolation
 
 ### `.lerp(curve, direction)`
