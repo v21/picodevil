@@ -72,6 +72,17 @@ export const COLORS = [
   "#ff0000", "#00ff00", "#0000ff", "#fff", "#000",
 ];
 
+/** Short strings for text() source — single-quoted in generated code. */
+const TEXT_STRINGS = [
+  "hello", "world", "test", "hi", "foo", "bar",
+  "line one\\nline two", "A", "42",
+];
+
+/** Underscore-joined words for s("text:word_word") tokens. */
+const TEXT_TOKENS = [
+  "hello", "hello_world", "foo_bar", "test_text", "line_one",
+];
+
 const CONTINUOUS_SIGNALS = [
   "sine", "sine2", "cosine", "cosine2",
   "saw", "saw2", "isaw", "isaw2",
@@ -564,6 +575,14 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   shuffleSeed.map(s => ({ code: `.shuffleStackCycle(${s})` })),
   shuffleSeed.map(s => ({ code: `.shuffleIndex(${s})` })),
   shuffleSeed.map(s => ({ code: `.shuffleIndexCycle(${s})` })),
+  // text styling — valid on any pattern, harmless on non-text sources
+  fc.constantFrom(...COLORS).map(c => ({ code: `.fontColor('${c}')` })),
+  fc.constantFrom(...COLORS).map(c => ({ code: `.textColor('${c}')` })),
+  fc.constantFrom(...COLORS).map(c => ({ code: `.fontBGColor('${c}')` })),
+  fc.integer({ min: 8, max: 96 }).map(n => ({ code: `.fontSize(${n})` })),
+  fc.integer({ min: 8, max: 96 }).map(n => ({ code: `.textSize(${n})` })),
+  fc.constantFrom('sans-serif', 'monospace', 'serif', 'bold monospace', 'italic sans-serif')
+    .map(f => ({ code: `.font('${f}')` })),
 );
 
 // ============================================================
@@ -730,6 +749,27 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       fc.boolean(),
     ).map(([inner, methods, useAlias]) => ({
       code: `${useAlias ? "s" : "screen"}(${inner})${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // text() — single-quoted string
+  {
+    weight: 2, arbitrary: fc.tuple(
+      fc.constantFrom(...TEXT_STRINGS),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 3 }),
+    ).map(([str, methods]) => ({
+      code: `text('${str}')${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // s("text:token") — underscore-separated token
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.constantFrom(...TEXT_TOKENS),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 2 }),
+      fc.boolean(),
+    ).map(([tok, methods, useAlias]) => ({
+      code: `${useAlias ? "s" : "screen"}('text:${tok}')${methods.map(m => m.code).join("")}`,
     }))
   },
 );

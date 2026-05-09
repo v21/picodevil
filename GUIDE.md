@@ -75,6 +75,62 @@ $: image("photo.jpg")
 $: image("a.png b.jpg")
 ```
 
+### `text(string)`
+
+Renders a text string to a dynamically-sized canvas and uses it as a source tile. The canvas dimensions are sized to fit the content with 12px padding on each side.
+
+```js
+$: text('hello world')
+$: text('line one\nline two')   // newline in string → two lines on canvas
+$: text('A\nB\nC').fontSize(48)
+```
+
+**String vs mininotation** — use single-quoted strings for literal text (spaces and newlines are preserved as-is). Double-quoted strings are automatically transpiled to mininotation, so `text("a b")` alternates between `"a"` and `"b"`. To alternate text values with mininotation, use double quotes:
+
+```js
+$: text("hello world")          // alternates: "hello" one cycle, "world" the next
+$: text('hello world')          // literal string — renders "hello world" as one tile
+$: text("red green blue")       // alternates between three strings
+```
+
+**`s("text:hello_world")`** — shorthand that auto-converts underscores to spaces. Colons in the content are preserved:
+
+```js
+$: s("text:hello_world")        // renders "hello world"
+$: s("text:foo:bar")            // renders "foo:bar"
+$: s("red text:hello_world")    // alternates a color tile and a text tile
+```
+
+**Fit mode** — text defaults to `objectfit('none')`, which renders the canvas at its native pixel size. `.fontSize(36)` means exactly 36px on screen. To scale text to fill the tile, use `contain`:
+
+```js
+$: text('hi').fontSize(96)                     // 96px on screen, native size
+$: text('hi').fontSize(48).objectfit('contain') // scaled to fill the tile
+$: text('hi').objectfit('cover')               // zoomed/cropped to fill cell
+```
+
+**Style controls:**
+
+| Method            | Description                                     | Default      |
+| ----------------- | ----------------------------------------------- | ------------ |
+| `.font(v)`        | CSS font shorthand or family name               | `'sans-serif'` |
+| `.fontSize(v)`    | Override the size component of the font (px)    | `36`         |
+| `.fontColor(v)`   | CSS color for the text glyphs                   | `'white'`    |
+| `.fontBGColor(v)` | CSS color for the canvas background             | transparent  |
+
+`.font()` accepts any valid CSS `font` shorthand — e.g. `'bold 18px IBM Plex Mono'` — or just a family name. When `.fontSize()` is also set, it overrides the size component of whatever `.font()` provides.
+
+Synonyms: `.textColor()`, `.textColour()`, `.fontColour()` → same as `.fontColor()`. `.textSize()` → same as `.fontSize()`. `.textBGColor()`, `.textBGColour()`, `.fontBGColour()` → same as `.fontBGColor()`.
+
+```js
+$: text('hello').font('IBM Plex Mono').fontColor('cyan')
+$: text('hello').font('bold monospace').fontSize(48)
+$: text('hello').font('bold 32px serif').fontSize(18)  // .fontSize overrides the 32px
+$: text('A B C').fontSize("24 48")                     // patterned font size
+$: text('hi').fontBGColor('black').fontColor('white')
+$: text('hi').fontColor("red green blue")              // patterned color
+```
+
 ### `screen(mininotation)` / `s(mininotation)`
 
 Auto-detects the type of each token: looks up the media registry first, then checks file extension, then falls back to treating it as a CSS color.

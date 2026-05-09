@@ -11,7 +11,8 @@ export type TileSource =
   | { kind: 'video' | 'stream'; el: HTMLVideoElement }
   | { kind: 'image'; el: HTMLImageElement }
   | { kind: 'color'; r: number; g: number; b: number }
-  | { kind: 'pattern'; name: string };
+  | { kind: 'pattern'; name: string }
+  | { kind: 'text'; canvas: HTMLCanvasElement };
 
 /**
  * All parameters needed to render a single tile.

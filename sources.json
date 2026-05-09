@@ -263,5 +263,15 @@
     "name": "algoravelogo",
     "url": "http://localhost:3456/images/algorave_london.png",
     "type": "image"
+  },
+  {
+    "name": "speedracer",
+    "url": "http://localhost:3456/videos/speedracer.mp4",
+    "type": "video"
+  },
+  {
+    "name": "speedracergame",
+    "url": "http://localhost:3456/videos/GGg2Qzlp3vI.mp4",
+    "type": "video"
   }
 ]

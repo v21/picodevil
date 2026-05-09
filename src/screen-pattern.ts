@@ -65,7 +65,12 @@ export function screen(pat: string | Pattern): Pattern {
         }
         // mini() parses "name:begin:end" into [name, begin, end]
         if (Array.isArray(v)) {
-          const [name, begin, end] = v as [string, number?, number?];
+          const [name, ...rest] = v as [string, ...unknown[]];
+          if (name === 'text') {
+            const textContent = rest.map(String).join(':').replace(/_/g, ' ');
+            return { _type: 'text', text: textContent };
+          }
+          const [begin, end] = rest as [number?, number?];
           const classified = classifyToken(name) as any;
           const result = classified._type === "video"
             ? { begin: 0, end: 1, ...classified }

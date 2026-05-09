@@ -45,7 +45,13 @@ function stripEntry(e: MediaEntry): UrlMediaEntry {
  */
 export function encodeUrlState(code: string, media: MediaEntry[]): string {
   const state: UrlState = { v: 1, code, media: media.map(stripEntry) };
-  return PREFIX + toBase64url(JSON.stringify(state));
+  return PREFIX + toBase64url(JSON.stringify(state, (key, value) => {
+    if (typeof value === 'bigint') {
+      console.warn(`[uzu] unexpected BigInt in URL state field "${key}":`, value);
+      return Number(value);
+    }
+    return value;
+  }));
 }
 
 /**

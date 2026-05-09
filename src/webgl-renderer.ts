@@ -350,6 +350,7 @@ type MediaTileSource = Exclude<TileSource, { kind: 'pattern' }>;
 
 function srcSize(source: MediaTileSource): [number, number] {
   if (source.kind === 'color') return [1, 1];
+  if (source.kind === 'text') return [source.canvas.width, source.canvas.height];
   if (source.kind === 'image') return [source.el.naturalWidth, source.el.naturalHeight];
   return [source.el.videoWidth, source.el.videoHeight];
 }

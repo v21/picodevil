@@ -69,6 +69,9 @@ export class Canvas2DRenderer implements Renderer {
     if (src.kind === 'color') {
       ctx.fillStyle = `rgb(${src.r * 255},${src.g * 255},${src.b * 255})`;
       ctx.fillRect(0, 0, w, h);
+    } else if (src.kind === 'text') {
+      drawFit(ctx, src.canvas, src.canvas.width, src.canvas.height, w, h, p.fit,
+        p.cropx, p.cropy, p.cropw, p.croph);
     } else if (src.kind === 'video' || src.kind === 'stream') {
       const { el } = src;
       if (el.videoWidth > 0) {

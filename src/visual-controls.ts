@@ -987,3 +987,63 @@ PatternProto.mapWithVal = function (fn: (pat: any, value: any) => any) {
   });
 };
 
+// ─── text styling ─────────────────────────────────────────────────────────────
+
+/**
+ * Sets the font for text() tiles. Accepts a CSS font family name or a full CSS
+ * font shorthand (e.g. `'bold 18px IBM Plex Mono'`). If no size is included,
+ * `.fontSize()` or the default 36px is used.
+ *
+ * @param {string | Pattern} value CSS font family or shorthand
+ * @returns {Pattern} pattern with font applied
+ * @example
+ * $: text('hello').font('IBM Plex Mono')
+ * $: text('hello').font('bold italic monospace')
+ * $: text('hello').font('bold 24px IBM Plex Mono')  // size from shorthand
+ */
+export const font = createMixParam("font");
+
+/**
+ * Sets the font size for text() tiles in pixels. Overrides any size in `.font()`.
+ * Also available as `.textSize()`.
+ *
+ * @param {number | string | Pattern} value font size in px
+ * @returns {Pattern} pattern with font size applied
+ * @example
+ * $: text('hello').fontSize(48)
+ * $: text('A B C').fontSize("24 48")   // alternates sizes per cycle
+ */
+export const fontSize = createMixParam("fontSize");
+PatternProto.textSize = PatternProto.fontSize;
+
+/**
+ * Sets the text glyph colour for text() tiles. Accepts any CSS colour string.
+ * Also available as `.textColor()`, `.textColour()`, `.fontColour()`.
+ *
+ * @param {string | Pattern} value CSS colour string
+ * @returns {Pattern} pattern with font colour applied
+ * @example
+ * $: text('hello').fontColor('cyan')
+ * $: text('A B C').fontColor("red green blue")
+ */
+export const fontColor = createMixParam("fontColor");
+PatternProto.textColor  = PatternProto.fontColor;
+PatternProto.textColour = PatternProto.fontColor;
+PatternProto.fontColour = PatternProto.fontColor;
+
+/**
+ * Sets the canvas background colour for text() tiles. Accepts any CSS colour
+ * string. Default is transparent. Also available as `.textBGColor()`,
+ * `.textBGColour()`, `.fontBGColour()`.
+ *
+ * @param {string | Pattern} value CSS colour string
+ * @returns {Pattern} pattern with background colour applied
+ * @example
+ * $: text('hello').fontBGColor('black').fontColor('white')
+ * $: text('hello').fontBGColor("black navy")   // alternating backgrounds
+ */
+export const fontBGColor = createMixParam("fontBGColor");
+PatternProto.textBGColor  = PatternProto.fontBGColor;
+PatternProto.textBGColour = PatternProto.fontBGColor;
+PatternProto.fontBGColour = PatternProto.fontBGColor;
+

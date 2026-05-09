@@ -113,7 +113,9 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 ## User-facing API (available in the editor)
 
-**Sources:** `mini(str)`, `color(str)`, `video(str)`, `image(str)`, `screen(str)` / `s(str)`
+**Sources:** `mini(str)`, `color(str)`, `video(str)`, `image(str)`, `text(str)`, `screen(str)` / `s(str)`
+
+`text(str)` renders a string to a dynamically-sized canvas. Use single-quoted strings for multi-word/multiline literals; double-quoted strings are transpiled to `text(mini("..."))` enabling mininotation alternation. Style with `.font()` (CSS font shorthand or family name), `.fontSize()` / `.textSize()`, `.fontColor()` / `.textColor()` / `.fontColour()` / `.textColour()`, `.fontBGColor()` / `.textBGColor()` / `.textBGColour()` / `.fontBGColour()`. Default objectfit is `'none'` (renders at native canvas pixel size — `.fontSize(36)` means 36px on screen). Use `.objectfit('contain')` to scale text to fill a tile. `s("text:hello_world")` is a shorthand (underscores → spaces); `s("text:foo:bar")` preserves colons. Implemented in `src/text-pattern.ts`, rendering in `src/text-render.ts`.
 
 `s()` / `screen()` tokens support inline begin/end offsets via `name:begin:end` syntax (uses mininotation's `:` parameter separator): `s("clip.mp4:.2:.7")` plays 20–70%, `s("clip.mp4:.3")` plays from 30% to end. Different tokens can have different offsets: `s("a.mp4:.0:.5 b.mp4:.5:1")`. Values can be overridden by chaining `.begin()`/`.end()` on the pattern.
 

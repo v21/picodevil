@@ -129,6 +129,7 @@ function buildReferenceData(root: string): RefCategory[] {
     ["Sources", "src/color-pattern.ts"],
     ["Sources", "src/video-pattern.ts"],
     ["Sources", "src/image-pattern.ts"],
+    ["Sources", "src/text-pattern.ts"],
     ["Sources", "src/screen-pattern.ts"],
     ["Effects", "src/effects-controls.ts"],
     ["Controls", "src/visual-controls.ts"],

@@ -2,6 +2,10 @@ import type { TileSource } from './renderer-interface';
 
 type SourceElement = HTMLVideoElement | HTMLImageElement;
 
+// Separate WeakMap for canvas elements (text tiles). Using WeakMap so evicted
+// cache entries from FrameRenderer.textCanvasCache are collected naturally.
+// WeakSet tracks which canvases have already been uploaded (they never change).
+
 /**
  * Manages WebGL textures for tile sources.
  *
@@ -17,6 +21,8 @@ export class TextureCache {
   private readonly uploaded = new Set<SourceElement>();
   /** Colour textures, keyed by "r,g,b" integer string. */
   private readonly colorTextures = new Map<string, WebGLTexture>();
+  private readonly canvasTextures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
+  private readonly uploadedCanvases = new WeakSet<HTMLCanvasElement>();
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -30,6 +36,21 @@ export class TextureCache {
     if (source.kind === 'color') {
       return this.getColor(source.r, source.g, source.b);
     }
+    if (source.kind === 'text') {
+      const { canvas } = source;
+      let tex = this.canvasTextures.get(canvas);
+      if (!tex) {
+        tex = this.createTexture();
+        this.canvasTextures.set(canvas, tex);
+      }
+      if (!this.uploadedCanvases.has(canvas)) {
+        const { gl } = this;
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+        this.uploadedCanvases.add(canvas);
+      }
+      return tex;
+    }
     const { el } = source;
     if (!this.isReady(el)) return null;
 
@@ -41,7 +62,7 @@ export class TextureCache {
 
     const isDynamic = source.kind === 'video' || source.kind === 'stream';
     if (isDynamic || !this.uploaded.has(el)) {
-      this.upload(tex, el);
+      this.upload(tex, el, source.kind === 'stream');
       this.uploaded.add(el);
     }
     return tex;
@@ -84,10 +105,18 @@ export class TextureCache {
     return tex;
   }
 
-  private upload(tex: WebGLTexture, el: SourceElement): void {
+  private upload(tex: WebGLTexture, el: SourceElement, useCanvas = false): void {
     const { gl } = this;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
+    if (useCanvas && el instanceof HTMLVideoElement && el.videoWidth > 0) {
+      // Screen/window capture streams use cross-process GPU textures that Chrome
+      // cannot upload via texImage2D directly. Force a CPU-side copy via canvas.
+      const cvs = new OffscreenCanvas(el.videoWidth, el.videoHeight);
+      cvs.getContext('2d')!.drawImage(el, 0, 0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cvs);
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
+    }
   }
 
   private isReady(el: SourceElement): boolean {

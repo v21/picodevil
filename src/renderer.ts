@@ -9,6 +9,7 @@ import { matchSources, type FreePool } from './source-matcher';
 import type { Renderer, TileParams, TileSource, Screen } from './renderer-interface';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
+import { buildFontString, renderTextToCanvas } from './text-render';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
 
@@ -43,6 +44,8 @@ export class FrameRenderer {
   private readonly metrics: FrameMetrics;
   /** Free image elements keyed by srcUrl. Images are lightweight and never evicted. */
   private readonly imageFreePool = new Map<string, HTMLImageElement>();
+  /** Text canvas cache keyed by "text|fontStr|fontColor|fontBGColor". */
+  private readonly textCanvasCache = new Map<string, HTMLCanvasElement>();
   private readonly colorCache = new Map<string, [number, number, number]>();
   private readonly scratchCtx = document.createElement('canvas').getContext('2d')!;
   /** Assignment from NeededSource to element for the current frame. */
@@ -165,6 +168,20 @@ export class FrameRenderer {
     }
     this.colorCache.set(val, [1, 1, 1]);
     return [1, 1, 1];
+  }
+
+  private getTextCanvas(ev: any): HTMLCanvasElement {
+    const textStr     = typeof ev.text === 'string' ? ev.text : '';
+    const fontStr     = buildFontString(ev.font, ev.fontSize != null ? Number(ev.fontSize) : undefined);
+    const fontColor   = ev.fontColor   ?? 'white';
+    const fontBGColor = ev.fontBGColor ?? '';
+    const key = `${textStr}|${fontStr}|${fontColor}|${fontBGColor}`;
+    let canvas = this.textCanvasCache.get(key);
+    if (!canvas) {
+      canvas = renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
+      this.textCanvasCache.set(key, canvas);
+    }
+    return canvas;
   }
 
   /**
@@ -372,6 +389,8 @@ export class FrameRenderer {
       source = { kind: 'stream', el };
     } else if (ev._type === 'pattern') {
       source = { kind: 'pattern', name: String(ev.src) };
+    } else if (ev._type === 'text') {
+      source = { kind: 'text', canvas: this.getTextCanvas(ev) };
     } else {
       warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);
       return null;
@@ -384,7 +403,7 @@ export class FrameRenderer {
       cropy: ev.cropy ?? 0.5,
       cropw: ev.cropw ?? 1,
       croph: ev.croph ?? 1,
-      fit: ev.objectfit ?? 'cover',
+      fit: ev.objectfit ?? (ev._type === 'text' ? 'none' : 'cover'),
       alpha,
       blend: ev.blend !== undefined ? String(ev.blend) : 'source-over',
       rotateZ,
