@@ -37,10 +37,10 @@ export function drawFit(
   const sxOrigin = (cropx - halfW) * sw;
   const syOrigin = (cropy - halfH) * sh;
 
-  if (fit === 'tile' || fit === 'tilecenter' || fit === 'none') {
+  if (fit === 'tile' || fit === 'tilecenter') {
     // Native resolution, always tiled via createPattern — scale=1 (1 source px = 1 dest px)
     // tile: crop origin anchored to cell top-left
-    // tilecenter / none: cropx,cropy centred on cell centre
+    // tilecenter: cropx,cropy centred on cell centre
     const pat = ctx.createPattern(source, "repeat");
     if (!pat) return;
     const tx = fit === 'tile' ? -sxOrigin : cw / 2 - cropx * sw;
@@ -58,6 +58,14 @@ export function drawFit(
   let dx: number, dy: number, dw: number, dh: number;
 
   switch (fit) {
+    case "none": {
+      // Native pixel size, centered, no tiling — transparent letterbox outside source
+      dw = vsw;
+      dh = vsh;
+      dx = (cw - dw) / 2;
+      dy = (ch - dh) / 2;
+      break;
+    }
     case "contain": {
       const scale = Math.min(cw / vsw, ch / vsh);
       dw = vsw * scale;

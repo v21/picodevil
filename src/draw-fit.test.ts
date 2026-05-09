@@ -110,15 +110,18 @@ describe("drawFit", () => {
       expect(transform.a).toBeCloseTo(1);   // native scale
     });
 
-    it("none is an alias for tilecenter", () => {
-      const ctx1 = mockCtx();
-      const ctx2 = mockCtx();
-      drawFit(ctx1, dummySource, 100, 50, 300, 400, "tilecenter");
-      drawFit(ctx2, dummySource, 100, 50, 300, 400, "none");
-      const t1: DOMMatrix = ((ctx1 as any)._pat.setTransform as any).mock.calls[0][0];
-      const t2: DOMMatrix = ((ctx2 as any)._pat.setTransform as any).mock.calls[0][0];
-      expect(t1.e).toBeCloseTo(t2.e);
-      expect(t1.f).toBeCloseTo(t2.f);
+    it("none draws source at native pixel size centered in the cell", () => {
+      const ctx = mockCtx();
+      // source 100×50, cell 300×400 → display 100×50, centered: tx=100, ty=175
+      drawFit(ctx, dummySource, 100, 50, 300, 400, "none");
+      expect(ctx.drawImage).toHaveBeenCalledOnce();
+      const [, sx, sy, sw, sh, , , dw, dh] = (ctx.drawImage as any).mock.calls[0];
+      expect(sx).toBeCloseTo(0);   expect(sy).toBeCloseTo(0);
+      expect(sw).toBeCloseTo(100); expect(sh).toBeCloseTo(50);
+      expect(dw).toBeCloseTo(100); expect(dh).toBeCloseTo(50);
+      const [tx, ty] = translateArgs(ctx);
+      expect(tx).toBeCloseTo(100); // (300 - 100) / 2
+      expect(ty).toBeCloseTo(175); // (400 -  50) / 2
     });
 
     it("cropx/cropy shift the centred anchor point", () => {

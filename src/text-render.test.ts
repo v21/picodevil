@@ -3,7 +3,7 @@ import { buildFontString, renderTextToCanvas } from "./text-render";
 
 describe("buildFontString", () => {
   it("prepends default size when font is a family name", () => {
-    expect(buildFontString('IBM Plex Mono')).toBe('36px IBM Plex Mono');
+    expect(buildFontString('IBM Plex Mono')).toBe('128px IBM Plex Mono');
   });
 
   it("uses font as-is when it already contains a size", () => {
@@ -23,7 +23,7 @@ describe("buildFontString", () => {
   });
 
   it("uses default family and default size when both are undefined", () => {
-    expect(buildFontString(undefined, undefined)).toBe('36px sans-serif');
+    expect(buildFontString(undefined, undefined)).toBe('128px sans-serif');
   });
 
   it("handles fractional sizes", () => {

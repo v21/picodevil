@@ -102,17 +102,22 @@ export const scaleX = createMixParam("scaleX");
 export const scaleY = createMixParam("scaleY");
 
 /**
- * Controls how video/image content fits within its cell. Options: "cover" (default), "contain", "fill", "tile", "tilecenter" / "none".
+ * Controls how source content fits within its cell.
  *
- * @param {string | Pattern} value fit mode: "cover" fills cell (crops), "contain" fits inside (may letterbox),
- *   "fill" stretches to fill (may distort), "tile" draws at native resolution top-left anchored tiling to fill the cell,
- *   "tilecenter" / "none" draws at native resolution with cropx,cropy centred on the cell centre, tiling outward
+ * @param {string | Pattern} value fit mode — one of:
+ *   "cover" (default) fills the cell, zooming/cropping as needed;
+ *   "contain" scales to fit entirely inside the cell (transparent letterbox outside);
+ *   "none" renders at native pixel size, centered, transparent outside (default for text);
+ *   "fill" stretches to fill exactly (may distort);
+ *   "tile" draws at native resolution anchored to top-left, tiling to fill the cell;
+ *   "tilecenter" draws at native resolution with cropx,cropy centred on the cell, tiling outward
  * @returns {Pattern} pattern with fit mode applied
  * @example
  * $: video("clip.mp4").objectfit("contain")
- * $: video("clip.mp4").objectfit("tile")           // native res, top-left, tiled
- * $: video("clip.mp4").objectfit("tilecenter")     // native res, centred, tiled
- * $: video("clip.mp4").objectfit("cover contain")  // alternates per cycle
+ * $: video("clip.mp4").objectfit("none")            // native pixel size, centered
+ * $: video("clip.mp4").objectfit("tile")            // native res, top-left, tiled
+ * $: video("clip.mp4").objectfit("tilecenter")      // native res, centred, tiled
+ * $: video("clip.mp4").objectfit("cover contain")   // alternates per cycle
  *
  */
 export const objectfit = createMixParam("objectfit");

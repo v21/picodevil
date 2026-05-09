@@ -37,7 +37,7 @@ uzuvid/
     video-pattern.ts      — video() function: wraps mini pattern with {src} values
     image-pattern.ts      — image() function: wraps mini pattern with {src, type:"image"} values
     screen-pattern.ts     — screen()/s() function: auto-detects type per token (registry → named pattern → extension → color fallback)
-    draw-fit.ts           — drawFit() helper for cover/contain/fill/none rendering in Canvas 2D; FitMode type
+    draw-fit.ts           — drawFit() helper for all fit modes in Canvas 2D; FitMode type
     video-playback.ts     — video frame rendering: playback update, seeking (computeExpectedTime, detectWindowMoving, renderVideoFrame)
     event-begin.ts        — eventBeginFromHap: derives playback start cycle from hap + event value
     video-pool.ts         — computeExpectedFromEvent (expected time from event props), scoreFreeElement (seek-cost scoring for pool candidates)
@@ -85,7 +85,7 @@ Rendering is split into two layers:
 
 Two backends exist:
 
-- **`WebGLRenderer`** (`src/webgl-renderer.ts`) — **default**. Uploads video frames as GPU textures (`gl.texImage2D`) — no CPU readback. UV rect and fit (cover/fill) computed CPU-side and passed as uniforms. Transforms (rotateZ, rotateX/Y scale, scaleX/Y) encoded as a 4×4 column-major matrix built on CPU. Blend modes use `blendFuncSeparate` so RGB and alpha channels accumulate correctly.
+- **`WebGLRenderer`** (`src/webgl-renderer.ts`) — **default**. Uploads video frames as GPU textures (`gl.texImage2D`) — no CPU readback. UV rect and fit (cover/fill/tile/tilecenter) computed CPU-side; contain/none shrink the dest rect so the letterbox area is simply not drawn. Transforms (rotateZ, rotateX/Y scale, scaleX/Y) encoded as a 4×4 column-major matrix built on CPU. Blend modes use `blendFuncSeparate` so RGB and alpha channels accumulate correctly.
 - **`Canvas2DRenderer`** (`src/canvas2d-renderer.ts`) — fallback. Uses `CanvasRenderingContext2D` / `drawImage`. Add `?renderer=canvas2d` to the URL to use it.
 
 Backend selection in `main.ts`: WebGL2 is attempted first; if unavailable it falls back to Canvas 2D automatically. The `?renderer=canvas2d` query param forces Canvas 2D (useful for visual comparison during development).
@@ -115,7 +115,7 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 **Sources:** `mini(str)`, `color(str)`, `video(str)`, `image(str)`, `text(str)`, `screen(str)` / `s(str)`
 
-`text(str)` renders a string to a dynamically-sized canvas. Use single-quoted strings for multi-word/multiline literals; double-quoted strings are transpiled to `text(mini("..."))` enabling mininotation alternation. Style with `.font()` (CSS font shorthand or family name), `.fontSize()` / `.textSize()`, `.fontColor()` / `.textColor()` / `.fontColour()` / `.textColour()`, `.fontBGColor()` / `.textBGColor()` / `.textBGColour()` / `.fontBGColour()`. Default objectfit is `'none'` (renders at native canvas pixel size — `.fontSize(36)` means 36px on screen). Use `.objectfit('contain')` to scale text to fill a tile. `s("text:hello_world")` is a shorthand (underscores → spaces); `s("text:foo:bar")` preserves colons. Implemented in `src/text-pattern.ts`, rendering in `src/text-render.ts`.
+`text(str)` renders a string to a dynamically-sized canvas. Use single-quoted strings for multi-word/multiline literals; double-quoted strings are transpiled to `text(mini("..."))` enabling mininotation alternation. Style with `.font()` (CSS font shorthand or family name), `.fontSize()` / `.textSize()`, `.fontColor()` / `.textColor()` / `.fontColour()` / `.textColour()`, `.fontBGColor()` / `.textBGColor()` / `.textBGColour()` / `.fontBGColour()`. Default objectfit is `'none'` (renders at native canvas pixel size, centered, transparent outside — `.fontSize(128)` is the default, meaning 128px on screen). Use `.objectfit('contain')` to scale text to fill a tile. `s("text:hello_world")` is a shorthand (underscores → spaces); `s("text:foo:bar")` preserves colons. Implemented in `src/text-pattern.ts`, rendering in `src/text-render.ts`.
 
 `s()` / `screen()` tokens support inline begin/end offsets via `name:begin:end` syntax (uses mininotation's `:` parameter separator): `s("clip.mp4:.2:.7")` plays 20–70%, `s("clip.mp4:.3")` plays from 30% to end. Different tokens can have different offsets: `s("a.mp4:.0:.5 b.mp4:.5:1")`. Values can be overridden by chaining `.begin()`/`.end()` on the pattern.
 

@@ -101,10 +101,10 @@ $: s("text:foo:bar")            // renders "foo:bar"
 $: s("red text:hello_world")    // alternates a color tile and a text tile
 ```
 
-**Fit mode** — text defaults to `objectfit('none')`, which renders the canvas at its native pixel size. `.fontSize(36)` means exactly 36px on screen. To scale text to fill the tile, use `contain`:
+**Fit mode** — text defaults to `objectfit('none')`, which renders at native canvas pixel size centered in the tile with transparent space around it. `.fontSize(128)` means 128px on screen. To scale text to fill the tile instead, use `contain`:
 
 ```js
-$: text('hi').fontSize(96)                     // 96px on screen, native size
+$: text('hi')                                  // 128px, native size, centered
 $: text('hi').fontSize(48).objectfit('contain') // scaled to fill the tile
 $: text('hi').objectfit('cover')               // zoomed/cropped to fill cell
 ```
@@ -114,7 +114,7 @@ $: text('hi').objectfit('cover')               // zoomed/cropped to fill cell
 | Method            | Description                                     | Default      |
 | ----------------- | ----------------------------------------------- | ------------ |
 | `.font(v)`        | CSS font shorthand or family name               | `'sans-serif'` |
-| `.fontSize(v)`    | Override the size component of the font (px)    | `36`         |
+| `.fontSize(v)`    | Override the size component of the font (px)    | `128`        |
 | `.fontColor(v)`   | CSS color for the text glyphs                   | `'white'`    |
 | `.fontBGColor(v)` | CSS color for the canvas background             | transparent  |
 
@@ -277,20 +277,22 @@ $: video("clip.mp4").scaleX(2).scaleY(0.5) // stretch/squash
 
 ### Fit mode
 
-Controls how video/image content fits within its cell. Options: `cover` (default), `contain`, `fill`, `tile`, `tilecenter` / `none`.
+Controls how source content fits within its cell.
 
 ```js
 $: video("clip.mp4").fit("contain")
+$: video("clip.mp4").fit("none")           // native pixel size, centered, transparent outside
 $: video("clip.mp4").fit("tile")           // native res, top-left, repeating
 $: video("clip.mp4").fit("tilecenter")     // native res, centred, repeating
 $: video("clip.mp4").fit("cover contain")  // alternates
 ```
 
-- **cover** — fills the cell, cropping as needed (no letterboxing)
-- **contain** — fits entirely within the cell (may letterbox)
+- **cover** — fills the cell, zooming/cropping as needed (default for video/image/color)
+- **contain** — scales to fit entirely inside the cell; transparent outside (respects crop)
+- **none** — renders at native pixel size, centered in the cell; transparent outside (default for text)
 - **fill** — stretches to fill exactly (may distort)
 - **tile** — draws at native resolution, anchored to top-left, tiles to fill the cell
-- **tilecenter** / **none** — draws at native resolution with `cropx`/`cropy` centred on the cell, tiles outward in all directions
+- **tilecenter** — draws at native resolution with `cropx`/`cropy` centred on the cell, tiles outward
 
 ### Crop
 

@@ -486,6 +486,44 @@ export class WebGLRenderer implements Renderer {
 
     const cellW = p.w * this.w;
     const cellH = p.h * this.h;
+
+    // contain / none: shrink dest rect to the display area, UV covers the crop window.
+    // The area outside the dest rect is simply not drawn → transparent letterbox.
+    if (p.fit === 'contain' || p.fit === 'none') {
+      const absCropw = Math.abs(p.cropw);
+      const absCroph = Math.abs(p.croph);
+      const vsw = Math.max(1, absCropw * srcW);
+      const vsh = Math.max(1, absCroph * srcH);
+      const scale = p.fit === 'contain' ? Math.min(cellW / vsw, cellH / vsh) : 1;
+      const dispW = vsw * scale;
+      const dispH = vsh * scale;
+      const cropLeft = p.cropx - absCropw / 2;
+      const cropTop  = p.cropy - absCroph / 2;
+      let uvOffX = p.cropw >= 0 ? cropLeft          : cropLeft + absCropw;
+      let uvSzX  = p.cropw >= 0 ? absCropw          : -absCropw;
+      let uvOffY = p.croph >= 0 ? cropTop           : cropTop + absCroph;
+      let uvSzY  = p.croph >= 0 ? absCroph          : -absCroph;
+      if (fboSource) { uvOffY = uvOffY + uvSzY; uvSzY = -uvSzY; }
+      this.pendingDraws.push({
+        texture: tex, blend: p.blend ?? 'source-over',
+        destOffsetX: p.x, destOffsetY: p.y,
+        destSizeX: dispW / this.w, destSizeY: dispH / this.h,
+        uvOffsetX: uvOffX, uvOffsetY: uvOffY,
+        uvSizeX: uvSzX, uvSizeY: uvSzY,
+        alpha:        Math.max(0, Math.min(1, p.alpha)),
+        grey:         p.grey ?? 0,
+        pixUVStepX:   p.pixelate > 0 ? p.pixelate * absCropw / dispW : 0,
+        pixUVStepY:   p.pixelate > 0 ? p.pixelate * absCroph / dispH : 0,
+        hueRot:       p.huerot ?? 0,
+        contrast:     p.contrast ?? 1,
+        brightness:   p.brightness ?? 0,
+        tintHue:      p.tintHue      ?? 0,
+        tintStrength: p.tintStrength ?? 0,
+        transform:    buildTransform(p),
+      });
+      return;
+    }
+
     let { uvOffsetX, uvSizeX, uvOffsetY, uvSizeY } = computeUV(p, srcW, srcH, cellW, cellH);
 
     // FBO textures are Y-flipped relative to HTML element textures.
