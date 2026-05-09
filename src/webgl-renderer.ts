@@ -490,6 +490,8 @@ export class WebGLRenderer implements Renderer {
     // contain / none: shrink dest rect to the display area, UV covers the crop window.
     // The area outside the dest rect is simply not drawn → transparent letterbox.
     if (p.fit === 'contain' || p.fit === 'none') {
+      // Colors have no natural pixel size — treat the cell as the source so they fill it.
+      if (p.source.kind === 'color') { srcW = cellW; srcH = cellH; }
       const absCropw = Math.abs(p.cropw);
       const absCroph = Math.abs(p.croph);
       const vsw = Math.max(1, absCropw * srcW);
