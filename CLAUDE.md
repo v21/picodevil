@@ -113,6 +113,8 @@ Grid position composition: when `.grid()` is called on a pattern that already ha
 
 ## User-facing API (available in the editor)
 
+All function and method names are **case-insensitive** — `VIDEO`, `Video`, `ViDeO` all work. Case normalization happens in the transpiler (AST pass in `src/transpiler.ts`) using a map built from `getPatternGlobals()` and `Pattern.prototype` in `src/eval-sandbox.ts` (`buildNormMap`).
+
 **Sources:** `mini(str)`, `color(str)`, `video(str)`, `image(str)`, `text(str)`, `screen(str)` / `s(str)`
 
 `text(str)` renders a string to a dynamically-sized canvas. Use single-quoted strings for multi-word/multiline literals; double-quoted strings are transpiled to `text(mini("..."))` enabling mininotation alternation. Style with `.font()` (CSS font shorthand or family name), `.fontSize()` / `.textSize()`, `.fontColor()` / `.textColor()` / `.fontColour()` / `.textColour()`, `.fontBGColor()` / `.textBGColor()` / `.textBGColour()` / `.fontBGColour()`. Default objectfit is `'none'` (renders at native canvas pixel size, centered, transparent outside — `.fontSize(128)` is the default, meaning 128px on screen). Use `.objectfit('contain')` to scale text to fill a tile. `s("text:hello_world")` is a shorthand (underscores → spaces); `s("text:foo:bar")` preserves colons. Implemented in `src/text-pattern.ts`, rendering in `src/text-render.ts`.

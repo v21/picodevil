@@ -479,8 +479,8 @@ describe("loopAt()", () => {
     expect(evs[0].value.speed).toBeUndefined();
   });
 
-  it("loopat is an alias for loopAt", () => {
-    const evs = video("test.mp4").loopat(4).queryArc(0, 4);
+  it("loopAt sets speed correctly", () => {
+    const evs = video("test.mp4").loopAt(4).queryArc(0, 4);
     expect(evs).toHaveLength(1);
     expect(evs[0].value.speed).toBeCloseTo(1.25);
   });

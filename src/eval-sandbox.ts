@@ -25,6 +25,7 @@ import {
   run, chooseIn, chooseCycles,
   signal, steady,
   useRNG,
+  Pattern,
 } from "@strudel/core";
 import { sin, cos, tan } from "./strudel-globals";
 import {
@@ -42,6 +43,28 @@ import { text } from "./text-pattern";
 import { screen, s } from "./screen-pattern";
 import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
+
+let _normMapBase: Map<string, string> | null = null;
+
+/**
+ * Build (and cache) a lowercase → canonical name map covering all pattern globals
+ * and Pattern.prototype methods. Must be called after side-effect imports have run
+ * (i.e. after visual-controls, effects-controls, etc. have registered their methods).
+ * First-seen wins so camelCase canonical forms take precedence over lowercase aliases.
+ */
+export function buildNormMap(): Map<string, string> {
+  if (_normMapBase) return _normMapBase;
+  const map = new Map<string, string>();
+  const add = (name: string) => {
+    const lower = name.toLowerCase();
+    if (!map.has(lower)) map.set(lower, name);
+  };
+  for (const key of Object.keys(getPatternGlobals())) add(key);
+  for (const name of Object.getOwnPropertyNames((Pattern as any).prototype)) {
+    if (name !== "constructor") add(name);
+  }
+  return (_normMapBase = map);
+}
 
 export function getPatternGlobals(): Record<string, unknown> {
   return {

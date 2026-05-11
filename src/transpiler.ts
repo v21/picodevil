@@ -21,6 +21,28 @@ export interface TranspileResult {
   widgets: WidgetCallInfo[];
 }
 
+/**
+ * Walk the AST in-place and normalize Identifier names to canonical case using normMap.
+ * String literals and comments are never Identifier nodes, so filenames/CSS values are safe.
+ */
+function normalizeIdentifiers(node: any, normMap: Map<string, string>): void {
+  if (!node || typeof node !== "object") return;
+  if (node.type === "Identifier") {
+    const canonical = normMap.get(node.name.toLowerCase());
+    if (canonical && canonical !== node.name) node.name = canonical;
+    return;
+  }
+  for (const key of Object.keys(node)) {
+    if (key === "type" || key === "raw" || key === "start" || key === "end") continue;
+    const val = node[key];
+    if (Array.isArray(val)) {
+      for (const child of val) normalizeIdentifiers(child, normMap);
+    } else if (val && typeof val === "object" && val.type) {
+      normalizeIdentifiers(val, normMap);
+    }
+  }
+}
+
 /** Wrap a string literal AST node in a mini() call. */
 function wrapInMini(node: any): any {
   return {
@@ -90,10 +112,11 @@ function walkAST(node: any, widgets: WidgetCallInfo[]): any {
 /**
  * Transpile user code:
  * 1. Rewrite labeled statements like `$: expr` to `expr.p("$")`
- * 2. Rewrite double-quoted strings to mini() calls (single-quoted strings pass through)
- * 3. Extract widget call positions (slider, etc.)
+ * 2. Normalize identifier case using normMap (if provided)
+ * 3. Rewrite double-quoted strings to mini() calls (single-quoted strings pass through)
+ * 4. Extract widget call positions (slider, etc.)
  */
-export function transpile(code: string): TranspileResult {
+export function transpile(code: string, normMap?: Map<string, string>): TranspileResult {
   const ast = acorn.parse(code, {
     ecmaVersion: "latest",
     sourceType: "script",
@@ -124,6 +147,9 @@ export function transpile(code: string): TranspileResult {
       };
     }
   }
+
+  // Normalize identifier case (runs after label rewriting so .p() calls are canonical)
+  if (normMap) normalizeIdentifiers(ast, normMap);
 
   // Single pass: collect widget positions and rewrite double-quoted strings to mini() calls
   const widgets: WidgetCallInfo[] = [];

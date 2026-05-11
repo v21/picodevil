@@ -1,6 +1,6 @@
 import { silence } from "@strudel/core";
 import { transpile, type WidgetCallInfo } from "./transpiler";
-import { runTranspiled } from "./eval-sandbox";
+import { runTranspiled, buildNormMap } from "./eval-sandbox";
 import { resetWidgetCounter } from "./widgets";
 import { clearWarnings } from "./warnings";
 import {
@@ -20,6 +20,7 @@ export interface EvalDeps<CpsSnap> {
 export class EvalController<CpsSnap> {
   screens: Screen[] = [];
   namedScreens: { name: string; screenIndex: number }[] = [];
+  private normMap?: Map<string, string>;
 
   constructor(private deps: EvalDeps<CpsSnap>) {}
 
@@ -31,11 +32,22 @@ export class EvalController<CpsSnap> {
   }
 
   eval(code: string): { error: string | null; widgets: WidgetCallInfo[] } {
+    // Build the norm map on first eval (Pattern.prototype is fully populated by then)
+    if (!this.normMap) {
+      this.normMap = new Map(buildNormMap());
+      const add = (name: string) => {
+        const lower = name.toLowerCase();
+        if (!this.normMap!.has(lower)) this.normMap!.set(lower, name);
+      };
+      for (const key of Object.keys(this.deps.globals)) add(key);
+      add("hush");
+    }
+
     // Phase 1: Transpile — if this fails, don't touch running state at all
     let transpiled: string;
     let widgets: WidgetCallInfo[] = [];
     try {
-      const result = transpile(code);
+      const result = transpile(code, this.normMap);
       transpiled = result.code;
       widgets = result.widgets;
     } catch (e) {

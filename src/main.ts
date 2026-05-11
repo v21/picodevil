@@ -114,7 +114,7 @@ const evalController = new EvalController({
   snapshotCps: () => cpsController.snapshot(),
   restoreCps: (snap) => cpsController.restore(snap),
   globals: {
-    setCps, setCpm, setcps: setCps, setcpm: setCpm,
+    setCps, setCpm,
     loadVideo, loadImage, loadCamera, loadScreen,
     slider: sliderWidget,
     each, all,

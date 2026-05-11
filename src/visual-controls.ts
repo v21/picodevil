@@ -509,8 +509,6 @@ PatternProto.loopAt = function (n: any) {
     });
   });
 };
-PatternProto.loopat = PatternProto.loopAt;
-
 /**
  * Sets the base URL for loading video/image files. Use single quotes to avoid mininotation parsing.
  *
@@ -575,6 +573,23 @@ PatternProto.w = PatternProto.width;
  */
 export const height = createMixParam("height");
 PatternProto.h = PatternProto.height;
+
+/**
+ * Sets the width and height of the pattern. With one argument, sets both axes equally.
+ * With two arguments, sets width and height independently.
+ *
+ * @param {number | string | Pattern} w width (0–1), or both axes when h is omitted
+ * @param {number | string | Pattern} [h] height (0–1); if omitted, uses w for both
+ * @returns {Pattern} pattern with size applied
+ * @example
+ * $: video("clip.mp4").size(0.5)         // half width and half height
+ * $: video("clip.mp4").size(0.5, 0.25)   // half width, quarter height
+ * $: video("clip.mp4").size("0.5 1")     // alternates between half and full size
+ *
+ */
+PatternProto.size = function (w: any, h?: any) {
+  return this.width(w).height(h !== undefined ? h : w);
+};
 
 // Custom implementation: .i() also sets count=Infinity when count isn't already
 // present, so that gridMod/circleMod place the element in exactly one cell by default.

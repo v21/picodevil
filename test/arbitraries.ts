@@ -1092,3 +1092,33 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
   // polymeter ({x}) and zero-duration clips trigger .eq / .maximum on undefined.
 
 );
+
+// ============================================================
+// Mixed-case variant — exercises transpiler case normalisation
+// ============================================================
+
+/**
+ * Apply random case to each character of an identifier using a bit array.
+ * String literals (matched by the outer regex) are left unchanged.
+ */
+function randomizeCaseFull(name: string, bits: boolean[]): string {
+  return name.split("").map((c, i) => (bits[i % bits.length] ? c.toUpperCase() : c.toLowerCase())).join("");
+}
+
+// Matches quoted strings OR bare identifiers — strings are skipped, identifiers are mutated.
+const MIXED_CASE_TOKEN_RE = /(["'`])(?:[^\\]|\\.)*?\1|([a-zA-Z_$][a-zA-Z0-9_$]*)/g;
+
+/**
+ * Variant of topExpr where API identifiers have randomly mixed case.
+ * Exercises the transpiler's identifier case-normalisation pass end-to-end.
+ */
+export const topExprMixedCase: fc.Arbitrary<GeneratedExpr> = fc.tuple(
+  topExpr,
+  fc.array(fc.boolean(), { minLength: 32, maxLength: 32 }),
+).map(([expr, bits]) => {
+  const code = expr.code.replace(MIXED_CASE_TOKEN_RE, (match, _quote, ident) => {
+    if (ident) return randomizeCaseFull(ident, bits);
+    return match; // string literal — leave unchanged
+  });
+  return { code };
+});

@@ -17,7 +17,7 @@ import { createServer } from "vite";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import fc from "fast-check";
-import { topExpr, type GeneratedExpr, REGISTRY_SEED } from "./arbitraries";
+import { topExpr, topExprMixedCase, type GeneratedExpr, REGISTRY_SEED } from "./arbitraries";
 
 /** A test sequence: one or more code snippets to eval in order on the same page. */
 const evalSequence: fc.Arbitrary<GeneratedExpr[]> = fc.oneof(
@@ -30,6 +30,8 @@ const evalSequence: fc.Arbitrary<GeneratedExpr[]> = fc.oneof(
   ).map(([e, n]) => Array(n).fill(e)) },
   // Sequence of different codes (tests state transitions)
   { weight: 2, arbitrary: fc.array(topExpr, { minLength: 2, maxLength: 3 }) },
+  // Mixed-case identifiers — exercises case normalisation
+  { weight: 2, arbitrary: topExprMixedCase.map(e => [e]) },
 );
 
 const args = process.argv.slice(2);

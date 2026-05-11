@@ -10,6 +10,17 @@ npm install && npm run dev
 
 Open the browser. Type code in the editor. Press Ctrl+Enter to run it.
 
+## Case-insensitive API
+
+All function and method names are case-insensitive. `VIDEO`, `Video`, and `ViDeO` are all equivalent:
+
+```js
+$: VIDEO("clip.mp4").ALPHA(0.5).SPEED(2)
+$: Color("red").GridMod(2, 2)
+```
+
+This makes it easier to type live without worrying about capitalisation.
+
 ## Basic concepts
 
 Everything in uzuvid is a **pattern** — a function of time that produces values. Patterns cycle: each cycle, the pattern repeats. The default speed is 0.5 cycles per second (one cycle = 2 seconds).

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { EvalController, type EvalDeps } from "./eval-controller";
 import { initRegistry as initPatternRegistry } from "./pattern-registry";
+import "./visual-controls"; // side-effect: registers .alpha(), .speed(), etc. on Pattern.prototype
 import type { Screen } from "./renderer-interface";
 
 // Install .p() on Pattern.prototype before any tests run
@@ -134,6 +135,32 @@ describe("EvalController", () => {
     it("populates namedScreens for non-anonymous patterns", () => {
       ctrl.eval('myscreen: color("red")');
       expect(ctrl.namedScreens.some(n => n.name === "myscreen")).toBe(true);
+    });
+  });
+
+  describe("case-insensitive API", () => {
+    it("normalizes uppercase global function (COLOR)", () => {
+      const result = ctrl.eval('$: COLOR("red")');
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1);
+    });
+
+    it("normalizes mixed-case global function (CoLoR)", () => {
+      const result = ctrl.eval('$: CoLoR("red")');
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1);
+    });
+
+    it("normalizes uppercase method (.ALPHA)", () => {
+      const result = ctrl.eval('$: color("red").ALPHA(0.5)');
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1);
+    });
+
+    it("normalizes .P() registration method", () => {
+      const result = ctrl.eval("color('red').P('$')");
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1);
     });
   });
 });
