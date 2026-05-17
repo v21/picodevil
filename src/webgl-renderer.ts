@@ -24,7 +24,8 @@ const MAX_TEX_UNITS = 64;
 //   [31]     brightness  (float: additive brightness offset; 0 = identity)
 //   [32..33] tint        (vec2: x=tintHue [0,1 turns], y=tintStrength [unclamped])
 //   [34]     barrel      (float: barrel/pincushion distortion coefficient; 0 = off)
-const INSTANCE_FLOATS = 35;
+//   [35]     barrelClip  (float: 1=clip out-of-bounds to alpha 0, 0=wrap via fract)
+const INSTANCE_FLOATS = 36;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -61,7 +62,7 @@ layout(location = 8) in mat4 a_transform; // uses locations 8-11
 layout(location = 12) in float a_contrast;
 layout(location = 13) in float a_brightness;
 layout(location = 14) in vec2 a_tint;     // x=tintHue, y=tintStrength
-layout(location = 15) in float a_barrel;
+layout(location = 15) in vec2 a_barrel; // x=strength, y=clip(1)/wrap(0)
 
 flat out int v_texIndex;
 out vec2 v_uv;
@@ -72,7 +73,7 @@ flat out float v_hueRot;
 flat out float v_contrast;
 flat out float v_brightness;
 flat out vec2 v_tint;
-flat out float v_barrel;
+flat out vec2 v_barrel;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
@@ -114,7 +115,7 @@ flat in float v_hueRot;
 flat in float v_contrast;
 flat in float v_brightness;
 flat in vec2 v_tint;
-flat in float v_barrel;
+flat in vec2 v_barrel;
 out vec4 fragColor;
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -163,14 +164,16 @@ void main() {
   // Barrel/pincushion distortion in UV space. Positive = barrel (CRT look,
   // corners go transparent); negative = pincushion. Applied before pixelation
   // so pixel blocks are warped along with the image.
-  if (v_barrel != 0.0) {
+  if (v_barrel.x != 0.0) {
     vec2 d = raw - 0.5;
     // Normalise by r²=0.25 (the value at edge centres) so edge centres are
     // fixed (scale=1 there) and distortion grows radially from that circle.
     float r2 = dot(d, d);
-    d *= 1.0 + v_barrel * (r2 - 0.25);
+    d *= 1.0 + v_barrel.x * (r2 - 0.25);
     raw = d + 0.5;
-    if (raw.x < 0.0 || raw.x > 1.0 || raw.y < 0.0 || raw.y > 1.0) {
+    // v_barrel.y=1: clip out-of-bounds to transparent (cover/fill/contain/none).
+    // v_barrel.y=0: let fract() wrap as usual (tile/tilecenter).
+    if (v_barrel.y > 0.5 && (raw.x < 0.0 || raw.x > 1.0 || raw.y < 0.0 || raw.y > 1.0)) {
       fragColor = vec4(0.0);
       return;
     }
@@ -400,6 +403,7 @@ interface DrawCommand {
   tintHue:      number;
   tintStrength: number;
   barrel:       number;
+  barrelClip:   number; // 1 = clip out-of-bounds, 0 = wrap via fract()
   transform:    Float32Array; // 16 floats, column-major
 }
 
@@ -541,6 +545,7 @@ export class WebGLRenderer implements Renderer {
         tintHue:      p.tintHue      ?? 0,
         tintStrength: p.tintStrength ?? 0,
         barrel:       p.barrel       ?? 0,
+        barrelClip:   1,
         transform:    buildTransform(p),
       });
       return;
@@ -574,6 +579,7 @@ export class WebGLRenderer implements Renderer {
       tintHue:      p.tintHue      ?? 0,
       tintStrength: p.tintStrength ?? 0,
       barrel:       p.barrel       ?? 0,
+      barrelClip:   (p.fit === 'tile' || p.fit === 'tilecenter') ? 0 : 1,
       transform:    buildTransform(p),
     });
   }
@@ -630,6 +636,7 @@ export class WebGLRenderer implements Renderer {
         d[base + 32] = cmd.tintHue;
         d[base + 33] = cmd.tintStrength;
         d[base + 34] = cmd.barrel;
+        d[base + 35] = cmd.barrelClip;
       }
 
       this.setBlend(blendMode);
@@ -857,7 +864,7 @@ function createVAO(
   gl.vertexAttribDivisor(LOC_TINT, 1);
 
   gl.enableVertexAttribArray(LOC_BARREL);
-  gl.vertexAttribPointer(LOC_BARREL, 1, gl.FLOAT, false, s, 136);
+  gl.vertexAttribPointer(LOC_BARREL, 2, gl.FLOAT, false, s, 136); // vec2: strength + clip flag
   gl.vertexAttribDivisor(LOC_BARREL, 1);
 
   gl.bindVertexArray(null);
