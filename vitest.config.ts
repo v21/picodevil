@@ -12,7 +12,7 @@ export default defineConfig({
     exclude: ["server/**", "test/**", "node_modules/**"],
     browser: {
       enabled: true,
-      provider: playwright(),
+      provider: playwright({ launchOptions: { args: ['--use-gl=angle', '--enable-unsafe-swiftshader'] } }),
       instances: [{ browser: "chromium" }],
       headless: true,
       screenshotFailures: false,

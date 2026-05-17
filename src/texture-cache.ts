@@ -121,7 +121,7 @@ export class TextureCache {
 
   private isReady(el: SourceElement): boolean {
     if (el instanceof HTMLVideoElement) {
-      // Match Canvas2DRenderer: only require videoWidth > 0 (metadata available).
+      // Only require videoWidth > 0 (metadata available).
       // Checking readyState >= 2 causes one-frame black flickers when the video
       // briefly drops below HAVE_CURRENT_DATA at loop boundaries.
       return el.videoWidth > 0;

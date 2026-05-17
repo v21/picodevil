@@ -14,7 +14,6 @@ import { warn, flushWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
 import { loadCamera, loadScreen } from "./stream-manager";
 import { fft, updateFrame as fftUpdateFrame, applyFftConfig, getFftConfig, onFftConfigChange } from "./fft-audio";
-import { Canvas2DRenderer } from "./canvas2d-renderer";
 import { WebGLRenderer } from "./webgl-renderer";
 import { FrameRenderer } from "./renderer";
 import type { Renderer } from "./renderer-interface";
@@ -26,18 +25,7 @@ initPatternRegistry();
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 
-const useWebGL = new URLSearchParams(location.search).get('renderer') !== 'canvas2d';
-let activeRenderer: Renderer;
-if (useWebGL) {
-  try {
-    activeRenderer = new WebGLRenderer(canvas);
-  } catch (e) {
-    console.warn('WebGL2 unavailable, falling back to Canvas 2D:', e);
-    activeRenderer = new Canvas2DRenderer(canvas.getContext("2d")!);
-  }
-} else {
-  activeRenderer = new Canvas2DRenderer(canvas.getContext("2d")!);
-}
+const activeRenderer: Renderer = new WebGLRenderer(canvas);
 
 function resize() {
   canvas.width = window.innerWidth * devicePixelRatio;

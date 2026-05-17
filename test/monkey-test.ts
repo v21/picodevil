@@ -259,7 +259,10 @@ async function main() {
   const url = `http://localhost:${port}`;
   console.log(`Vite running at ${url}`);
 
-  const browser = await chromium.launch({ headless: HEADLESS });
+  const browser = await chromium.launch({
+    headless: HEADLESS,
+    args: ['--use-gl=angle', '--use-angle=metal', '--enable-unsafe-swiftshader'],
+  });
   const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
   const page = await context.newPage();
 

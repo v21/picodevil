@@ -1,4 +1,4 @@
-import type { FitMode } from './draw-fit';
+export type FitMode = "cover" | "contain" | "fill" | "none" | "tile" | "tilecenter";
 
 /** Minimal interface for a registered screen pattern. */
 export type Screen = { queryArc(begin: number, end: number): any[] };
@@ -59,7 +59,7 @@ export interface TileParams {
 }
 
 /**
- * Renderer backend interface — Canvas 2D and WebGL both implement this.
+ * Renderer backend interface.
  */
 export interface Renderer {
   /** Called when the canvas is resized. */

@@ -49,10 +49,9 @@ uzuvid/
     time-value.ts         — TimeValue type and parsing (relative, seconds, milliseconds)
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
     create-mix-param.ts   — createMixParam: custom combiner preserving whole spans
-    renderer-interface.ts — Renderer interface, TileParams, TileSource types
+    renderer-interface.ts — Renderer interface, TileParams, TileSource types, FitMode type
     renderer.ts           — FrameRenderer: frame loop logic, event collection, video assignment, dispatches TileParams to backend
-    canvas2d-renderer.ts  — Canvas2DRenderer: Renderer impl using CanvasRenderingContext2D (fallback / dev reference)
-    webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2 (default); GPU texture upload, UV/fit on CPU, blend modes
+    webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2; GPU texture upload, UV/fit on CPU, blend modes
     texture-cache.ts      — TextureCache: manages WebGL textures; videos re-uploaded each frame, images/colors cached
     playback-simulation-helpers.ts — shared setup and helpers for simulation test files: DUR, CPS, TracePoint, evalPattern, simulateTrace, checkTraceInvariants, assertTracesMatch, setupSimulation()
   test/
@@ -83,12 +82,11 @@ Rendering is split into two layers:
 - **`FrameRenderer`** (`src/renderer.ts`) — frame-loop logic: calls `queryNeeded` to build needed-source list, calls `matchSources` to assign free pool elements by seek-cost scoring, prewarms future elements, builds `TileParams` structs. Backend-agnostic.
 - **`Renderer` interface** (`src/renderer-interface.ts`) — `resize / beginFrame / drawTile(TileParams) / endFrame / dispose`. Backends plug in here.
 
-Two backends exist:
+One backend:
 
-- **`WebGLRenderer`** (`src/webgl-renderer.ts`) — **default**. Uploads video frames as GPU textures (`gl.texImage2D`) — no CPU readback. UV rect and fit (cover/fill/tile/tilecenter) computed CPU-side; contain/none shrink the dest rect so the letterbox area is simply not drawn. Transforms (rotateZ, rotateX/Y scale, scaleX/Y) encoded as a 4×4 column-major matrix built on CPU. Blend modes use `blendFuncSeparate` so RGB and alpha channels accumulate correctly.
-- **`Canvas2DRenderer`** (`src/canvas2d-renderer.ts`) — fallback. Uses `CanvasRenderingContext2D` / `drawImage`. Add `?renderer=canvas2d` to the URL to use it.
+- **`WebGLRenderer`** (`src/webgl-renderer.ts`) — the only renderer. Uploads video frames as GPU textures (`gl.texImage2D`) — no CPU readback. UV rect and fit (cover/fill/tile/tilecenter) computed CPU-side; contain/none shrink the dest rect so the letterbox area is simply not drawn. Transforms (rotateZ, rotateX/Y scale, scaleX/Y) encoded as a 4×4 column-major matrix built on CPU. Blend modes use `blendFuncSeparate` so RGB and alpha channels accumulate correctly.
 
-Backend selection in `main.ts`: WebGL2 is attempted first; if unavailable it falls back to Canvas 2D automatically. The `?renderer=canvas2d` query param forces Canvas 2D (useful for visual comparison during development).
+Backend selection in `main.ts`: `new WebGLRenderer(canvas)` — unconditional, no fallback.
 
 `TextureCache` (`src/texture-cache.ts`) manages WebGL textures:
 - Videos/streams: `texImage2D` every frame (content changes)

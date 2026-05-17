@@ -230,7 +230,7 @@ function computeUV(p: TileParams, srcW: number, srcH: number, cellW: number, cel
   const absCropw = Math.abs(p.cropw);
   const absCroph = Math.abs(p.croph);
 
-  // Clamp to 1 source pixel minimum (replicates drawFit's zero-crop colour fill)
+  // Clamp to 1 source pixel minimum (cropw=0 samples a single pixel colour)
   const vsw = Math.max(1, absCropw * srcW);
   const vsh = Math.max(1, absCroph * srcH);
 
@@ -389,7 +389,6 @@ interface DrawCommand {
 
 /**
  * WebGL2 rendering backend.
- * Implements Renderer — drop-in replacement for Canvas2DRenderer.
  *
  * Tiles are accumulated into a DrawCommand list each frame, then flushed in
  * batches via drawArraysInstanced. A batch breaks only when the blend mode
