@@ -43,6 +43,7 @@ import { text } from "./text-pattern";
 import { screen, s } from "./screen-pattern";
 import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
+import { echo } from "./visual-controls";
 
 let _normMapBase: Map<string, string> | null = null;
 
@@ -84,6 +85,7 @@ export function getPatternGlobals(): Record<string, unknown> {
     tri, tri2, itri, itri2, square, square2, perlin,
     time, mouseX, mouseY, run, chooseIn, chooseCycles, signal, steady,
     addOn, subOn, mulOn, divOn, modOn, powOn, setOn, mapOn,
+    echo,
   };
 }
 

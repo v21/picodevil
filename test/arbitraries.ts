@@ -426,6 +426,8 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
         .map(([t, fn]: [string, string]) => `.off(${t}, ${fn})`) },
     { weight: 2, arbitrary: fc.tuple(integerArg, numericArg)
         .map(([n, t]: [string, string]) => `.echoWith(${n}, ${t}, (p, i) => p.alpha(1 - i * 0.25))`) },
+    { weight: 2, arbitrary: fc.tuple(integerArg, numericArg, numericArg)
+        .map(([n, t, f]: [string, string, string]) => `.echo(${n}, ${t}, ${f})`) },
 
     // ── Temporal nesting ──────────────────────────────────────────────────
     { weight: 2, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)

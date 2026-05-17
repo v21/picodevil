@@ -5,7 +5,7 @@
  * (so signals animate smoothly) while preserving the source pattern's whole span
  * (so fit/chop/loopAt see the true event duration). See docs/combinators.md.
  */
-import { reify, Pattern, Hap } from "@strudel/core";
+import { reify, Pattern, Hap, register } from "@strudel/core";
 import { createMixParam, samplePerEvent } from "./create-mix-param";
 import "./effects-controls"; // registers alpha, opacity, pixelate, grey, huerot, contrast, brightness, tint
 import "./pattern-extensions"; // registers addOn on Pattern.prototype
@@ -1066,4 +1066,24 @@ export const fontBGColor = createMixParam("fontBGColor");
 PatternProto.textBGColor  = PatternProto.fontBGColor;
 PatternProto.textBGColour = PatternProto.fontBGColor;
 PatternProto.fontBGColour = PatternProto.fontBGColor;
+
+// ── Echo (alpha-based, overrides Strudel's gain-based version) ─────────────
+
+/**
+ * Superimpose `times` time-offset copies of the pattern, each decayed in alpha.
+ * Overrides Strudel's built-in `echo` which decays audio gain instead.
+ *
+ * @param {number} times number of copies (including the original)
+ * @param {number} delay cycle offset between successive copies
+ * @param {number} feedback alpha multiplier per copy (0–1; e.g. 0.7 = each copy is 70% the previous)
+ * @returns {Pattern} stacked pattern with echoing alpha trail
+ * @example
+ * $: s("clip.mp4").echo(4, 0.125, 0.6)
+ * $: color("cyan").echo(3, 0.25, 0.5)
+ */
+export const echo = (register as any)(
+  "echo",
+  (times: number, delay: number, feedback: number, pat: any) =>
+    pat._echoWith(times, delay, (_copy: any, i: number) => _copy.alpha(Math.pow(feedback, i))),
+);
 
