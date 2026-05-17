@@ -264,18 +264,6 @@ PatternProto.plyWith = PatternProto.plyWith;
 PatternProto.plyForEach = PatternProto.plyForEach;
 
 /**
- * Superimpose `times` time-offset copies of the pattern, each decayed in alpha.
- * Overrides Strudel's built-in `echo` (which decays audio gain) with a visual version.
- * @param times number of copies (including the original)
- * @param delay cycle offset between copies
- * @param feedback alpha multiplier per copy (0–1; e.g. 0.7 = each echo is 70% as opaque)
- * @example
- * $: s("clip.mp4").echo(4, 0.125, 0.6)
- * $: color("cyan").echo(3, 0.25, 0.5)
- */
-PatternProto.echo = PatternProto.echo;
-
-/**
  * Superimpose multiple time-offset copies of the pattern, applying a function to each.
  * @param times number of copies
  * @param time cycle offset between copies
