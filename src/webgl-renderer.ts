@@ -181,7 +181,14 @@ void main() {
   // Pixelation: quantise UV to a grid in texture space (before fract so
   // tiling still works). The step is 0 when pixelation is off.
   if (v_pixUVStep.x > 0.0) {
-    raw = floor(raw / v_pixUVStep + 0.5) * v_pixUVStep;
+    // (floor(raw/step) + 0.5) * step centres blocks at step/2, 3·step/2, …
+    // so every block has the same visual width — no half-sized block at the edges.
+    raw = (floor(raw / v_pixUVStep) + 0.5) * v_pixUVStep;
+    // For non-tile modes clamp the upper bound: raw=1.0 would give 1+step/2
+    // which fract() wraps to the first block. Clamp to the last block centre instead.
+    if (v_barrel.y > 0.5) {
+      raw = min(raw, 1.0 - v_pixUVStep * 0.5);
+    }
   }
   // fract() gives GL_REPEAT-style tiling for out-of-bounds UV;
   // for normal in-bounds UVs it is a no-op.

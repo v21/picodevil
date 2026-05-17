@@ -94,6 +94,39 @@ describe("WebGL crop rendering", () => {
     });
   });
 
+  describe("pixelation UV boundary", () => {
+    it("bottom pixel blocks sample from the bottom of the source, not the top", () => {
+      // White top, black bottom. Last block quantises to raw=1.0;
+      // fract(1.0)=0.0 would sample the white top instead of the dark bottom.
+      const src = makeVSplitCanvas("white", "black");
+      const canvas = renderTile(makeTile({
+        source: { kind: 'text', canvas: src },
+        fit: 'fill',
+        pixelate: 20,
+      }));
+      const [r, g, b] = readPixel(canvas, 50, 90);
+      expect(r).toBeLessThan(50);
+      expect(g).toBeLessThan(50);
+      expect(b).toBeLessThan(50);
+    });
+
+    it("top pixel blocks sample from the top of the source without bilinear bleed from the bottom", () => {
+      // White top, black bottom. First block quantises to raw=0.0;
+      // GL_REPEAT bilinear at UV=0 blends 50% from the last texel (dark bottom),
+      // halving the brightness of the top block.
+      const src = makeVSplitCanvas("white", "black");
+      const canvas = renderTile(makeTile({
+        source: { kind: 'text', canvas: src },
+        fit: 'fill',
+        pixelate: 20,
+      }));
+      const [r, g, b] = readPixel(canvas, 50, 5);
+      expect(r).toBeGreaterThan(200);
+      expect(g).toBeGreaterThan(200);
+      expect(b).toBeGreaterThan(200);
+    });
+  });
+
   describe("default crop is identity", () => {
     it("cropx=0.5 cropw=1 renders the full source unchanged", () => {
       const src = makeHSplitCanvas("red", "blue");
