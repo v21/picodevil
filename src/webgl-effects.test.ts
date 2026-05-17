@@ -17,7 +17,8 @@
  *   multiply:     src.rgb×dst.rgb              = darken (0.5×0.5=0.25≈64)
  */
 import { describe, it, expect } from "vitest";
-import { makeTile, renderTile, renderTiles, readPixel } from "./webgl-test-helpers";
+import { makeTile, renderTile, renderTiles, readPixel, W, H } from "./webgl-test-helpers";
+import { WebGLRenderer } from "./webgl-renderer";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -319,5 +320,55 @@ describe("barrel", () => {
     // Top-left corner
     const [, , , a] = readPixel(canvas, 1, 1);
     expect(a).toBe(0);
+  });
+});
+
+describe("snapshotSoFar / s('all') mid-frame compositing", () => {
+  it("captures rendered content and exposes it as pattern:all", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+    renderer.beginFrame();
+    // Draw red
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 } }));
+    // Snapshot: flushes red draw, blits canvas → 'all' FBO
+    renderer.snapshotSoFar();
+    // Draw the snapshot over the existing red (source-over, same content)
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'all' } }));
+    renderer.endFrame();
+    renderer.dispose();
+
+    const [r, g, b, a] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(g).toBeLessThan(10);
+    expect(b).toBeLessThan(10);
+    expect(a).toBe(255);
+  });
+
+  it("second snapshot sees content drawn after first snapshot", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+    renderer.beginFrame();
+    // Draw red, snapshot (all = red)
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 } }));
+    renderer.snapshotSoFar();
+    // Draw blue on top of red, snapshot again (all = red+blue = magenta-ish via source-over)
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 0, g: 0, b: 1 } }));
+    renderer.snapshotSoFar();
+    // Now draw the second snapshot — should contain red+blue mixed
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'all' } }));
+    renderer.endFrame();
+    renderer.dispose();
+
+    const [r, , b, a] = readPixel(canvas, 50, 50);
+    // Blue was drawn on top of red (source-over), then snapshotted. The snapshot should be blue.
+    // Drawing that over the canvas (which already has red+blue) keeps it blue-dominant.
+    expect(b).toBeGreaterThan(200);
+    expect(a).toBe(255);
+    // red should be gone (covered by opaque blue)
+    expect(r).toBeLessThan(10);
   });
 });

@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-05-04.
+> This file is machine-authored for use by coding agents. Last updated 2026-05-17.
 
 ## What is this?
 
@@ -135,7 +135,7 @@ All function and method names are **case-insensitive** — `VIDEO`, `Video`, `Vi
 
 **Registration:** `$: expr` → `expr.p("$")` (stacking), `name: expr` → `expr.p("name")` (last write wins), `S` prefix = solo, `_` prefix/suffix = mute, `H` prefix = hidden (FBO-only, not drawn to main canvas)
 
-**Named framebuffers:** Each non-anonymous named pattern (e.g. `mycomp: expr`) is rendered to an offscreen WebGL framebuffer (FBO) before the main canvas draw. `s("mycomp")` references that FBO as a pixel source — identical to using a video or image. `s("all")` gives the previous frame's full composited output, enabling feedback effects (1-frame latency). `Hname: expr` registers a pattern as FBO-only (not drawn to canvas); `.hide()` on a pattern is equivalent. Render order: named FBOs render in declaration order; patterns later in the list see earlier patterns' current-frame content, earlier patterns see later patterns' previous-frame content.
+**Named framebuffers:** Each non-anonymous named pattern (e.g. `mycomp: expr`) is rendered to an offscreen WebGL framebuffer (FBO) before the main canvas draw. `s("mycomp")` references that FBO as a pixel source — identical to using a video or image. `s("all")` snapshots the canvas composite at that point in the current frame — everything drawn before it is captured, so you can apply effects to it and then draw more on top (mid-frame compositing). `s("prev")` gives the previous frame's full composited output, enabling feedback effects (1-frame latency). `Hname: expr` registers a pattern as FBO-only (not drawn to canvas); `.hide()` on a pattern is equivalent. Render order: named FBOs render in declaration order; patterns later in the list see earlier patterns' current-frame content, earlier patterns see later patterns' previous-frame content.
 
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`

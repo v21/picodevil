@@ -45,6 +45,10 @@ describe("isNamedPattern()", () => {
   it("always returns true for 'all' (reserved)", () => {
     expect(isNamedPattern("all")).toBe(true);
   });
+
+  it("always returns true for 'prev' (reserved)", () => {
+    expect(isNamedPattern("prev")).toBe(true);
+  });
 });
 
 describe("collectScreens() with H prefix", () => {

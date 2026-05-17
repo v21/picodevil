@@ -121,7 +121,7 @@ export class FrameRenderer {
     this.drawFrame(allEvents, t, cps, nowWall, videoFrameProcessed, true);
     this.renderer.endFrame();
 
-    // Phase 3c: blit canvas → "all" FBO for next-frame feedback
+    // Phase 3c: blit canvas → "prev" FBO for next-frame feedback
     this.renderer.captureAll();
 
     this._endPhase('uzu draw', this.metrics.phaseDraw);
@@ -435,6 +435,9 @@ export class FrameRenderer {
       }
       if (params === null) continue;
       try {
+        if (params.source.kind === 'pattern' && params.source.name === 'all') {
+          this.renderer.snapshotSoFar();
+        }
         this.renderer.drawTile(params);
       } catch (e) {
         warn(`screen ${fe.screenIndex} event ${fe.eventIndex} draw error: ${e instanceof Error ? e.message : e}`);

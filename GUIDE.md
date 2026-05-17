@@ -173,14 +173,22 @@ $: s("mycomp").x(0.25).width(0.5)
 $: s("mycomp").x(0.75).width(0.5).blend("difference")
 ```
 
-`s("all")` gives the previous frame's full composited canvas output, enabling feedback and echo effects:
+`s("prev")` gives the previous frame's full composited canvas output, enabling feedback and echo effects:
 
 ```js
-$: s("all").alpha(0.95)
+$: s("prev").alpha(0.95)
 $: color("red").width(0.1).height(0.1)
 ```
 
-**Forward references** (referencing a pattern declared after the current one) work but show the previous frame's content — imperceptible at 60fps.
+`s("all")` snapshots the canvas at that point in the current frame — everything drawn before it is captured, so you can apply effects to it and then draw more on top:
+
+```js
+$: color("red")
+$: s("all").huerot(0.3)   // hue-rotates the red; anything drawn after sees the result
+$: text("hello")           // drawn over the hue-rotated canvas
+```
+
+**Forward references** (referencing a pattern declared after the current one) work but show the previous frame's content
 
 ## Mininotation
 

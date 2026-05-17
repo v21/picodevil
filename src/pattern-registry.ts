@@ -22,8 +22,8 @@ function fboName(id: string): string {
 export function initRegistry(): void {
   (Pattern.prototype as any).p = function(id: string) {
     if (id.startsWith('_') || id.endsWith('_')) return silence;
-    if (id === 'all') {
-      console.warn('.p("all") is reserved for the full-canvas FBO. Choose a different name.');
+    if (id === 'all' || id === 'prev') {
+      console.warn(`.p("${id}") is reserved. Choose a different name.`);
       return silence;
     }
     if (id.includes('$')) {
@@ -91,11 +91,11 @@ export function restoreRegistry(snapshot: RegistrySnapshot): void {
 }
 
 /**
- * Returns true if `name` is a registered non-anonymous pattern (or the reserved "all").
+ * Returns true if `name` is a registered non-anonymous pattern (or the reserved "all"/"prev").
  * Used by screen() to classify tokens as pattern FBO references.
  */
 export function isNamedPattern(name: string): boolean {
-  if (name === 'all') return true;
+  if (name === 'all' || name === 'prev') return true;
   if (name.includes('$')) return false;
   return (name in pPatterns) || (('S' + name) in pPatterns) || (('H' + name) in pPatterns);
 }

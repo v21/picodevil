@@ -76,7 +76,9 @@ export interface Renderer {
   beginOffscreen(name: string): void;
   /** Restore the default (canvas) framebuffer. */
   endOffscreen(): void;
-  /** Blit the current canvas output to the "all" FBO for next-frame feedback. */
+  /** Flush pending draws and blit current canvas state to the "all" FBO for mid-frame compositing. */
+  snapshotSoFar(): void;
+  /** Blit the current canvas output to the "prev" FBO for next-frame feedback. */
   captureAll(): void;
   /** Release GPU/canvas resources. */
   dispose(): void;

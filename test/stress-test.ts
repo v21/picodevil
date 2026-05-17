@@ -140,9 +140,9 @@ const CASES: StressCase[] = [
     seekWarmupFrames: 30,
   },
   {
-    name: "3-video sync switching + s(all) feedback",
+    name: "3-video sync switching + s(prev) feedback",
     code: [
-      `$: s("all").alpha(1).scale(1.01)`,
+      `$: s("prev").alpha(1).scale(1.01)`,
       `dvsa: s("red.mp4 blue.mp4 hXJaBfcdCKM.mp4").urlBase('/test-assets/').width(0.5).height(0.5).sync()`,
     ].join("\n"),
     maxAvgSeeksAfterWarmup: 1,

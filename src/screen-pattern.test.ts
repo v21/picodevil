@@ -196,6 +196,12 @@ describe("screen()", () => {
       expect(evs[0].value.src).toBe("all");
     });
 
+    it("s('prev') resolves as _type:pattern", () => {
+      const evs = screen("prev").queryArc(0, 1);
+      expect(evs[0].value._type).toBe("pattern");
+      expect(evs[0].value.src).toBe("prev");
+    });
+
     it("unregistered name falls back to color", () => {
       const evs = screen("notapattern").queryArc(0, 1);
       expect(evs[0].value._type).toBe("color");

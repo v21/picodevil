@@ -29,7 +29,7 @@ const SETUP_CODE = [
   `loadVideo('dvsa3', 'http://localhost:3456/videos/CGI_15.mp4')`,
 ].join("\n");
 const PATTERN_CODE = [
-  `$: s("all").alpha(1).scale(1.01)`,
+  `$: s("prev").alpha(1).scale(1.01)`,
   `dvsa: s("dvsa1 dvsa2 dvsa3").width(0.5).height(0.5).sync()`,
 ].join("\n");
 

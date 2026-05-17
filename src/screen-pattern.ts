@@ -34,7 +34,8 @@ function classifyToken(v: string): object {
  * @returns {Pattern} pattern of typed source objects
  * Token resolution order: media registry → named pattern FBO → file extension → CSS color.
  * Use `s("name")` to reference a named pattern's offscreen framebuffer as a pixel source.
- * `s("all")` references the previous frame's full composited output (feedback effects).
+ * `s("all")` captures the canvas composite at that point in the frame for mid-frame effects.
+ * `s("prev")` references the previous frame's full composited output (feedback effects).
  * @example
  * $: s("myclip")                     // registry-named video or image
  * $: s("myclip red blue")            // mix video and colors
@@ -45,7 +46,8 @@ function classifyToken(v: string): object {
  * $: s("a.mp4:.0:.5 b.mp4:.5:1")    // different ranges per token
  * mycomp: stack(color("red"), color("blue").alpha(0.5).blend("screen"))
  * $: s("mycomp")                     // named pattern FBO as source
- * $: s("all").alpha(0.95)            // feedback from previous frame
+ * $: s("prev").alpha(0.95)           // feedback from previous frame
+ * $: color("red"); $: s("all").huerot(0.5)  // hue-rotate everything drawn before this
  *
  */
 export function screen(pat: string | Pattern): Pattern {

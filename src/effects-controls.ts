@@ -133,8 +133,7 @@ PatternProto.tint = function (hue: any, strength: any = 1) {
 /**
  * Applies barrel (positive) or pincushion (negative) lens distortion.
  * Barrel distortion bows the image outward, clipping corners to transparent —
- * the classic CRT curved-screen look. Works best on full-frame sources like
- * `s("all")`. For a subtle CRT effect, try values around 0.3–0.5.
+ * the classic CRT curved-screen look. For a subtle CRT effect, try values around 0.3–0.5.
  *
  * @param {number | string | Pattern} [value=0.5] distortion coefficient: >0 = barrel, <0 = pincushion
  * @returns {Pattern} pattern with lens distortion applied

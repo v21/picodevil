@@ -440,6 +440,8 @@ export class WebGLRenderer implements Renderer {
 
   private instanceData = new Float32Array(256 * INSTANCE_FLOATS);
   private readonly pendingDraws: DrawCommand[] = [];
+  /** The currently bound offscreen FBO (null = default canvas framebuffer). */
+  private currentFBO: WebGLFramebuffer | null = null;
 
   private w = 0;
   private h = 0;
@@ -592,6 +594,10 @@ export class WebGLRenderer implements Renderer {
   }
 
   endFrame(): void {
+    this.flushPending();
+  }
+
+  private flushPending(): void {
     const { gl } = this;
     const draws = this.pendingDraws;
     if (draws.length === 0) return;
@@ -687,17 +693,31 @@ export class WebGLRenderer implements Renderer {
     const entry = this.getOrCreateFBO(name);
     gl.bindFramebuffer(gl.FRAMEBUFFER, entry.fbo);
     gl.viewport(0, 0, entry.w, entry.h);
+    this.currentFBO = entry.fbo;
   }
 
   endOffscreen(): void {
     const { gl } = this;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.w, this.h);
+    this.currentFBO = null;
+  }
+
+  snapshotSoFar(): void {
+    const { gl, w, h } = this;
+    this.flushPending();
+    const entry = this.getOrCreateFBO('all');
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, entry.fbo);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    // Restore whatever was bound before (null during main pass, named FBO during pre-pass)
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this.currentFBO);
   }
 
   captureAll(): void {
     const { gl, w, h } = this;
-    const entry = this.getOrCreateFBO('all');
+    const entry = this.getOrCreateFBO('prev');
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, entry.fbo);
     gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
