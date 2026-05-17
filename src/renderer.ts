@@ -78,7 +78,7 @@ export class FrameRenderer {
 
   /**
    * Render one full frame.
-   * Phases: query needed sources → match elements → FBO pre-pass → draw → captureAll → prewarm.
+   * Phases: query needed sources → match elements → draw (FBOs inline) → captureAll → prewarm.
    */
   render(screens: Screen[], namedScreens: { name: string; screenIndex: number }[], t: number, cps: number, cycle: number, frameWallTime?: number): void {
     const nowWall = frameWallTime ?? performance.now();
@@ -99,29 +99,45 @@ export class FrameRenderer {
     this.assignElements(needed, eventMap, t, cps, frameDt);
     this._endPhase('uzu assign', this.metrics.phaseAssign);
 
-    // Phase 3: draw (video frame rendering + GPU dispatch)
+    // Phase 3: draw — single pass in declaration order; named FBOs rendered inline.
+    // videoFrameProcessed prevents renderVideoFrame being called twice for non-H named
+    // patterns, which render to both their FBO and the main canvas.
     performance.mark('uzu-phase-start');
-    // Shared set: prevent renderVideoFrame from being called twice on the same element
-    // if it appears in both an FBO pre-pass and the main canvas draw.
     const videoFrameProcessed = new Set<VideoEl>();
+    const namedByIndex = new Map(namedScreens.map(n => [n.screenIndex, n.name]));
 
-    // Phase 3a: FBO pre-pass — render each named pattern to its offscreen framebuffer
-    for (const { name, screenIndex } of namedScreens) {
-      const fboEvents = allEvents.filter(fe => fe.screenIndex === screenIndex);
-      if (fboEvents.length === 0) continue;
-      this.renderer.beginOffscreen(name);
-      this.renderer.beginFrame();
-      this.drawFrame(fboEvents, t, cps, nowWall, videoFrameProcessed, false);
-      this.renderer.endFrame();
-      this.renderer.endOffscreen();
+    this.renderer.beginFrame();
+
+    let i = 0;
+    while (i < allEvents.length) {
+      const si = allEvents[i].screenIndex;
+      const groupStart = i;
+      while (i < allEvents.length && allEvents[i].screenIndex === si) i++;
+      const group = allEvents.slice(groupStart, i);
+
+      const fboName = namedByIndex.get(si);
+      if (fboName !== undefined) {
+        // Named pattern: render to its FBO inline at declaration position.
+        // beginOffscreen() flushes any pending main-canvas draws before switching.
+        const isHOnly = group.some(fe => fe.ev._fboOnly);
+        this.renderer.beginOffscreen(fboName);
+        this.renderer.beginFrame();
+        this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, false);
+        this.renderer.endFrame();
+        this.renderer.endOffscreen();
+        // Non-H named patterns also appear directly on the main canvas.
+        if (!isHOnly) {
+          this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, true);
+        }
+      } else {
+        // Anonymous pattern: draw directly to main canvas.
+        this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, true);
+      }
     }
 
-    // Phase 3b: main canvas draw
-    this.renderer.beginFrame();
-    this.drawFrame(allEvents, t, cps, nowWall, videoFrameProcessed, true);
     this.renderer.endFrame();
 
-    // Phase 3c: blit canvas → "prev" FBO for next-frame feedback
+    // Blit canvas → "prev" FBO for next-frame feedback
     this.renderer.captureAll();
 
     this._endPhase('uzu draw', this.metrics.phaseDraw);

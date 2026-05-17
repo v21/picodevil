@@ -690,6 +690,7 @@ export class WebGLRenderer implements Renderer {
 
   beginOffscreen(name: string): void {
     const { gl } = this;
+    this.flushPending(); // commit any pending draws to the current framebuffer before switching
     const entry = this.getOrCreateFBO(name);
     gl.bindFramebuffer(gl.FRAMEBUFFER, entry.fbo);
     gl.viewport(0, 0, entry.w, entry.h);
