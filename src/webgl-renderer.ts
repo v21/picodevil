@@ -9,7 +9,7 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (34 floats = 136 bytes):
+// Per-instance Float32Array layout (35 floats = 140 bytes):
 //   [0..1]   destOffset  (vec2)
 //   [2..3]   destSize    (vec2)
 //   [4..5]   uvOffset    (vec2)
@@ -23,8 +23,8 @@ const MAX_TEX_UNITS = 64;
 //   [30]     contrast    (float: centred-contrast multiplier; 1 = identity)
 //   [31]     brightness  (float: additive brightness offset; 0 = identity)
 //   [32..33] tint        (vec2: x=tintHue [0,1 turns], y=tintStrength [unclamped])
-//   Loc 15: free for future effects
-const INSTANCE_FLOATS = 34;
+//   [34]     barrel      (float: barrel/pincushion distortion coefficient; 0 = off)
+const INSTANCE_FLOATS = 35;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -40,7 +40,7 @@ const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
 const LOC_CONTRAST    = 12; // float
 const LOC_BRIGHTNESS  = 13; // float
 const LOC_TINT        = 14; // vec2: (tintHue, tintStrength)
-// loc 15: free
+const LOC_BARREL      = 15; // float
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -61,6 +61,7 @@ layout(location = 8) in mat4 a_transform; // uses locations 8-11
 layout(location = 12) in float a_contrast;
 layout(location = 13) in float a_brightness;
 layout(location = 14) in vec2 a_tint;     // x=tintHue, y=tintStrength
+layout(location = 15) in float a_barrel;
 
 flat out int v_texIndex;
 out vec2 v_uv;
@@ -71,6 +72,7 @@ flat out float v_hueRot;
 flat out float v_contrast;
 flat out float v_brightness;
 flat out vec2 v_tint;
+flat out float v_barrel;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
@@ -83,6 +85,7 @@ void main() {
   v_contrast = a_contrast;
   v_brightness = a_brightness;
   v_tint = a_tint;
+  v_barrel = a_barrel;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
@@ -111,6 +114,7 @@ flat in float v_hueRot;
 flat in float v_contrast;
 flat in float v_brightness;
 flat in vec2 v_tint;
+flat in float v_barrel;
 out vec4 fragColor;
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -155,9 +159,24 @@ vec3 oklab_to_linear_rgb(vec3 lab) {
 }
 
 void main() {
+  vec2 raw = v_uv;
+  // Barrel/pincushion distortion in UV space. Positive = barrel (CRT look,
+  // corners go transparent); negative = pincushion. Applied before pixelation
+  // so pixel blocks are warped along with the image.
+  if (v_barrel != 0.0) {
+    vec2 d = raw - 0.5;
+    // Normalise by r²=0.25 (the value at edge centres) so edge centres are
+    // fixed (scale=1 there) and distortion grows radially from that circle.
+    float r2 = dot(d, d);
+    d *= 1.0 + v_barrel * (r2 - 0.25);
+    raw = d + 0.5;
+    if (raw.x < 0.0 || raw.x > 1.0 || raw.y < 0.0 || raw.y > 1.0) {
+      fragColor = vec4(0.0);
+      return;
+    }
+  }
   // Pixelation: quantise UV to a grid in texture space (before fract so
   // tiling still works). The step is 0 when pixelation is off.
-  vec2 raw = v_uv;
   if (v_pixUVStep.x > 0.0) {
     raw = floor(raw / v_pixUVStep + 0.5) * v_pixUVStep;
   }
@@ -380,6 +399,7 @@ interface DrawCommand {
   brightness:   number;
   tintHue:      number;
   tintStrength: number;
+  barrel:       number;
   transform:    Float32Array; // 16 floats, column-major
 }
 
@@ -520,6 +540,7 @@ export class WebGLRenderer implements Renderer {
         brightness:   p.brightness ?? 0,
         tintHue:      p.tintHue      ?? 0,
         tintStrength: p.tintStrength ?? 0,
+        barrel:       p.barrel       ?? 0,
         transform:    buildTransform(p),
       });
       return;
@@ -552,6 +573,7 @@ export class WebGLRenderer implements Renderer {
       brightness:   p.brightness ?? 0,
       tintHue:      p.tintHue      ?? 0,
       tintStrength: p.tintStrength ?? 0,
+      barrel:       p.barrel       ?? 0,
       transform:    buildTransform(p),
     });
   }
@@ -607,6 +629,7 @@ export class WebGLRenderer implements Renderer {
         d[base + 31] = cmd.brightness;
         d[base + 32] = cmd.tintHue;
         d[base + 33] = cmd.tintStrength;
+        d[base + 34] = cmd.barrel;
       }
 
       this.setBlend(blendMode);
@@ -832,6 +855,10 @@ function createVAO(
   gl.enableVertexAttribArray(LOC_TINT);
   gl.vertexAttribPointer(LOC_TINT, 2, gl.FLOAT, false, s, 128);
   gl.vertexAttribDivisor(LOC_TINT, 1);
+
+  gl.enableVertexAttribArray(LOC_BARREL);
+  gl.vertexAttribPointer(LOC_BARREL, 1, gl.FLOAT, false, s, 136);
+  gl.vertexAttribDivisor(LOC_BARREL, 1);
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);

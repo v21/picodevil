@@ -495,6 +495,7 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotateZ(${a})` })),
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
+  numericArg.map(a => ({ code: `.barrel(${a})` })),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),
@@ -530,6 +531,7 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotateZ(${a})` })),
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
+  numericArg.map(a => ({ code: `.barrel(${a})` })),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),

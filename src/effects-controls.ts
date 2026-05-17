@@ -129,3 +129,22 @@ const _tintStrength = createMixParam("tintStrength");
 PatternProto.tint = function (hue: any, strength: any = 1) {
   return _tintStrength(strength, _tintHue(hue, this));
 };
+
+/**
+ * Applies barrel (positive) or pincushion (negative) lens distortion.
+ * Barrel distortion bows the image outward, clipping corners to transparent —
+ * the classic CRT curved-screen look. Works best on full-frame sources like
+ * `s("all")`. For a subtle CRT effect, try values around 0.3–0.5.
+ *
+ * @param {number | string | Pattern} [value=0.5] distortion coefficient: >0 = barrel, <0 = pincushion
+ * @returns {Pattern} pattern with lens distortion applied
+ * @example
+ * $: s('all').barrel(0.4)                          // CRT warp on whole composition
+ * $: s('clip.mp4').objectfit('fill').barrel(0.5)   // barrel on a single video
+ * $: s('all').barrel(sine.range(0, 0.6))           // pulsing CRT warp
+ */
+export const barrel = createMixParam("barrel");
+PatternProto.barrel = function (value?: any) {
+  if (value === undefined) value = 0.5;
+  return barrel(value, this);
+};

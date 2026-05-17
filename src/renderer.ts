@@ -418,6 +418,7 @@ export class FrameRenderer {
       brightness:    ev.brightness    !== undefined ? Number(ev.brightness)    : 0,
       tintHue:       ev.tintHue       !== undefined ? Number(ev.tintHue)       : 0,
       tintStrength:  ev.tintStrength  !== undefined ? Number(ev.tintStrength)  : 0,
+      barrel:        ev.barrel        !== undefined ? Number(ev.barrel)        : 0,
     };
   }
 

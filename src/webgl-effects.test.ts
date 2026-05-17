@@ -280,3 +280,44 @@ describe("alpha compositing", () => {
     expect(Math.abs(r - b)).toBeLessThan(15);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Barrel distortion
+// ---------------------------------------------------------------------------
+
+describe("barrel", () => {
+  it("barrel=0 is identity — center pixel unchanged", () => {
+    const canvas = renderTile(makeTile({
+      source: { kind: 'color', r: 1, g: 0, b: 0 },
+      barrel: 0,
+    }));
+    const [r, , , a] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(a).toBe(255);
+  });
+
+  it("barrel=10 — center pixel is still opaque red", () => {
+    // Center UV d=(0,0): dx²·dy²=0, so scale=1 — center is always unchanged.
+    const canvas = renderTile(makeTile({
+      source: { kind: 'color', r: 1, g: 0, b: 0 },
+      barrel: 10,
+    }));
+    const [r, , , a] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(a).toBe(255);
+  });
+
+  it("barrel=10 — corners are transparent (UV out of [0,1])", () => {
+    // With fit='fill', source UV spans exactly [0,1]. Barrel pushes corners
+    // beyond 1, triggering the alpha=0 discard.
+    // At corner d=(0.5,0.5): scale = 1 + 10*0.0625 = 1.625 → raw = 1.3125 → outside.
+    const canvas = renderTile(makeTile({
+      source: { kind: 'color', r: 1, g: 0, b: 0 },
+      fit: 'fill',
+      barrel: 10,
+    }));
+    // Top-left corner
+    const [, , , a] = readPixel(canvas, 1, 1);
+    expect(a).toBe(0);
+  });
+});

@@ -56,6 +56,8 @@ export interface TileParams {
   tintHue: number;
   /** Tint strength: 0 = no tint (default), 1 = full colorise, unclamped for hyper-saturation effects. */
   tintStrength: number;
+  /** Barrel (>0) / pincushion (<0) distortion coefficient. 0 = off (default). */
+  barrel: number;
 }
 
 /**
