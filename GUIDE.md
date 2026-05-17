@@ -142,6 +142,22 @@ $: text('hi').fontBGColor('black').fontColor('white')
 $: text('hi').fontColor("red green blue")              // patterned color
 ```
 
+### `fontPicker(initialFont?)`
+
+An inline editor widget — like `slider()` — that embeds a font typeahead input directly in the code. Use it as the argument to `.font()` to browse and switch fonts live without re-evaluating.
+
+```js
+$: text('Hello').font(fontPicker('sans-serif')).fontSize(120)
+$: text('uzuvid').font(fontPicker('Gluten')).fontSize(96)
+$: s("clip.mp4").font(fontPicker('Recursive'))   // works on any source (ignored by non-text)
+```
+
+The widget renders as a text field next to the font name in the editor. Type to filter or pick from the dropdown list. When you select a font, the source code updates in place and the pattern reflects the change immediately — no re-eval needed.
+
+The preset list includes web-safe generics (`sans-serif`, `serif`, `monospace`, `Impact`, `Comic Sans MS`, …) and all self-hosted fonts bundled with uzuvid. If the browser grants the `Local Fonts` permission (`queryLocalFonts()`), local system fonts are appended and shown with a `(local)` label indicating they won't be portable to other machines.
+
+Unlike slider, fontPicker has no "drag" phase — selecting from the dropdown always adds a single undo step.
+
 ### `screen(mininotation)` / `s(mininotation)`
 
 Auto-detects the type of each token: looks up the media registry first, then checks file extension, then falls back to treating it as a CSS color.

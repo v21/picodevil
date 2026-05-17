@@ -1,6 +1,6 @@
 # uzuvid - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-05-17.
+> This file is machine-authored for use by coding agents. Last updated 2026-05-18.
 
 ## What is this?
 
@@ -130,6 +130,8 @@ All function and method names are **case-insensitive** — `VIDEO`, `Video`, `Vi
 **Strudel pattern transforms (re-exported):** `degradeBy(p)`, `degrade`, `undegradeBy(p)`, `undegrade`, `sometimesBy(p, fn)`, `sometimes(fn)`, `someCyclesBy(p, fn)`, `someCycles(fn)`, `often(fn)`, `rarely(fn)`, `almostNever(fn)`, `almostAlways(fn)`, `always(fn)`, `never(fn)`
 
 **Media loading (imperative, idempotent):** `loadVideo(name, url)`, `loadImage(name, url)`, `loadCamera(name)`, `loadScreen(name)`
+
+**Inline widgets:** `slider(value, min?, max?, step?)` — returns a signal Pattern driven by an inline range input in the editor. `fontPicker(initialFont?)` — returns a signal Pattern (string) driven by an inline font typeahead; use as `.font(fontPicker('Gluten'))`. Both write back to source on change. Font list sourced from `src/font-list.ts` (preset + optional local system fonts via `queryLocalFonts()`); all non-web-safe fonts self-hosted as WOFF2 in `public/fonts/`.
 
 **Global:** `setCps(n)`, `setCpm(n)`, `hush()`
 

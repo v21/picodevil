@@ -387,5 +387,13 @@
       "RangeError: Invalid array length\n    at http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:4462:14\n    at _S._2 (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:4358:29)\n    at _S.r (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:2874:16)\n    at _S.i [as value] (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:2877:18)\n    at _f2.s2 [as query] (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:3494:27)\n    at _f2.r [as query] (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:3542:19)\n    at http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:4203:38\n    at Array.map (<anonymous>)\n    at _f2.e [as query] (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:4203:25)\n    at _f2.queryArc (http://localhost:5175/node_modules/.vite/deps/chunk-FQJ6GF3B.js?v=c7d6933d:3631:19)"
     ],
     "timestamp": "2026-05-09T21:37:02.516Z"
+  },
+  {
+    "code": "_Bg: sTack(vIdeo(\"<red.mp4>\").uRlbase('/test-assets/').sYnc(tRue), sCreen(\"redvid:0.00\")).sHufflestack().iNdex().rOwscols(2).gRidmod()",
+    "description": "shrunk from 27 shrinks",
+    "errors": [
+      "eval error: ReferenceError: tRue is not defined\n    at eval (eval at runTranspiled (http://localhost:5174/src/eval-sandbox.ts:193:3), <anonymous>:3:62)\n    at runTranspiled (http://localhost:5174/src/eval-sandbox.ts:193:37)\n    at EvalController.eval (http://localhost:5174/src/eval-controller.ts:58:7)\n    at window.uzuEval (http://localhost:5174/src/main.ts:97:43)\n    at eval (eval at evaluate (:290:30), <anonymous>:1:78)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
+    ],
+    "timestamp": "2026-05-17T22:24:24.695Z"
   }
 ]

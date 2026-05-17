@@ -1,5 +1,106 @@
 @import url(https://fonts.bunny.net/css);
 
+/* ---- Self-hosted fonts for fontPicker() ---- */
+
+@font-face { font-family: 'Anybody'; src: url('/fonts/Anybody-VF.woff2') format('woff2'); font-weight: 100 900; font-style: oblique 0deg 20deg; font-display: swap; }
+
+@font-face { font-family: 'Avara'; src: url('/fonts/Avara-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+
+@font-face { font-family: 'Barriecito'; src: url('/fonts/barriecito-v17-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Basteleur'; src: url('/fonts/Basteleur-Moonlight.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'BIZ UDPMincho'; src: url('/fonts/biz-udpmincho-v9-cyrillic_greek-ext_japanese_latin_latin-ext-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'BIZ UDPMincho'; src: url('/fonts/biz-udpmincho-v9-cyrillic_greek-ext_japanese_latin_latin-ext-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+
+@font-face { font-family: 'Bluu Next'; src: url('/fonts/bluunext-bold-webfont.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+
+@font-face { font-family: 'CirrusCumulus'; src: url('/fonts/CirrusCumulus-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'EB Garamond'; src: url('/fonts/eb-garamond-v26-cyrillic_cyrillic-ext_greek_greek-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400 800; font-display: swap; }
+@font-face { font-family: 'EB Garamond'; src: url('/fonts/eb-garamond-v26-cyrillic_cyrillic-ext_greek_greek-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400 800; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Epilogue'; src: url('/fonts/Epilogue-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Epilogue'; src: url('/fonts/Epilogue-Italic-VF.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Generale Station'; src: url('/fonts/GeneraleStation-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Gluten'; src: url('/fonts/gluten-v16-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+
+@font-face { font-family: 'Handjet'; src: url('/fonts/Handjet-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+
+@font-face { font-family: 'Hepta Slab'; src: url('/fonts/HeptaSlab-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/ibm-plex-mono-v19-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/ibm-plex-mono-v19-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'IBM Plex Sans'; src: url('/fonts/IBMPlexSans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'IBM Plex Sans'; src: url('/fonts/IBMPlexSans-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Instrument Serif'; src: url('/fonts/instrument-serif-v4-latin_latin-ext-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Instrument Serif'; src: url('/fonts/instrument-serif-v4-latin_latin-ext-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Inter Tight'; src: url('/fonts/inter-tight-v7-cyrillic_cyrillic-ext_greek_greek-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Inter Tight'; src: url('/fonts/inter-tight-v7-cyrillic_cyrillic-ext_greek_greek-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'JGS'; src: url('/fonts/jgs9.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Kaeru Kaeru'; src: url('/fonts/kaerukaeru-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Lithops'; src: url('/fonts/Lithops-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Lobular'; src: url('/fonts/Lobular-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Nunito'; src: url('/fonts/nunito-v25-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 200 900; font-display: swap; }
+@font-face { font-family: 'Nunito'; src: url('/fonts/nunito-v25-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 200 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Nyght Serif'; src: url('/fonts/NyghtSerif-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Nyght Serif Italic'; src: url('/fonts/NyghtSerif-MediumItalic.woff2') format('woff2'); font-weight: 500; font-display: swap; }
+
+@font-face { font-family: 'Old Standard TT'; src: url('/fonts/old-standard-tt-v20-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Old Standard TT'; src: url('/fonts/old-standard-tt-v20-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Oswald'; src: url('/fonts/oswald-v53-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 200 700; font-display: swap; }
+
+@font-face { font-family: 'Picaflor'; src: url('/fonts/Picaflor-24pt.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'PicNic'; src: url('/fonts/PicNic-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Pilowlava'; src: url('/fonts/Pilowlava-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Piscolabis'; src: url('/fonts/Piscolabis-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Public Sans'; src: url('/fonts/PublicSans-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Public Sans'; src: url('/fonts/PublicSans-Italic-VF.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Recursive'; src: url('/fonts/Recursive_VF_1.085.woff2') format('woff2'); font-weight: 300 1000; font-display: swap; }
+
+@font-face { font-family: 'Roubaix Industrielle'; src: url('/fonts/RoubaixIndustrielle-Regular08-13pt.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Savate'; src: url('/fonts/savate-regular-webfont.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Savate'; src: url('/fonts/savate-italique-webfont.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Select Mono'; src: url('/fonts/SelectMono-Italic.woff') format('woff'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Shantell Sans'; src: url('/fonts/ShantellSans.woff2') format('woff2'); font-weight: 300 800; font-display: swap; }
+
+@font-face { font-family: 'Sligoil'; src: url('/fonts/Sligoil-Micro.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Sono'; src: url('/fonts/sono-v6-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 200 800; font-display: swap; }
+
+@font-face { font-family: 'Source Serif 4'; src: url('/fonts/SourceSerif4Variable-Roman.woff2') format('woff2'); font-weight: 200 900; font-display: swap; }
+@font-face { font-family: 'Source Serif 4'; src: url('/fonts/SourceSerif4Variable-Italic.woff2') format('woff2'); font-weight: 200 900; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Terminal Grotesque'; src: url('/fonts/terminal-grotesque-webfont.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'TINY'; src: url('/fonts/TINY5x3-100.woff2') format('woff2'); font-weight: 100; font-display: swap; }
+
+@font-face { font-family: 'Trickster'; src: url('/fonts/Trickster-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+
+@font-face { font-family: 'Xanh Mono'; src: url('/fonts/xanh-mono-v18-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Xanh Mono'; src: url('/fonts/xanh-mono-v18-latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
+
+@font-face { font-family: 'Zen Old Mincho'; src: url('/fonts/zen-old-mincho-v11-cyrillic_greek_japanese_latin_latin-ext-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 
 * {
   margin: 0;
@@ -110,6 +211,18 @@ body {
   cursor: default;
   accent-color: rgb(255, 0, 0);
   background-color: rgb(255, 213, 213);
+}
+
+.uzu-widget-fontpicker {
+  width: 200px;
+  margin: 0 2px;
+  padding: 0 2px;
+  font-size: 20px;
+  background-color: oklch(29.707% 0.00794 223.882 / 0.5);
+  border-color: oklch(29.707% 0.00794 223.882);
+  color: #d7ffaf;
+  font-family: 'IBM Plex Mono';
+  font-style: italic;
 }
 
 .uzu-error {

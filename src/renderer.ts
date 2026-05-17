@@ -46,6 +46,8 @@ export class FrameRenderer {
   private readonly imageFreePool = new Map<string, HTMLImageElement>();
   /** Text canvas cache keyed by "text|fontStr|fontColor|fontBGColor". */
   private readonly textCanvasCache = new Map<string, HTMLCanvasElement>();
+  /** Font strings confirmed loaded via document.fonts.load() — prevents repeated invalidation. */
+  private readonly loadedFonts = new Set<string>();
   private readonly colorCache = new Map<string, [number, number, number]>();
   private readonly scratchCtx = document.createElement('canvas').getContext('2d')!;
   /** Assignment from NeededSource to element for the current frame. */
@@ -196,6 +198,14 @@ export class FrameRenderer {
     if (!canvas) {
       canvas = renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
       this.textCanvasCache.set(key, canvas);
+      if (!this.loadedFonts.has(fontStr)) {
+        document.fonts.load(fontStr).then((faces) => {
+          if (faces.length > 0) {
+            this.loadedFonts.add(fontStr);
+            this.textCanvasCache.clear();
+          }
+        });
+      }
     }
     return canvas;
   }

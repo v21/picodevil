@@ -1,25 +1,44 @@
 
+slider(1.10e+3,1,1280) is kinda funny
+
+bpm detection from audio source??
+
+
+[nope! cropwh does this already]. change scale so it doesn't change size of rendered rect, just scales content
+/ add wh(). or maybe it's size()
+
+pass cookies from browser to server when donwloading from YT from the broswer
+
+
+do something with the way modulate works in Strudel - it's able to reference the last set value in the chain:
+node_modules/@strudel/core/controls.mjs:2875 
+let control = getControlName(Object.keys(v).at(-1));
+we wanna do stuff with fucking with values in the chain - this is another example of doing that
+
+
+
+redo echo, but with alpha instead of velocity
+
 
 tidy up the colour funcs? - huerot vs tint vs contrast vs grey all overlap a bit
 
 
 
-hydra style outputs and inputs (named patterns can be used as a source?? and then maybe if they're muted they only get evaluated if they're used elsewhere??)
+/ hydra style outputs and inputs (named patterns can be used as a source?? and then maybe if they're muted they only get evaluated if they're used elsewhere??)
 
-we render each pattern in order, to named framebuffers (if they're not anonymous). if you reference a framebuffer that comes after the current pattern, read it from the previous frame.
+/ we render each pattern in order, to named framebuffers (if they're not anonymous). if you reference a framebuffer that comes after the current pattern, read it from the previous frame.
 (does this work? if stuff is stacked...)
 
 
-nicer highlighting / text style
-fix the sidebar offset
-more shader post processing fuckery 
+/ nicer highlighting / text style
+/ fix the sidebar offset
+/ more shader post processing fuckery 
 
 
 
 
 
 
-redo echo, but with alpha instead of velocity
 
 
 / make gray do things with values outside 0-1

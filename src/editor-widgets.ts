@@ -1,7 +1,9 @@
 import { EditorView, WidgetType, Decoration, type DecorationSet } from "@codemirror/view";
 import { StateField, StateEffect } from "@codemirror/state";
-import type { WidgetCallInfo } from "./transpiler";
-import { setWidgetValue } from "./widgets";
+import type { WidgetCallInfo, SliderCallInfo, FontPickerCallInfo } from "./transpiler";
+import { setWidgetValue, setFontPickerValue } from "./widgets";
+import { requestLocalFonts } from "./font-list";
+import type { FontEntry } from "./font-list";
 
 /** Effect to push new widget metadata after eval. */
 export const setWidgetMeta = StateEffect.define<WidgetCallInfo[]>();
@@ -41,11 +43,12 @@ export const widgetPositions = StateField.define<WidgetPosition[]>({
 });
 
 type SliderChangeHandler = (view: EditorView, index: number, newValue: number, addToHistory: boolean) => void;
+type FontPickerChangeHandler = (view: EditorView, index: number, newValue: string, addToHistory: boolean) => void;
 
 class SliderWidget extends WidgetType {
   constructor(
     readonly index: number,
-    readonly info: WidgetCallInfo,
+    readonly info: SliderCallInfo,
     readonly onChange: SliderChangeHandler,
   ) {
     super();
@@ -95,26 +98,119 @@ class SliderWidget extends WidgetType {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Shared datalist for font pickers — created lazily, lives on document.body
+// ---------------------------------------------------------------------------
+
+let fontDatalist: HTMLDataListElement | null = null;
+
+function getOrCreateDatalist(): HTMLDataListElement {
+  if (!fontDatalist) {
+    fontDatalist = document.createElement("datalist");
+    fontDatalist.id = "uzu-font-list";
+    document.body.appendChild(fontDatalist);
+  }
+  return fontDatalist;
+}
+
+/** Populate (or repopulate) the shared font datalist. Called from main.ts via initFontList callback. */
+export function repopulateFontDatalist(fonts: FontEntry[]): void {
+  const dl = getOrCreateDatalist();
+  dl.innerHTML = "";
+  for (const f of fonts) {
+    const opt = document.createElement("option");
+    opt.value = f.family;
+    if (f.source === "local") opt.label = `${f.family} (local)`;
+    dl.appendChild(opt);
+  }
+}
+
+class FontPickerWidget extends WidgetType {
+  constructor(
+    readonly index: number,
+    readonly info: FontPickerCallInfo,
+    readonly onChange: FontPickerChangeHandler,
+  ) {
+    super();
+  }
+
+  eq(other: FontPickerWidget): boolean {
+    return this.index === other.index && this.info.fontName === other.info.fontName;
+  }
+
+  toDOM(view: EditorView): HTMLElement {
+    // Ensure datalist exists even if initFontList hasn't been called yet
+    getOrCreateDatalist();
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.setAttribute("list", "uzu-font-list");
+    input.className = "uzu-widget-fontpicker";
+    input.value = this.info.fontName;
+
+    const index = this.index;
+    const onChange = this.onChange;
+
+    let savedValue = this.info.fontName;
+
+    input.addEventListener("focus", () => {
+      requestLocalFonts();
+      savedValue = input.value;
+      input.value = "";
+    });
+
+    input.addEventListener("blur", () => {
+      if (!input.value.trim()) input.value = savedValue;
+    });
+
+    input.addEventListener("change", () => {
+      const newFont = input.value.trim();
+      if (!newFont) return;
+      savedValue = newFont;
+      setFontPickerValue(index, newFont);
+      onChange(view, index, newFont, true);
+    });
+
+    return input;
+  }
+
+  ignoreEvent(event: Event): boolean {
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Decoration builder
+// ---------------------------------------------------------------------------
+
 /** Build decoration set from widget metadata. */
 function buildDecorations(
   widgets: WidgetCallInfo[],
-  onChange: SliderChangeHandler,
+  onSliderChange: SliderChangeHandler,
+  onFontPickerChange: FontPickerChangeHandler,
 ): DecorationSet {
-  const decorations = widgets.map((info, index) =>
-    Decoration.widget({
-      widget: new SliderWidget(index, info, onChange),
-      side: -1, // Insert before the value argument
-    }).range(info.valueArgStart)
-  );
+  const decorations = widgets.map((info, index) => {
+    if (info.kind === "slider") {
+      const widget = new SliderWidget(index, info, onSliderChange);
+      return Decoration.widget({ widget, side: -1 }).range(info.valueArgStart);
+    } else {
+      const widget = new FontPickerWidget(index, info, onFontPickerChange);
+      // Replace the string literal with the widget so the font name isn't shown twice
+      return Decoration.replace({ widget }).range(info.valueArgStart, info.valueArgEnd);
+    }
+  });
   return Decoration.set(decorations, true);
 }
 
 /**
  * Create the widget extensions for the editor.
- * @param onChange Called when a slider value changes — should rewrite the code.
+ * @param handlers Change handlers for each widget type.
  * Returns an array of extensions to install.
  */
-export function widgetExtension(onChange: SliderChangeHandler) {
+export function widgetExtension(handlers: {
+  slider: SliderChangeHandler;
+  fontPicker: FontPickerChangeHandler;
+}) {
   const decoField = StateField.define<DecorationSet>({
     create() {
       return Decoration.none;
@@ -125,7 +221,7 @@ export function widgetExtension(onChange: SliderChangeHandler) {
       // Apply new widget metadata if present
       for (const effect of tr.effects) {
         if (effect.is(setWidgetMeta)) {
-          decos = buildDecorations(effect.value, onChange);
+          decos = buildDecorations(effect.value, handlers.slider, handlers.fontPicker);
         }
       }
       return decos;
@@ -137,3 +233,4 @@ export function widgetExtension(onChange: SliderChangeHandler) {
 }
 
 export { toSigFigs };
+export type { SliderChangeHandler, FontPickerChangeHandler };

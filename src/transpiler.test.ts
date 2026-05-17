@@ -147,4 +147,98 @@ let y = 2`;
     });
   });
 
+  describe("fontPicker widget extraction", () => {
+    it("extracts fontPicker call with string arg", () => {
+      const src = "fontPicker('sans-serif')";
+      const { widgets } = transpile(src);
+      expect(widgets).toHaveLength(1);
+      expect(widgets[0].kind).toBe("fontPicker");
+    });
+
+    it("captures fontName from string literal", () => {
+      const src = "fontPicker('Gluten')";
+      const { widgets } = transpile(src);
+      expect(widgets[0].kind).toBe("fontPicker");
+      if (widgets[0].kind === "fontPicker") {
+        expect(widgets[0].fontName).toBe("Gluten");
+      }
+    });
+
+    it("records correct source offsets spanning the full string literal", () => {
+      const src = "fontPicker('Nyght Serif')";
+      const { widgets } = transpile(src);
+      expect(src.slice(widgets[0].valueArgStart, widgets[0].valueArgEnd)).toBe("'Nyght Serif'");
+    });
+
+    it("does not wrap fontPicker string arg in mini()", () => {
+      const { code } = transpile('fontPicker(\'sans-serif\')');
+      expect(code).toContain("fontPicker('sans-serif')");
+      expect(code).not.toContain("mini(");
+    });
+
+    it("prevents double-quoted fontPicker arg from being wrapped in mini()", () => {
+      const { code } = transpile('fontPicker("Gluten")');
+      expect(code).toContain("fontPicker('Gluten')");
+      expect(code).not.toContain("mini(");
+    });
+
+    it("extracts mixed slider and fontPicker widgets in order", () => {
+      const src = "slider(0.5).alpha(); fontPicker('serif').font()";
+      const { widgets } = transpile(src);
+      expect(widgets).toHaveLength(2);
+      expect(widgets[0].kind).toBe("slider");
+      expect(widgets[1].kind).toBe("fontPicker");
+    });
+
+    it("returns no fontPicker widget when arg is missing", () => {
+      const { widgets } = transpile("fontPicker()");
+      expect(widgets).toHaveLength(0);
+    });
+  });
+
+  describe("method-style .fontPicker() widget extraction", () => {
+    it("detects .fontPicker() method call", () => {
+      const { widgets } = transpile("text('hi').fontPicker('Gluten')");
+      expect(widgets).toHaveLength(1);
+      expect(widgets[0].kind).toBe("fontPicker");
+    });
+
+    it("captures fontName from method-style call", () => {
+      const src = "text('hi').fontPicker('Nunito')";
+      const { widgets } = transpile(src);
+      expect(widgets[0].kind).toBe("fontPicker");
+      if (widgets[0].kind === "fontPicker") {
+        expect(widgets[0].fontName).toBe("Nunito");
+      }
+    });
+
+    it("records correct source offsets for method-style call", () => {
+      const src = "text('hi').fontPicker('EB Garamond')";
+      const { widgets } = transpile(src);
+      expect(src.slice(widgets[0].valueArgStart, widgets[0].valueArgEnd)).toBe("'EB Garamond'");
+    });
+
+    it("does not wrap method-style double-quoted arg in mini()", () => {
+      // text('hi') uses single-quotes so only fontPicker's arg-handling is tested
+      const { code } = transpile("text('hi').fontPicker(\"Gluten\")");
+      expect(code).toContain("fontPicker('Gluten')");
+      expect(code).not.toContain("mini('Gluten')");
+    });
+
+    it("ignores method call without string arg", () => {
+      const { widgets } = transpile("text('hi').fontPicker()");
+      expect(widgets).toHaveLength(0);
+    });
+
+    it("orders method-style and function-style widgets together", () => {
+      const src = "fontPicker('serif'); text('hi').fontPicker('Gluten')";
+      const { widgets } = transpile(src);
+      expect(widgets).toHaveLength(2);
+      expect(widgets[0].kind).toBe("fontPicker");
+      expect(widgets[1].kind).toBe("fontPicker");
+      if (widgets[0].kind === "fontPicker") expect(widgets[0].fontName).toBe("serif");
+      if (widgets[1].kind === "fontPicker") expect(widgets[1].fontName).toBe("Gluten");
+    });
+  });
+
 });

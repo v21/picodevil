@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { slider, resetWidgetCounter, setWidgetValue } from "./widgets";
+import { slider, resetWidgetCounter, setWidgetValue, fontPicker, setFontPickerValue } from "./widgets";
 import { Fraction } from "@strudel/core";
 
 describe("slider", () => {
@@ -45,5 +45,42 @@ describe("slider", () => {
     setWidgetValue(0, 0.7);
     const haps = pat.queryArc(0, 0);
     expect(haps[0].value).toBe(0.7);
+  });
+});
+
+describe("fontPicker", () => {
+  beforeEach(() => {
+    resetWidgetCounter();
+  });
+
+  it("returns a pattern that resolves to the given font name", () => {
+    const pat = fontPicker('serif');
+    const haps = pat.queryArc(0, 0);
+    expect(haps.length).toBeGreaterThan(0);
+    expect(haps[0].value).toBe('serif');
+  });
+
+  it("responds to setFontPickerValue", () => {
+    const pat = fontPicker('serif');
+    setFontPickerValue(0, 'Gluten');
+    const haps = pat.queryArc(0, 0);
+    expect(haps[0].value).toBe('Gluten');
+  });
+
+  it("shares counter with slider so indices don't collide", () => {
+    slider(0.5);         // index 0 (slider)
+    const pat = fontPicker('serif'); // index 1 (fontPicker)
+    setFontPickerValue(1, 'Avara');
+    const haps = pat.queryArc(0, 0);
+    expect(haps[0].value).toBe('Avara');
+  });
+
+  it("reflects source-rewrite-style re-eval: calling fontPicker again overwrites with new initial", () => {
+    fontPicker('serif');        // index 0, sets to 'serif'
+    setFontPickerValue(0, 'Gluten'); // user picks Gluten; source rewritten
+    resetWidgetCounter();
+    const pat = fontPicker('Gluten'); // re-eval with rewritten source
+    const haps = pat.queryArc(0, 0);
+    expect(haps[0].value).toBe('Gluten');
   });
 });

@@ -5,9 +5,9 @@ import * as escodegen from "escodegen";
 const LABEL_RE = /^[_SH]?[$a-zA-Z]\w*_?$/;
 
 /** Widget function names we extract positions for */
-const WIDGET_FUNCTIONS = new Set(["slider"]);
+const WIDGET_FUNCTIONS = new Set(["slider", "fontPicker"]);
 
-export interface WidgetCallInfo {
+export interface SliderCallInfo {
   kind: "slider";
   callStart: number;     // source offset of full call expression
   callEnd: number;
@@ -15,6 +15,17 @@ export interface WidgetCallInfo {
   valueArgEnd: number;
   args: number[];        // parsed numeric arguments
 }
+
+export interface FontPickerCallInfo {
+  kind: "fontPicker";
+  callStart: number;
+  callEnd: number;
+  valueArgStart: number; // source offset of first argument (string literal, including quotes)
+  valueArgEnd: number;
+  fontName: string;      // the current font family name
+}
+
+export type WidgetCallInfo = SliderCallInfo | FontPickerCallInfo;
 
 export interface TranspileResult {
   code: string;
@@ -66,31 +77,70 @@ function walkAST(node: any, widgets: WidgetCallInfo[]): any {
     return wrapInMini(node);
   }
 
+  // Method-style fontPicker: expr.fontPicker('Gluten') — detected before the function-call branch
+  if (
+    node.type === "CallExpression" &&
+    node.callee?.type === "MemberExpression" &&
+    !node.callee.computed &&
+    node.callee.property?.type === "Identifier" &&
+    node.callee.property.name === "fontPicker"
+  ) {
+    const firstArg = node.arguments[0];
+    if (firstArg && firstArg.type === "Literal" && typeof firstArg.value === "string") {
+      firstArg.raw = `'${firstArg.value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+      widgets.push({
+        kind: "fontPicker",
+        callStart: node.start,
+        callEnd: node.end,
+        valueArgStart: firstArg.start,
+        valueArgEnd: firstArg.end,
+        fontName: firstArg.value,
+      });
+    }
+  }
+
   // Widget call: capture positions from original node before recursing into children
   if (
     node.type === "CallExpression" &&
     node.callee?.type === "Identifier" &&
     WIDGET_FUNCTIONS.has(node.callee.name)
   ) {
-    const kind = node.callee.name as "slider";
-    const args: number[] = [];
-    for (const arg of node.arguments) {
-      if (arg.type === "Literal" && typeof arg.value === "number") {
-        args.push(arg.value);
-      } else if (arg.type === "UnaryExpression" && arg.operator === "-" && arg.argument?.type === "Literal" && typeof arg.argument.value === "number") {
-        args.push(-arg.argument.value);
+    const calleeName: string = node.callee.name;
+
+    if (calleeName === "slider") {
+      const args: number[] = [];
+      for (const arg of node.arguments) {
+        if (arg.type === "Literal" && typeof arg.value === "number") {
+          args.push(arg.value);
+        } else if (arg.type === "UnaryExpression" && arg.operator === "-" && arg.argument?.type === "Literal" && typeof arg.argument.value === "number") {
+          args.push(-arg.argument.value);
+        }
       }
-    }
-    const firstArg = node.arguments[0];
-    if (firstArg) {
-      widgets.push({
-        kind,
-        callStart: node.start,
-        callEnd: node.end,
-        valueArgStart: firstArg.start,  // original offset — captured before child rewriting
-        valueArgEnd: firstArg.end,
-        args,
-      });
+      const firstArg = node.arguments[0];
+      if (firstArg) {
+        widgets.push({
+          kind: "slider",
+          callStart: node.start,
+          callEnd: node.end,
+          valueArgStart: firstArg.start,  // original offset — captured before child rewriting
+          valueArgEnd: firstArg.end,
+          args,
+        });
+      }
+    } else if (calleeName === "fontPicker") {
+      const firstArg = node.arguments[0];
+      if (firstArg && firstArg.type === "Literal" && typeof firstArg.value === "string") {
+        // Prevent double-quoted strings from being wrapped in mini() by normalising the raw
+        firstArg.raw = `'${firstArg.value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+        widgets.push({
+          kind: "fontPicker",
+          callStart: node.start,
+          callEnd: node.end,
+          valueArgStart: firstArg.start,  // includes quote characters
+          valueArgEnd: firstArg.end,
+          fontName: firstArg.value,
+        });
+      }
     }
   }
 

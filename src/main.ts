@@ -9,7 +9,9 @@ import { initRegistry as initPatternRegistry, each, all } from "./pattern-regist
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
 import { createVideoPoolManager } from "./video-pool-manager";
-import { slider as sliderWidget } from "./widgets";
+import { slider as sliderWidget, fontPicker as fontPickerWidget } from "./widgets";
+import { initFontList } from "./font-list";
+import { repopulateFontDatalist } from "./editor-widgets";
 import { warn, flushWarnings } from "./warnings";
 import { setupSidebar } from "./sidebar";
 import { loadCamera, loadScreen } from "./stream-manager";
@@ -105,10 +107,13 @@ const evalController = new EvalController({
     setCps, setCpm,
     loadVideo, loadImage, loadCamera, loadScreen,
     slider: sliderWidget,
+    fontPicker: fontPickerWidget,
     each, all,
     fft,
   },
 });
+
+initFontList(repopulateFontDatalist);
 
 // called from editor on ctrl+enter
 window.uzuEval = (code) => evalController.eval(code);

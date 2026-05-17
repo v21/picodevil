@@ -73,7 +73,21 @@ export function setupEditor(
     onCodeChange?.(editorView.state.doc.toString());
   }
 
-  const widgets = widgetExtension(handleSliderChange);
+  /** Handle font picker selection: rewrite string literal in source code. */
+  function handleFontPickerChange(editorView: EditorView, index: number, newFont: string, addToHistory: boolean) {
+    // Value store already updated by editor-widgets.ts (setFontPickerValue call)
+    const positions = editorView.state.field(widgetPositions);
+    const pos = positions[index];
+    if (!pos) return;
+    // Replace the full string literal (including quotes) with the new font name
+    editorView.dispatch({
+      changes: { from: pos.valueArgStart, to: pos.valueArgEnd, insert: `'${newFont}'` },
+      annotations: Transaction.addToHistory.of(addToHistory),
+    });
+    onCodeChange?.(editorView.state.doc.toString());
+  }
+
+  const widgets = widgetExtension({ slider: handleSliderChange, fontPicker: handleFontPickerChange });
 
   const changeListener: Extension = onCodeChange
     ? EditorView.updateListener.of((update) => {

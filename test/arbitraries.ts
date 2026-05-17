@@ -587,6 +587,9 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.integer({ min: 8, max: 96 }).map(n => ({ code: `.textSize(${n})` })),
   fc.constantFrom('sans-serif', 'monospace', 'serif', 'bold monospace', 'italic sans-serif')
     .map(f => ({ code: `.font('${f}')` })),
+  // fontPicker() as a .font() argument — exercises the widget signal path
+  fc.constantFrom('sans-serif', 'monospace', 'serif')
+    .map(f => ({ code: `.font(fontPicker('${f}'))` })),
 );
 
 // ============================================================
