@@ -45,6 +45,36 @@ import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { echo } from "./visual-controls";
 
+const METHOD_GLOBALS_BLOCKLIST = new Set([
+  'constructor', 'query', 'queryArc', 'queryWhole',
+  'fmap', 'bind', 'innerBind', 'withValue', 'withHaps',
+  'getSteps', 'setSteps', 'hasSteps', 'withSteps',
+  'toString', 'toJSON', 'log', 'logSteps', 'onError', 'deprecate',
+  'p',
+]);
+
+let _methodGlobals: Record<string, unknown> | null = null;
+
+const VALID_IDENTIFIER = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+
+function isUsableAsParam(name: string): boolean {
+  try { new Function(name, ''); return true; } catch { return false; }
+}
+
+function buildMethodGlobals(): Record<string, unknown> {
+  if (_methodGlobals) return _methodGlobals;
+  const result: Record<string, unknown> = {};
+  for (const name of Object.getOwnPropertyNames((Pattern as any).prototype)) {
+    if (METHOD_GLOBALS_BLOCKLIST.has(name)) continue;
+    if (!VALID_IDENTIFIER.test(name)) continue;
+    if (!isUsableAsParam(name)) continue;
+    const desc = Object.getOwnPropertyDescriptor((Pattern as any).prototype, name);
+    if (!desc || typeof desc.value !== 'function') continue;
+    result[name] = (...args: unknown[]) => (pat: any) => (pat as any)[name](...args);
+  }
+  return (_methodGlobals = result);
+}
+
 let _normMapBase: Map<string, string> | null = null;
 
 /**
@@ -69,6 +99,7 @@ export function buildNormMap(): Map<string, string> {
 
 export function getPatternGlobals(): Record<string, unknown> {
   return {
+    ...buildMethodGlobals(),
     mini,
     color, video, image, text, screen, s,
     stackN, index, indexCycle, indexWith, indexCycleWith,
