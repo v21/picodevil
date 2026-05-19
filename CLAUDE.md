@@ -131,7 +131,7 @@ All function and method names are **case-insensitive** — `VIDEO`, `Video`, `Vi
 
 **Media loading (imperative, idempotent):** `loadVideo(name, url)`, `loadImage(name, url)`, `loadCamera(name)`, `loadScreen(name)`
 
-**Inline widgets:** `slider(value, min?, max?, step?)` — returns a signal Pattern driven by an inline range input in the editor. `fontPicker(initialFont?)` — returns a signal Pattern (string) driven by an inline font typeahead; use as `.font(fontPicker('Gluten'))`. Both write back to source on change. Font list sourced from `src/font-list.ts` (preset + optional local system fonts via `queryLocalFonts()`); all non-web-safe fonts self-hosted as WOFF2 in `public/fonts/`.
+**Inline widgets:** `slider(value, min?, max?, step?)` — returns a signal Pattern driven by an inline range input in the editor. `fontPicker(initialFont?)` — returns a signal Pattern (string) driven by an inline font typeahead; use as `.font(fontPicker('Gluten'))`. Both write back to source on change. Font list sourced from `src/font-list.ts` (preset + optional local system fonts via `queryLocalFonts()`); all non-web-safe fonts self-hosted as WOFF2 in `public/fonts/` (TTF copies also present — used by the HarfBuzz renderer). Text with `.fontAxis()` variation is rendered via **HarfBuzz** (`harfbuzzjs` WASM) for correct GSUB/GPOS shaping + glyph path extraction; implemented in `src/text-render-harfbuzz.ts`. Web-safe fonts fall back to Canvas 2D `fillText` (no variation support).
 
 **Global:** `setCps(n)`, `setCpm(n)`, `hush()`
 

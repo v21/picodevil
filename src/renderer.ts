@@ -10,7 +10,9 @@ import type { Renderer, TileParams, TileSource, Screen } from './renderer-interf
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
-import { getOpentypeFont, renderTextOpentype, resolveAxisTag } from './text-render-opentype';
+import { resolveAxisTag } from './text-render-opentype';
+
+import { getHarfbuzzFace, renderTextHarfbuzz } from './text-render-harfbuzz';
 import { FONT_AXES } from './font-list';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
@@ -207,12 +209,12 @@ export class FrameRenderer {
       variation[tag] = axisSpec ? Math.min(axisSpec.max, Math.max(axisSpec.min, val)) : val;
     }
 
-    // Hosted fonts: try opentype.js path rendering (taint-free, supports variation).
+    // Hosted fonts: use HarfBuzz for shaping + glyph path rendering (taint-free, full variation).
     const srcUrl = this.findFontSrcUrl(family);
     if (srcUrl) {
-      const font = getOpentypeFont(srcUrl);
-      if (font) {
-        return renderTextOpentype(textStr, font, size, variation, fontColor, fontBGColor || undefined);
+      const entry = getHarfbuzzFace(srcUrl);
+      if (entry) {
+        return renderTextHarfbuzz(textStr, entry, size, variation, fontColor, fontBGColor || undefined);
       }
       // Font not yet loaded — fall through to Canvas 2D stand-in for this frame.
     }

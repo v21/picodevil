@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [referencePlugin()],
   optimizeDeps: {
     include: ["fast-check"],
+    exclude: ["harfbuzzjs"],
   },
   test: {
     globalSetup: ["src/test-font-setup.ts"],
