@@ -10,6 +10,7 @@
     "download": "node server.js download",
     "add": "node server.js add",
     "transcode": "node server.js transcode",
+    "transcode:all": "node server.js transcode all",
     "list": "node server.js list"
   },
   "keywords": [],

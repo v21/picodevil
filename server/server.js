@@ -48,6 +48,26 @@ function ytdlpDownload(youtubeURL, outPath, { spawnFn = spawn, browser } = {}) {
   });
 }
 
+// Checks if a video file has only I-frames (keyframes). Uses ffmpeg to select the
+// first non-I-frame and pipe it as rawvideo; empty stdout means all I-frames.
+// Checks only the first 10 seconds so I-frame-only files are scanned quickly.
+function ffmpegIsIFrameOnly(filePath, { execFileFn = execFile } = {}) {
+  return new Promise((resolve, reject) => {
+    execFileFn(ffmpegPath, [
+      '-v', 'error',
+      '-t', '10',
+      '-i', filePath,
+      '-vf', 'select=gt(pict_type\\,1),scale=1:1',
+      '-frames:v', '1',
+      '-f', 'rawvideo',
+      'pipe:1',
+    ], { timeout: 60000 }, (err, stdout, stderr) => {
+      if (err) return reject(new Error(stderr || err.message));
+      resolve(stdout.length === 0);
+    });
+  });
+}
+
 function ffmpegTranscode(inPath, outPath, { execFileFn = execFile, streamingFlags = false } = {}) {
   const movflags = streamingFlags ? '+frag_keyframe+empty_moov' : '+faststart';
   return new Promise((resolve, reject) => {
@@ -434,16 +454,16 @@ function cmdList({ port = DEFAULT_PORT, downloadDir = DOWNLOAD_DIR, imagesDir = 
   console.log(JSON.stringify(result, null, 2));
 }
 
-async function cmdTranscode(stem) {
+async function cmdTranscode(stem, { downloadDir = DOWNLOAD_DIR, execFileFn = execFile } = {}) {
   const cleanStem = stem.replace(/\.mp4$/, '');
-  const sourcePath = path.join(DOWNLOAD_DIR, `${cleanStem}.mp4`);
+  const sourcePath = path.join(downloadDir, `${cleanStem}.mp4`);
   if (!fs.existsSync(sourcePath)) throw new Error(`File not found: ${sourcePath}`);
 
-  const origPath = path.join(DOWNLOAD_DIR, `${cleanStem}.orig.mp4`);
+  const origPath = path.join(downloadDir, `${cleanStem}.orig.mp4`);
   fs.renameSync(sourcePath, origPath);
   console.log(`Transcoding ${cleanStem}.mp4 to I-frame-only...`);
   try {
-    await ffmpegTranscode(origPath, sourcePath);
+    await ffmpegTranscode(origPath, sourcePath, { execFileFn });
     fs.unlink(origPath, () => {});
     console.log(`Done: ${sourcePath}`);
     console.log(`URL: http://localhost:${DEFAULT_PORT}/videos/${cleanStem}.mp4`);
@@ -452,6 +472,58 @@ async function cmdTranscode(stem) {
     fs.renameSync(origPath, sourcePath);
     throw err;
   }
+}
+
+async function cmdTranscodeAll({ downloadDir = DOWNLOAD_DIR, execFileFn = execFile } = {}) {
+  if (!fs.existsSync(downloadDir)) {
+    console.log('No videos directory found.');
+    return;
+  }
+
+  const files = fs.readdirSync(downloadDir)
+    .filter(f => f.endsWith('.mp4') && !f.endsWith('.orig.mp4'))
+    .sort();
+
+  if (files.length === 0) {
+    console.log('No videos found.');
+    return;
+  }
+
+  console.log(`Scanning ${files.length} video(s)...`);
+
+  const toTranscode = [];
+  for (const file of files) {
+    const filePath = path.join(downloadDir, file);
+    process.stdout.write(`  Checking ${file}... `);
+    try {
+      const isOk = await ffmpegIsIFrameOnly(filePath, { execFileFn });
+      if (isOk) {
+        console.log('OK (already I-frame-only)');
+      } else {
+        console.log('needs transcode');
+        toTranscode.push(file.replace(/\.mp4$/, ''));
+      }
+    } catch (err) {
+      console.log(`error: ${err.message}`);
+    }
+  }
+
+  if (toTranscode.length === 0) {
+    console.log('All videos are already I-frame-only.');
+    return;
+  }
+
+  console.log(`\nTranscoding ${toTranscode.length} video(s)...`);
+  for (const stem of toTranscode) {
+    console.log(`  Transcoding ${stem}.mp4...`);
+    try {
+      await cmdTranscode(stem, { downloadDir, execFileFn });
+    } catch (err) {
+      console.error(`  Failed: ${stem}.mp4: ${err.message}`);
+    }
+  }
+
+  console.log('\nAll done.');
 }
 
 function parseCLIArgs(argv) {
@@ -477,8 +549,12 @@ async function runCLI(parsed) {
     if (!args[0]) throw new Error('Usage: server.js add <file> [name] [--no-transcode]');
     await cmdAdd(args[0], { name: args[1], transcode: flags.transcode });
   } else if (command === 'transcode') {
-    if (!args[0]) throw new Error('Usage: server.js transcode <stem>');
-    await cmdTranscode(args[0]);
+    if (args[0] === 'all') {
+      await cmdTranscodeAll();
+    } else {
+      if (!args[0]) throw new Error('Usage: server.js transcode <stem|all>');
+      await cmdTranscode(args[0]);
+    }
   } else if (command === 'list') {
     cmdList();
   }
@@ -534,4 +610,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { createServer, cmdDownload, cmdAdd, cmdTranscode, cmdList, parseCLIArgs };
+module.exports = { createServer, cmdDownload, cmdAdd, cmdTranscode, cmdTranscodeAll, cmdList, parseCLIArgs, ffmpegIsIFrameOnly };

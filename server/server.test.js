@@ -1,10 +1,10 @@
-const { describe, it, before, after } = require('node:test');
+const { describe, it, before, after, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { EventEmitter } = require('node:events');
-const { createServer } = require('./server.js');
+const { createServer, cmdTranscodeAll } = require('./server.js');
 
 const TEST_DIR = path.join(__dirname, '.test-videos');
 const TEST_IMAGES_DIR = path.join(__dirname, '.test-images');
@@ -546,5 +546,100 @@ describe('/images serving', () => {
     const res = await fetch(`${baseURL}/images/cors.png`);
     await stopServer(server);
     assert.equal(res.headers['access-control-allow-origin'], '*');
+  });
+});
+
+describe('cmdTranscodeAll', () => {
+  const TEST_ALL_DIR = path.join(__dirname, '.test-transcode-all');
+
+  // Builds an execFileFn that handles both ffmpeg I-frame check (pipe:1 output) and ffmpeg transcode.
+  // For the I-frame check: non-empty stdout means a non-I-frame was found (not I-frame-only).
+  // Files whose stems are listed in nonIFrameStems are treated as not I-frame-only.
+  function makeExecFileForAll({ nonIFrameStems = [] } = {}) {
+    return (cmd, args, _opts, cb) => {
+      if (args.includes('pipe:1')) {
+        const iIdx = args.indexOf('-i');
+        const stem = path.basename(args[iIdx + 1], '.mp4');
+        cb(null, nonIFrameStems.includes(stem) ? 'x' : '', '');
+      } else {
+        fs.writeFileSync(args[args.length - 1], 'transcoded');
+        cb(null, '', '');
+      }
+    };
+  }
+
+  before(() => {
+    if (fs.existsSync(TEST_ALL_DIR)) fs.rmSync(TEST_ALL_DIR, { recursive: true });
+    fs.mkdirSync(TEST_ALL_DIR);
+  });
+
+  afterEach(() => {
+    const files = fs.readdirSync(TEST_ALL_DIR);
+    for (const f of files) fs.rmSync(path.join(TEST_ALL_DIR, f), { force: true });
+  });
+
+  after(() => {
+    if (fs.existsSync(TEST_ALL_DIR)) fs.rmSync(TEST_ALL_DIR, { recursive: true });
+  });
+
+  it('transcodes files that are not I-frame-only', async () => {
+    fs.writeFileSync(path.join(TEST_ALL_DIR, 'mixed.mp4'), 'original');
+    let transcoded = [];
+    const execFileFn = (cmd, args, _opts, cb) => {
+      if (args.includes('pipe:1')) { cb(null, 'x', ''); } // non-empty = non-I-frame found
+      else { transcoded.push(path.basename(args[args.length - 1])); fs.writeFileSync(args[args.length - 1], 'transcoded'); cb(null, '', ''); }
+    };
+    await cmdTranscodeAll({ downloadDir: TEST_ALL_DIR, execFileFn });
+    assert.ok(transcoded.some(f => f === 'mixed.mp4'), 'should transcode the non-I-frame-only file');
+  });
+
+  it('skips files that are already I-frame-only', async () => {
+    fs.writeFileSync(path.join(TEST_ALL_DIR, 'good.mp4'), 'original');
+    let transcodeCallCount = 0;
+    const execFileFn = (cmd, args, _opts, cb) => {
+      if (args.includes('pipe:1')) { cb(null, '', ''); } // empty = I-frame-only
+      else { transcodeCallCount++; fs.writeFileSync(args[args.length - 1], 'transcoded'); cb(null, '', ''); }
+    };
+    await cmdTranscodeAll({ downloadDir: TEST_ALL_DIR, execFileFn });
+    assert.equal(transcodeCallCount, 0, 'should not call ffmpeg transcode for I-frame-only file');
+  });
+
+  it('skips .orig.mp4 files', async () => {
+    fs.writeFileSync(path.join(TEST_ALL_DIR, 'leftover.orig.mp4'), 'original');
+    let checkCalled = false;
+    const execFileFn = (cmd, args, _opts, cb) => {
+      if (args.includes('pipe:1')) { checkCalled = true; cb(null, '', ''); }
+      else { fs.writeFileSync(args[args.length - 1], 'transcoded'); cb(null, '', ''); }
+    };
+    await cmdTranscodeAll({ downloadDir: TEST_ALL_DIR, execFileFn });
+    assert.equal(checkCalled, false, 'should not check .orig.mp4 files');
+  });
+
+  it('handles empty directory without error', async () => {
+    await cmdTranscodeAll({ downloadDir: TEST_ALL_DIR, execFileFn: makeExecFileForAll() });
+  });
+
+  it('continues after a single file fails to check', async () => {
+    fs.writeFileSync(path.join(TEST_ALL_DIR, 'bad.mp4'), 'x');
+    fs.writeFileSync(path.join(TEST_ALL_DIR, 'good.mp4'), 'x');
+    let transcoded = [];
+    const execFileFn = (cmd, args, _opts, cb) => {
+      if (args.includes('pipe:1')) {
+        const iIdx = args.indexOf('-i');
+        const stem = path.basename(args[iIdx + 1], '.mp4');
+        if (stem === 'bad') cb(new Error('check failed'), '', 'check failed');
+        else cb(null, 'x', ''); // non-empty = needs transcode
+      } else {
+        transcoded.push(path.basename(args[args.length - 1]));
+        fs.writeFileSync(args[args.length - 1], 'transcoded');
+        cb(null, '', '');
+      }
+    };
+    await cmdTranscodeAll({ downloadDir: TEST_ALL_DIR, execFileFn });
+    assert.ok(transcoded.some(f => f === 'good.mp4'), 'should still transcode the other file');
+  });
+
+  it('handles missing directory without error', async () => {
+    await cmdTranscodeAll({ downloadDir: path.join(__dirname, '.nonexistent-dir'), execFileFn: makeExecFileForAll() });
   });
 });
