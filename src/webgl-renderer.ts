@@ -21,11 +21,15 @@ const MAX_TEX_UNITS = 64;
 //   [12..13] pixUVStep   (vec2: UV-space step for pixelation; 0 = off)
 //   [14..29] transform   (mat4, column-major)
 //   [30]     contrast    (float: centred-contrast multiplier; 1 = identity)
-//   [31]     brightness  (float: additive brightness offset; 0 = identity)
-//   [32..33] tint        (vec2: x=tintHue [0,1 turns], y=tintStrength [unclamped])
-//   [34]     barrel      (float: barrel/pincushion distortion coefficient; 0 = off)
-//   [35]     barrelClip  (float: 1=clip out-of-bounds to alpha 0, 0=wrap via fract)
-const INSTANCE_FLOATS = 36;
+//   [31]     cropOffX    (float: crop sub-region left edge in UV space; for tile mode)
+//   [32]     brightness  (float: additive brightness offset; 0 = identity)
+//   [33]     cropOffY    (float: crop sub-region top edge in UV space; for tile mode)
+//   [34..35] tint        (vec2: x=tintHue [0,1 turns], y=tintStrength [unclamped])
+//   [36]     cropSizeX   (float: crop sub-region width in UV space; for tile mode)
+//   [37]     cropSizeY   (float: crop sub-region height in UV space; for tile mode)
+//   [38]     barrel      (float: barrel/pincushion distortion coefficient; 0 = off)
+//   [39]     tileMode    (float: 1=tile/tilecenter wrap via fract, 0=clip out-of-bounds to alpha 0)
+const INSTANCE_FLOATS = 40;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -38,10 +42,10 @@ const LOC_UV_SIZE     = 5;
 const LOC_SCALARS     = 6; // vec4: (alpha, texIndex, grey, hueRot)
 const LOC_PIX_UV_STEP = 7; // vec2
 const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
-const LOC_CONTRAST    = 12; // float
-const LOC_BRIGHTNESS  = 13; // float
-const LOC_TINT        = 14; // vec2: (tintHue, tintStrength)
-const LOC_BARREL      = 15; // float
+const LOC_CONTRAST    = 12; // vec2: (contrast, cropOffX)
+const LOC_BRIGHTNESS  = 13; // vec2: (brightness, cropOffY)
+const LOC_TINT        = 14; // vec4: (tintHue, tintStrength, cropSizeX, cropSizeY)
+const LOC_BARREL      = 15; // vec2: (barrel, tileMode)
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -59,10 +63,10 @@ layout(location = 5) in vec2 a_uvSize;
 layout(location = 6) in vec4 a_scalars;  // x=alpha, y=texIndex, z=grey, w=hueRot
 layout(location = 7) in vec2 a_pixUVStep;
 layout(location = 8) in mat4 a_transform; // uses locations 8-11
-layout(location = 12) in float a_contrast;
-layout(location = 13) in float a_brightness;
-layout(location = 14) in vec2 a_tint;     // x=tintHue, y=tintStrength
-layout(location = 15) in vec2 a_barrel; // x=strength, y=clip(1)/wrap(0)
+layout(location = 12) in vec2 a_contrast;   // x=contrast, y=cropOffX
+layout(location = 13) in vec2 a_brightness; // x=brightness, y=cropOffY
+layout(location = 14) in vec4 a_tint;       // xy=tintHue/tintStrength, zw=cropSizeXY
+layout(location = 15) in vec2 a_barrel;     // x=strength, y=tileMode
 
 flat out int v_texIndex;
 out vec2 v_uv;
@@ -74,6 +78,8 @@ flat out float v_contrast;
 flat out float v_brightness;
 flat out vec2 v_tint;
 flat out vec2 v_barrel;
+flat out vec2 v_cropOff;
+flat out vec2 v_cropSize;
 
 void main() {
   // Interpolate UV across the crop window (signed size handles flipping)
@@ -83,10 +89,12 @@ void main() {
   v_grey = a_scalars.z;
   v_pixUVStep = a_pixUVStep;
   v_hueRot = a_scalars.w;
-  v_contrast = a_contrast;
-  v_brightness = a_brightness;
-  v_tint = a_tint;
+  v_contrast = a_contrast.x;
+  v_brightness = a_brightness.x;
+  v_tint = a_tint.xy;
   v_barrel = a_barrel;
+  v_cropOff = vec2(a_contrast.y, a_brightness.y);
+  v_cropSize = a_tint.zw;
 
   // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
@@ -116,6 +124,8 @@ flat in float v_contrast;
 flat in float v_brightness;
 flat in vec2 v_tint;
 flat in vec2 v_barrel;
+flat in vec2 v_cropOff;
+flat in vec2 v_cropSize;
 out vec4 fragColor;
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -171,9 +181,9 @@ void main() {
     float r2 = dot(d, d);
     d *= 1.0 + v_barrel.x * (r2 - 0.25);
     raw = d + 0.5;
-    // v_barrel.y=1: clip out-of-bounds to transparent (cover/fill/contain/none).
-    // v_barrel.y=0: let fract() wrap as usual (tile/tilecenter).
-    if (v_barrel.y > 0.5 && (raw.x < 0.0 || raw.x > 1.0 || raw.y < 0.0 || raw.y > 1.0)) {
+    // v_barrel.y=0: clip out-of-bounds to transparent (cover/fill/contain/none).
+    // v_barrel.y=1: let fract() wrap as usual (tile/tilecenter).
+    if (v_barrel.y < 0.5 && (raw.x < 0.0 || raw.x > 1.0 || raw.y < 0.0 || raw.y > 1.0)) {
       fragColor = vec4(0.0);
       return;
     }
@@ -186,13 +196,15 @@ void main() {
     raw = (floor(raw / v_pixUVStep) + 0.5) * v_pixUVStep;
     // For non-tile modes clamp the upper bound: raw=1.0 would give 1+step/2
     // which fract() wraps to the first block. Clamp to the last block centre instead.
-    if (v_barrel.y > 0.5) {
+    if (v_barrel.y < 0.5) {
       raw = min(raw, 1.0 - v_pixUVStep * 0.5);
     }
   }
-  // fract() gives GL_REPEAT-style tiling for out-of-bounds UV;
-  // for normal in-bounds UVs it is a no-op.
-  vec2 uv = fract(raw);
+  // Tile mode: fract within crop sub-region so only that region repeats.
+  // Non-tile: plain fract (no-op for in-bounds UVs; out-of-bounds already clipped above).
+  vec2 uv = v_barrel.y > 0.5
+    ? v_cropOff + fract((raw - v_cropOff) / v_cropSize) * v_cropSize
+    : fract(raw);
   vec4 color;
   ${ifChain}
   else color = texture(u_tex[0], uv);
@@ -231,17 +243,22 @@ void main() {
 // Blend mode mapping
 // ---------------------------------------------------------------------------
 
-// Each entry: [srcRGB, dstRGB, srcAlpha, dstAlpha]
+// Each entry: [eqRGB, eqAlpha, srcRGB, dstRGB, srcAlpha, dstAlpha]
 // Alpha channel uses ONE, ONE_MINUS_SRC_ALPHA (Porter-Duff source-over for alpha)
 // so the canvas accumulates opacity correctly and composites cleanly against the page.
-// Using blendFuncSeparate — same RGB behaviour as before, correct alpha accumulation.
-const BLEND_MODES: Record<string, [GLenum, GLenum, GLenum, GLenum]> = {
-  'source-over':    [WebGL2RenderingContext.SRC_ALPHA,  WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA, WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA],
-  'lighter':        [WebGL2RenderingContext.SRC_ALPHA,  WebGL2RenderingContext.ONE,                 WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE],
-  'add':            [WebGL2RenderingContext.SRC_ALPHA,  WebGL2RenderingContext.ONE,                 WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE],
-  'multiply':       [WebGL2RenderingContext.DST_COLOR,  WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA, WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA],
-  'screen':         [WebGL2RenderingContext.ONE,        WebGL2RenderingContext.ONE_MINUS_SRC_COLOR, WebGL2RenderingContext.ONE, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA],
-  'destination-out':[WebGL2RenderingContext.ZERO,       WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA, WebGL2RenderingContext.ZERO, WebGL2RenderingContext.ONE_MINUS_SRC_ALPHA],
+// Using blendEquationSeparate + blendFuncSeparate.
+// MIN/MAX equations ignore blend factors entirely.
+const GL = WebGL2RenderingContext;
+const BLEND_MODES: Record<string, [GLenum, GLenum, GLenum, GLenum, GLenum, GLenum]> = {
+  'source-over':    [GL.FUNC_ADD,      GL.FUNC_ADD, GL.SRC_ALPHA,  GL.ONE_MINUS_SRC_ALPHA, GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
+  'lighter':        [GL.FUNC_ADD,      GL.FUNC_ADD, GL.SRC_ALPHA,  GL.ONE,                 GL.ONE, GL.ONE],
+  'add':            [GL.FUNC_ADD,      GL.FUNC_ADD, GL.SRC_ALPHA,  GL.ONE,                 GL.ONE, GL.ONE],
+  'multiply':       [GL.FUNC_ADD,      GL.FUNC_ADD, GL.DST_COLOR,  GL.ONE_MINUS_SRC_ALPHA, GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
+  'screen':         [GL.FUNC_ADD,      GL.FUNC_ADD, GL.ONE,        GL.ONE_MINUS_SRC_COLOR, GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
+  'destination-out':[GL.FUNC_ADD,      GL.FUNC_ADD, GL.ZERO,       GL.ONE_MINUS_SRC_ALPHA, GL.ZERO, GL.ONE_MINUS_SRC_ALPHA],
+  'subtract':       [GL.FUNC_REVERSE_SUBTRACT, GL.FUNC_ADD, GL.SRC_ALPHA, GL.ONE,            GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
+  'min':            [GL.MIN,           GL.FUNC_ADD, GL.ONE,        GL.ONE,                 GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
+  'max':            [GL.MAX,           GL.FUNC_ADD, GL.ONE,        GL.ONE,                 GL.ONE, GL.ONE_MINUS_SRC_ALPHA],
 };
 
 // ---------------------------------------------------------------------------
@@ -410,7 +427,11 @@ interface DrawCommand {
   tintHue:      number;
   tintStrength: number;
   barrel:       number;
-  barrelClip:   number; // 1 = clip out-of-bounds, 0 = wrap via fract()
+  cropOffX:     number;
+  cropOffY:     number;
+  cropSizeX:    number;
+  cropSizeY:    number;
+  tileMode:     number; // 1 = tile/tilecenter (wrap via fract), 0 = clip out-of-bounds
   transform:    Float32Array; // 16 floats, column-major
 }
 
@@ -554,7 +575,8 @@ export class WebGLRenderer implements Renderer {
         tintHue:      p.tintHue      ?? 0,
         tintStrength: p.tintStrength ?? 0,
         barrel:       p.barrel       ?? 0,
-        barrelClip:   1,
+        cropOffX: 0, cropOffY: 0, cropSizeX: 1, cropSizeY: 1,
+        tileMode:     0,
         transform:    buildTransform(p),
       });
       return;
@@ -566,6 +588,13 @@ export class WebGLRenderer implements Renderer {
     // WebGL renders with Y=0 at bottom, so the visual top of the FBO is at UV y=1.
     // Flip the Y axis so the image appears right-side up.
     if (fboSource) { uvOffsetY = uvOffsetY + uvSizeY; uvSizeY = -uvSizeY; }
+
+    const isTile = p.fit === 'tile' || p.fit === 'tilecenter';
+    const tileAw = Math.abs(p.cropw), tileAh = Math.abs(p.croph);
+    const cropOffX  = isTile ? p.cropx - tileAw / 2 : 0;
+    const cropOffY  = isTile ? p.cropy - tileAh / 2 : 0;
+    const cropSizeX = isTile ? Math.max(1e-6, tileAw) : 1;
+    const cropSizeY = isTile ? Math.max(1e-6, tileAh) : 1;
 
     this.pendingDraws.push({
       texture:     tex,
@@ -588,7 +617,8 @@ export class WebGLRenderer implements Renderer {
       tintHue:      p.tintHue      ?? 0,
       tintStrength: p.tintStrength ?? 0,
       barrel:       p.barrel       ?? 0,
-      barrelClip:   (p.fit === 'tile' || p.fit === 'tilecenter') ? 0 : 1,
+      cropOffX, cropOffY, cropSizeX, cropSizeY,
+      tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
       transform:    buildTransform(p),
     });
   }
@@ -645,11 +675,15 @@ export class WebGLRenderer implements Renderer {
         d[base + 13] = cmd.pixUVStepY;
         d.set(cmd.transform, base + 14);
         d[base + 30] = cmd.contrast;
-        d[base + 31] = cmd.brightness;
-        d[base + 32] = cmd.tintHue;
-        d[base + 33] = cmd.tintStrength;
-        d[base + 34] = cmd.barrel;
-        d[base + 35] = cmd.barrelClip;
+        d[base + 31] = cmd.cropOffX;
+        d[base + 32] = cmd.brightness;
+        d[base + 33] = cmd.cropOffY;
+        d[base + 34] = cmd.tintHue;
+        d[base + 35] = cmd.tintStrength;
+        d[base + 36] = cmd.cropSizeX;
+        d[base + 37] = cmd.cropSizeY;
+        d[base + 38] = cmd.barrel;
+        d[base + 39] = cmd.tileMode;
       }
 
       this.setBlend(blendMode);
@@ -765,7 +799,8 @@ export class WebGLRenderer implements Renderer {
     if (!BLEND_MODES[mode]) {
       console.warn(`WebGLRenderer: unsupported blend mode "${mode}", falling back to source-over`);
     }
-    const [srcRGB, dstRGB, srcA, dstA] = BLEND_MODES[mode] ?? BLEND_MODES['source-over'];
+    const [eqRGB, eqA, srcRGB, dstRGB, srcA, dstA] = BLEND_MODES[mode] ?? BLEND_MODES['source-over'];
+    gl.blendEquationSeparate(eqRGB, eqA);
     gl.blendFuncSeparate(srcRGB, dstRGB, srcA, dstA);
   }
 }
@@ -880,19 +915,19 @@ function createVAO(
   }
 
   gl.enableVertexAttribArray(LOC_CONTRAST);
-  gl.vertexAttribPointer(LOC_CONTRAST, 1, gl.FLOAT, false, s, 120);
+  gl.vertexAttribPointer(LOC_CONTRAST, 2, gl.FLOAT, false, s, 120); // vec2: contrast, cropOffX
   gl.vertexAttribDivisor(LOC_CONTRAST, 1);
 
   gl.enableVertexAttribArray(LOC_BRIGHTNESS);
-  gl.vertexAttribPointer(LOC_BRIGHTNESS, 1, gl.FLOAT, false, s, 124);
+  gl.vertexAttribPointer(LOC_BRIGHTNESS, 2, gl.FLOAT, false, s, 128); // vec2: brightness, cropOffY
   gl.vertexAttribDivisor(LOC_BRIGHTNESS, 1);
 
   gl.enableVertexAttribArray(LOC_TINT);
-  gl.vertexAttribPointer(LOC_TINT, 2, gl.FLOAT, false, s, 128);
+  gl.vertexAttribPointer(LOC_TINT, 4, gl.FLOAT, false, s, 136); // vec4: tintHue, tintStrength, cropSizeX, cropSizeY
   gl.vertexAttribDivisor(LOC_TINT, 1);
 
   gl.enableVertexAttribArray(LOC_BARREL);
-  gl.vertexAttribPointer(LOC_BARREL, 2, gl.FLOAT, false, s, 136); // vec2: strength + clip flag
+  gl.vertexAttribPointer(LOC_BARREL, 2, gl.FLOAT, false, s, 152); // vec2: strength, tileMode
   gl.vertexAttribDivisor(LOC_BARREL, 1);
 
   gl.bindVertexArray(null);

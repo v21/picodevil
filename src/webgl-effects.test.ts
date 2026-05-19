@@ -240,6 +240,67 @@ describe("blend modes", () => {
     expect(Math.abs(r - g)).toBeLessThan(5);
     expect(Math.abs(g - b)).toBeLessThan(5);
   });
+
+  it("subtract: white − white = black", () => {
+    // FUNC_SUBTRACT with ONE,ONE: dst - src = (1,1,1) - (1,1,1) = (0,0,0)
+    const canvas = renderTiles([
+      makeTile({ source: { kind: 'color', r: 1, g: 1, b: 1 }, blend: 'source-over' }),
+      makeTile({ source: { kind: 'color', r: 1, g: 1, b: 1 }, blend: 'subtract' }),
+    ]);
+    const [r, g, b] = readPixel(canvas, 50, 50);
+    expect(r).toBeLessThan(20);
+    expect(g).toBeLessThan(20);
+    expect(b).toBeLessThan(20);
+  });
+
+  it("subtract: red − blue = red (blue channel clamps to 0)", () => {
+    // dst=(1,0,0) src=(0,0,1) alpha=1: dst - src*alpha = (1,0,-1) clamped = (1,0,0)
+    const canvas = renderTiles([
+      makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 }, blend: 'source-over' }),
+      makeTile({ source: { kind: 'color', r: 0, g: 0, b: 1 }, blend: 'subtract' }),
+    ]);
+    const [r, , b] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(b).toBeLessThan(20);
+  });
+
+  it("subtract: alpha scales subtraction amount", () => {
+    // dst=white (1,1,1), src=white alpha=0.5: dst - src*0.5 = (0.5,0.5,0.5) ≈ 128
+    const canvas = renderTiles([
+      makeTile({ source: { kind: 'color', r: 1, g: 1, b: 1 }, blend: 'source-over' }),
+      makeTile({ source: { kind: 'color', r: 1, g: 1, b: 1 }, blend: 'subtract', alpha: 0.5 }),
+    ]);
+    const [r, g, b] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(96);
+    expect(r).toBeLessThan(160);
+    expect(Math.abs(r - g)).toBeLessThan(10);
+    expect(Math.abs(g - b)).toBeLessThan(10);
+  });
+
+  it("min: min(white, grey) = grey", () => {
+    const canvas = renderTiles([
+      makeTile({ source: { kind: 'color', r: 1, g: 1, b: 1 }, blend: 'source-over' }),
+      makeTile({ source: { kind: 'color', r: 0.5, g: 0.5, b: 0.5 }, blend: 'min' }),
+    ]);
+    const [r, g, b] = readPixel(canvas, 50, 50);
+    // min(255, 128) = 128 ± tolerance
+    expect(r).toBeLessThan(160);
+    expect(r).toBeGreaterThan(96);
+    expect(Math.abs(r - g)).toBeLessThan(10);
+    expect(Math.abs(g - b)).toBeLessThan(10);
+  });
+
+  it("max: max(black, grey) = grey", () => {
+    const canvas = renderTiles([
+      makeTile({ source: { kind: 'color', r: 0, g: 0, b: 0 }, blend: 'source-over' }),
+      makeTile({ source: { kind: 'color', r: 0.5, g: 0.5, b: 0.5 }, blend: 'max' }),
+    ]);
+    const [r, g, b] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(96);
+    expect(r).toBeLessThan(160);
+    expect(Math.abs(r - g)).toBeLessThan(10);
+    expect(Math.abs(g - b)).toBeLessThan(10);
+  });
 });
 
 // ---------------------------------------------------------------------------

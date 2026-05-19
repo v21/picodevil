@@ -125,7 +125,7 @@
     "type": "video"
   },
   {
-    "name": "aGMOFLgB1CU",
+    "name": "scaleswillfall",
     "url": "http://localhost:3456/videos/aGMOFLgB1CU.mp4",
     "type": "video"
   },
@@ -272,6 +272,211 @@
   {
     "name": "speedracergame",
     "url": "http://localhost:3456/videos/GGg2Qzlp3vI.mp4",
+    "type": "video"
+  },
+  {
+    "name": "scanlines",
+    "url": "http://localhost:3456/images/scanlines.png",
+    "type": "image"
+  },
+  {
+    "name": "colourbars",
+    "url": "http://localhost:3456/images/SMPTE_Color_Bars.png",
+    "type": "image"
+  },
+  {
+    "name": "testcardf",
+    "url": "http://localhost:3456/images/Testcard_F.jpg",
+    "type": "image"
+  },
+  {
+    "name": "testcard",
+    "url": "http://localhost:3456/images/Philips_PM5544.png",
+    "type": "image"
+  },
+  {
+    "name": "powersoften",
+    "url": "http://localhost:3456/videos/0fKBhvDjuy0.mp4",
+    "type": "video"
+  },
+  {
+    "name": "tvsnow",
+    "url": "http://localhost:3456/videos/11999581-hd_1920_1080_24fps.mp4",
+    "type": "video"
+  },
+  {
+    "name": "tvnoise",
+    "url": "http://localhost:3456/videos/14221289-hd_1920_1080_30fps.mp4",
+    "type": "video"
+  },
+  {
+    "name": "tvdust",
+    "url": "http://localhost:3456/videos/14904107-hd_1920_1080_30fps.mp4",
+    "type": "video"
+  },
+  {
+    "name": "catcollar",
+    "url": "http://localhost:3456/videos/4BLXu-dNLZ4.mp4",
+    "type": "video"
+  },
+  {
+    "name": "tvstatic",
+    "url": "http://localhost:3456/videos/6041713-uhd_3840_2160_24fps.mp4",
+    "type": "video"
+  },
+  {
+    "name": "cheeserolling",
+    "url": "http://localhost:3456/videos/6kGZwJ18vQY.mp4",
+    "type": "video"
+  },
+  {
+    "name": "parcel",
+    "url": "http://localhost:3456/videos/ClyXeURB4kI.mp4",
+    "type": "video"
+  },
+  {
+    "name": "mclaren",
+    "url": "http://localhost:3456/videos/E3-vsKwQ0Cg.mp4",
+    "type": "video"
+  },
+  {
+    "name": "nemesis",
+    "url": "http://localhost:3456/videos/HfUFhkscnyo.mp4",
+    "type": "video"
+  },
+  {
+    "name": "carmageddon",
+    "url": "http://localhost:3456/videos/QH2C9TqkfiU.mp4",
+    "type": "video"
+  },
+  {
+    "name": "rendezvous2",
+    "url": "http://localhost:3456/videos/W2sWaf2u7Rg.mp4",
+    "type": "video"
+  },
+  {
+    "name": "dicks_hand",
+    "url": "http://localhost:3456/videos/dicks_hand.mp4",
+    "type": "video"
+  },
+  {
+    "name": "darksouls",
+    "url": "http://localhost:3456/videos/fM93fMEntKQ.mp4",
+    "type": "video"
+  },
+  {
+    "name": "waterslide",
+    "url": "http://localhost:3456/videos/ksLzBH-Ox6o.mp4",
+    "type": "video"
+  },
+  {
+    "name": "mirrorsedge",
+    "url": "http://localhost:3456/videos/mirrorsedge.mp4",
+    "type": "video"
+  },
+  {
+    "name": "musclemarch",
+    "url": "http://localhost:3456/videos/musclemarch.mp4",
+    "type": "video"
+  },
+  {
+    "name": "mustang",
+    "url": "http://localhost:3456/videos/mustang-dG_YAMaiALs.mp4",
+    "type": "video"
+  },
+  {
+    "name": "newmalden",
+    "url": "http://localhost:3456/videos/newmalden-ilEHjkZuQ14.mp4",
+    "type": "video"
+  },
+  {
+    "name": "sleddogs",
+    "url": "http://localhost:3456/videos/sleddogs-S0PjHv2Ty1s.mp4",
+    "type": "video"
+  },
+  {
+    "name": "miku",
+    "url": "http://localhost:3456/videos/widZEAJc0QM.mp4",
+    "type": "video"
+  },
+  {
+    "name": "rendezvous",
+    "url": "http://localhost:3456/videos/yfVJIioWDOc.mp4",
+    "type": "video"
+  },
+  {
+    "name": "kare",
+    "url": "http://localhost:3456/images/kare.png",
+    "type": "image"
+  },
+  {
+    "name": "rgb",
+    "url": "http://localhost:3456/images/rgb.png",
+    "type": "image"
+  },
+  {
+    "name": "rgb1",
+    "url": "http://localhost:3456/images/rgb1.png",
+    "type": "image"
+  },
+  {
+    "name": "rgb2",
+    "url": "http://localhost:3456/images/rgb2.png",
+    "type": "image"
+  },
+  {
+    "name": "mariokart",
+    "url": "http://localhost:3456/videos/MarioKart-zPo5CQFgz3g.mp4",
+    "type": "video"
+  },
+  {
+    "name": "canallock",
+    "url": "http://localhost:3456/videos/canallock.mp4",
+    "type": "video"
+  },
+  {
+    "name": "foggyforest1",
+    "url": "http://localhost:3456/videos/foggyforest00006400_F-_-cZ4JxLs.mp4",
+    "type": "video"
+  },
+  {
+    "name": "foggyforest2",
+    "url": "http://localhost:3456/videos/foggyforest00008305_F-_-cZ4JxLs.mp4",
+    "type": "video"
+  },
+  {
+    "name": "foggyforest3",
+    "url": "http://localhost:3456/videos/foggyforest00012105_F-_-cZ4JxLs.mp4",
+    "type": "video"
+  },
+  {
+    "name": "foggyforest4",
+    "url": "http://localhost:3456/videos/foggyforest00014990_F-_-cZ4JxLs.mp4",
+    "type": "video"
+  },
+  {
+    "name": "foggyforest5",
+    "url": "http://localhost:3456/videos/foggyforest00016755.mp4",
+    "type": "video"
+  },
+  {
+    "name": "japanforest1",
+    "url": "http://localhost:3456/videos/japanforest-hqsQY-QXI2U00032370.mp4",
+    "type": "video"
+  },
+  {
+    "name": "japanforest2",
+    "url": "http://localhost:3456/videos/japanforest-hqsQY-QXI2U00115350.mp4",
+    "type": "video"
+  },
+  {
+    "name": "shropshire",
+    "url": "http://localhost:3456/videos/shropshire00000530-Bftvg5LniPM.mp4",
+    "type": "video"
+  },
+  {
+    "name": "swedenforest",
+    "url": "http://localhost:3456/videos/swedenforest00007025.mp4",
     "type": "video"
   }
 ]

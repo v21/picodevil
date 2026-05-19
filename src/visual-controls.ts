@@ -268,6 +268,9 @@ PatternProto.scroll = function (x: any = 0, y: any = 0) {
  * - `"multiply"` — darkens: multiplies source with destination colors
  * - `"screen"` — lightens: inverse of multiply, good for fire/smoke effects
  * - `"destination-out"` — erases destination where source is opaque (alpha mask)
+ * - `"subtract"` — subtracts source from destination (src − dst, clamped)
+ * - `"min"` — per-channel minimum of source and destination (darkens)
+ * - `"max"` — per-channel maximum of source and destination (lightens)
  *
  * @param {string | Pattern} value blend mode string (see above)
  * @returns {Pattern} pattern with blend mode applied

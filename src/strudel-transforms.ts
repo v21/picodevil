@@ -425,6 +425,15 @@ PatternProto.arpWith = PatternProto.arpWith;
 // ── Clip/sample manipulation ──────────────────────────────────────────────────
 
 /**
+ * Repeat each event n times within its original timespan.
+ * @param {number | Pattern} n repetitions per event
+ * @example
+ * $: s("clip.mp4 dronecanyon").ply(2)   // each clip plays twice as fast, back-to-back
+ * $: s("red blue").ply("<1 2 3>")        // cycle through 1, 2, 3 repetitions
+ */
+PatternProto.ply = PatternProto.ply;
+
+/**
  * Cut the clip into n equal pieces and play them as a sequence of short events.
  * Each piece is a granular slice of the source.
  * @param n number of pieces

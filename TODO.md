@@ -1,3 +1,32 @@
+cropwh should scale the size of tiling? or scale() ought to. i think scale() ought to.
+
+fontpicker caching is busted
+
+
+$: s("text:glossing")
+.textsize(slider(525,128,1000))
+.textColour("black red white blue")
+.fontPicker('monospace')
+
+moving the slider doesn't work until the text is modified.
+
+fontpicker() doesn't work? (needs fontpicker(''))
+
+clearing the element when you click the dropdown is busted - sometimes doesn't get the blur when you deselect. how can you select just with keyboard. the styling of the list is wrong.
+
+$: text("glossing")
+  .fontpicker('Sono')
+.fontaxis('wght', sine.range(100,900))
+.fontsize(slider(464,10,1000))
+
+only animates some letters
+
+
+add a fontaxis('WGHT', slider(100,100,1000)) param
+in the dropdown for the font picker, show the variable font axes - at least for the bundled fonts, it can be tricky for the local ones
+
+
+
 
 slider(1.10e+3,1,1280) is kinda funny
 

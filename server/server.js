@@ -74,6 +74,7 @@ function ffmpegTranscode(inPath, outPath, { execFileFn = execFile, streamingFlag
     execFileFn(ffmpegPath, [
       '-i', inPath,
       '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
       '-x264opts', 'keyint=1:min-keyint=1:scenecut=0',
       '-g', '1',
       '-preset', 'medium',
@@ -455,17 +456,25 @@ function cmdList({ port = DEFAULT_PORT, downloadDir = DOWNLOAD_DIR, imagesDir = 
 }
 
 async function cmdTranscode(stem, { downloadDir = DOWNLOAD_DIR, execFileFn = execFile } = {}) {
-  const cleanStem = stem.replace(/\.mp4$/, '');
-  const sourcePath = path.join(downloadDir, `${cleanStem}.mp4`);
-  if (!fs.existsSync(sourcePath)) throw new Error(`File not found: ${sourcePath}`);
+  const cleanStem = stem.replace(/\.(mp4|mov|mkv|avi|webm)$/i, '');
+  // Find the source file — accept any video extension
+  const videoExts = ['.mp4', '.mov', '.mkv', '.avi', '.webm'];
+  let sourcePath = null;
+  let sourceExt = null;
+  for (const ext of videoExts) {
+    const candidate = path.join(downloadDir, `${cleanStem}${ext}`);
+    if (fs.existsSync(candidate)) { sourcePath = candidate; sourceExt = ext; break; }
+  }
+  if (!sourcePath) throw new Error(`File not found: ${path.join(downloadDir, cleanStem)}.*`);
 
-  const origPath = path.join(downloadDir, `${cleanStem}.orig.mp4`);
+  const outPath = path.join(downloadDir, `${cleanStem}.mp4`);
+  const origPath = path.join(downloadDir, `${cleanStem}.orig${sourceExt}`);
   fs.renameSync(sourcePath, origPath);
-  console.log(`Transcoding ${cleanStem}.mp4 to I-frame-only...`);
+  console.log(`Transcoding ${cleanStem}${sourceExt} → ${cleanStem}.mp4 (I-frame-only)...`);
   try {
-    await ffmpegTranscode(origPath, sourcePath, { execFileFn });
+    await ffmpegTranscode(origPath, outPath, { execFileFn });
     fs.unlink(origPath, () => {});
-    console.log(`Done: ${sourcePath}`);
+    console.log(`Done: ${outPath}`);
     console.log(`URL: http://localhost:${DEFAULT_PORT}/videos/${cleanStem}.mp4`);
   } catch (err) {
     // Restore original on failure
@@ -481,7 +490,7 @@ async function cmdTranscodeAll({ downloadDir = DOWNLOAD_DIR, execFileFn = execFi
   }
 
   const files = fs.readdirSync(downloadDir)
-    .filter(f => f.endsWith('.mp4') && !f.endsWith('.orig.mp4'))
+    .filter(f => /\.(mp4|mov|mkv|avi|webm)$/i.test(f) && !/\.orig\.(mp4|mov|mkv|avi|webm)$/i.test(f))
     .sort();
 
   if (files.length === 0) {
@@ -494,14 +503,20 @@ async function cmdTranscodeAll({ downloadDir = DOWNLOAD_DIR, execFileFn = execFi
   const toTranscode = [];
   for (const file of files) {
     const filePath = path.join(downloadDir, file);
+    const isNonMp4 = !/\.mp4$/i.test(file);
     process.stdout.write(`  Checking ${file}... `);
+    if (isNonMp4) {
+      console.log('needs transcode (non-mp4)');
+      toTranscode.push(file.replace(/\.(mp4|mov|mkv|avi|webm)$/i, ''));
+      continue;
+    }
     try {
       const isOk = await ffmpegIsIFrameOnly(filePath, { execFileFn });
       if (isOk) {
         console.log('OK (already I-frame-only)');
       } else {
         console.log('needs transcode');
-        toTranscode.push(file.replace(/\.mp4$/, ''));
+        toTranscode.push(file.replace(/\.mp4$/i, ''));
       }
     } catch (err) {
       console.log(`error: ${err.message}`);

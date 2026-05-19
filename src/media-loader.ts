@@ -71,6 +71,7 @@ export function setupMediaLoader(el: HTMLElement) {
 }
 
 function render() {
+  const prevScrollTop = container.querySelector<HTMLElement>("[data-list]")?.scrollTop ?? 0;
   container.innerHTML = "";
 
   // Add bar
@@ -129,6 +130,7 @@ function render() {
 
   // List
   const list = document.createElement("div");
+  list.dataset.list = "1";
   list.style.cssText = "flex:1;overflow-y:auto;padding:4px 0;";
 
   const entries = getAllEntries();
@@ -144,6 +146,7 @@ function render() {
   }
 
   container.appendChild(list);
+  list.scrollTop = prevScrollTop;
 
   // Footer buttons
   const footer = document.createElement("div");
