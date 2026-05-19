@@ -1,5 +1,5 @@
-const PAD = 12;
-const LINE_HEIGHT_FACTOR = 1.4;
+export const PAD = 12;
+export const LINE_HEIGHT_FACTOR = 1.4;
 const DEFAULT_SIZE = 128;
 const DEFAULT_FAMILY = 'sans-serif';
 const CSS_SIZE_RE = /\d+(\.\d+)?(px|pt|em|rem|%|vw|vh)/;
@@ -51,7 +51,6 @@ export function renderTextToCanvas(
   const size = sizeMatch ? parseFloat(sizeMatch[0]) : DEFAULT_SIZE;
   const lh = size * LINE_HEIGHT_FACTOR;
 
-  // Measure text widths in a throw-away canvas
   const tmp = document.createElement('canvas');
   const tmpCtx = tmp.getContext('2d')!;
   tmpCtx.font = fontStr;

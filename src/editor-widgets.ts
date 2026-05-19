@@ -2,7 +2,7 @@ import { EditorView, WidgetType, Decoration, type DecorationSet } from "@codemir
 import { StateField, StateEffect } from "@codemirror/state";
 import type { WidgetCallInfo, SliderCallInfo, FontPickerCallInfo } from "./transpiler";
 import { setWidgetValue, setFontPickerValue } from "./widgets";
-import { requestLocalFonts } from "./font-list";
+import { requestLocalFonts, FONT_AXES } from "./font-list";
 import type { FontEntry } from "./font-list";
 
 /** Effect to push new widget metadata after eval. */
@@ -120,7 +120,13 @@ export function repopulateFontDatalist(fonts: FontEntry[]): void {
   for (const f of fonts) {
     const opt = document.createElement("option");
     opt.value = f.family;
-    if (f.source === "local") opt.label = `${f.family} (local)`;
+    const axes = FONT_AXES[f.family];
+    if (axes) {
+      const axisStr = axes.map(a => `${a.tag} ${a.min}–${a.max}`).join('  ');
+      opt.label = axisStr;
+    } else if (f.source === "local") {
+      opt.label = "(local)";
+    }
     dl.appendChild(opt);
   }
 }

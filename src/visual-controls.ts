@@ -1067,6 +1067,25 @@ PatternProto.textBGColor  = PatternProto.fontBGColor;
 PatternProto.textBGColour = PatternProto.fontBGColor;
 PatternProto.fontBGColour = PatternProto.fontBGColor;
 
+/**
+ * Sets a variable font axis value for text() tiles.
+ * Multiple calls accumulate; each axis is stored as `_fontVariation_<tag>` in the event value.
+ * Axis tags follow OpenType conventions (e.g. `'wght'` for weight, `'wdth'` for width).
+ * Tags are case-insensitive — `'WGHT'` and `'wght'` are equivalent.
+ *
+ * @param {string} tag OpenType axis tag (e.g. `'wght'`, `'slnt'`, `'wdth'`)
+ * @param {number | Pattern} value axis value
+ * @returns {Pattern} pattern with font axis applied
+ * @example
+ * $: text('Hello').font('Recursive').fontAxis('wght', 900)
+ * $: text('A').font('Anybody').fontAxis('wght', slider(100, 100, 900)).fontAxis('slnt', 10)
+ */
+PatternProto.fontAxis = function(tag: any, value: any) {
+  const tagStr = typeof tag === 'string' ? tag
+    : String((tag as any)?.queryArc?.(0, 0)?.[0]?.value ?? tag);
+  return createMixParam(`_fontVariation_${tagStr.toLowerCase()}`)(value, this);
+};
+
 // ── Echo (alpha-based, overrides Strudel's gain-based version) ─────────────
 
 /**

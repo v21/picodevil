@@ -530,4 +530,29 @@ describe(".duration()", () => {
     expect(ends).toHaveLength(4);
     expect(new Set(ends.map((b: number) => b.toFixed(6))).size).toBeGreaterThan(1);
   });
+
+  describe("fontAxis", () => {
+    it("stores a single axis as _fontVariation_<tag>", () => {
+      const v = query((src("a") as any).fontAxis("WGHT", 700), 0);
+      expect(v._fontVariation_wght).toBe(700);
+    });
+
+    it("lowercases the tag", () => {
+      const v = query((src("a") as any).fontAxis("SLNT", -10), 0);
+      expect(v._fontVariation_slnt).toBe(-10);
+    });
+
+    it("multiple fontAxis calls accumulate as separate keys", () => {
+      const v = query((src("a") as any).fontAxis("WGHT", 300).fontAxis("SLNT", 5), 0);
+      expect(v._fontVariation_wght).toBe(300);
+      expect(v._fontVariation_slnt).toBe(5);
+    });
+
+    it("preserves other event fields", () => {
+      const v = query((src("a") as any).speed(2).fontAxis("WGHT", 400), 0);
+      expect(v.src).toBe("a");
+      expect(v.speed).toBe(2);
+      expect(v._fontVariation_wght).toBe(400);
+    });
+  });
 });

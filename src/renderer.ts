@@ -9,7 +9,7 @@ import { matchSources, type FreePool } from './source-matcher';
 import type { Renderer, TileParams, TileSource, Screen } from './renderer-interface';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
-import { buildFontString, renderTextToCanvas } from './text-render';
+import { buildFontString, renderTextToCanvas, PAD, LINE_HEIGHT_FACTOR } from './text-render';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
 
@@ -44,10 +44,14 @@ export class FrameRenderer {
   private readonly metrics: FrameMetrics;
   /** Free image elements keyed by srcUrl. Images are lightweight and never evicted. */
   private readonly imageFreePool = new Map<string, HTMLImageElement>();
-  /** Text canvas cache keyed by "text|fontStr|fontColor|fontBGColor". */
+  /** Text canvas cache keyed by varKey ("text|fontStr|color|bg|variationSettings") or baseKey. */
   private readonly textCanvasCache = new Map<string, HTMLCanvasElement>();
-  /** Font strings confirmed loaded via document.fonts.load() — prevents repeated invalidation. */
-  private readonly loadedFonts = new Set<string>();
+  /** Most recently completed SVG render per baseKey — used as stand-in while next render is in flight. */
+  private readonly textLastGoodCanvas = new Map<string, HTMLCanvasElement>();
+  /** baseKeys for which an SVG render is currently in flight — throttles to one render per text slot. */
+  private readonly svgRenderPending = new Set<string>();
+  /** Cached woff2 data URLs keyed by font family. Promise resolves to data: URL or null if unavailable. */
+  private readonly fontDataURLCache = new Map<string, Promise<string | null>>();
   private readonly colorCache = new Map<string, [number, number, number]>();
   private readonly scratchCtx = document.createElement('canvas').getContext('2d')!;
   /** Assignment from NeededSource to element for the current frame. */
@@ -193,21 +197,153 @@ export class FrameRenderer {
     const fontStr     = buildFontString(ev.font, ev.fontSize != null ? Number(ev.fontSize) : undefined);
     const fontColor   = ev.fontColor   ?? 'white';
     const fontBGColor = ev.fontBGColor ?? '';
-    const key = `${textStr}|${fontStr}|${fontColor}|${fontBGColor}`;
-    let canvas = this.textCanvasCache.get(key);
-    if (!canvas) {
-      canvas = renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
-      this.textCanvasCache.set(key, canvas);
-      if (!this.loadedFonts.has(fontStr)) {
-        document.fonts.load(fontStr).then((faces) => {
-          if (faces.length > 0) {
-            this.loadedFonts.add(fontStr);
-            this.textCanvasCache.clear();
-          }
-        });
+
+    const varEntries = Object.entries(ev)
+      .filter(([k]) => k.startsWith('_fontVariation_'))
+      .sort(([a], [b]) => a.localeCompare(b));
+    const fontVariationSettings = varEntries.length
+      ? varEntries.map(([k, v]) => `'${k.slice(15)}' ${Number(v).toPrecision(4)}`).join(', ')
+      : undefined;
+
+    const baseKey = `${textStr}|${fontStr}|${fontColor}|${fontBGColor}`;
+
+    if (!fontVariationSettings) {
+      let canvas = this.textCanvasCache.get(baseKey);
+      if (!canvas) {
+        canvas = renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
+        this.textCanvasCache.set(baseKey, canvas);
       }
+      return canvas;
     }
-    return canvas;
+
+    // Variation requested: use SVG/foreignObject approach so font-variation-settings
+    // is applied in real HTML (where it works), not via Canvas 2D (where it doesn't).
+    const varKey = `${baseKey}|${fontVariationSettings}`;
+    const cached = this.textCanvasCache.get(varKey);
+    if (cached) return cached;
+
+    const family = ev.font ?? 'sans-serif';
+    if (!this.svgRenderPending.has(baseKey)) {
+      this.svgRenderPending.add(baseKey);
+      const capturedVar = fontVariationSettings;
+      const capturedVarKey = varKey;
+      this.getFontDataURL(family).then(dataURL => {
+        if (!dataURL) { this.svgRenderPending.delete(baseKey); return; }
+        return this.renderTextSVG(textStr, fontStr, family, dataURL, capturedVar, fontColor, fontBGColor);
+      }).then(canvas => {
+        this.svgRenderPending.delete(baseKey);
+        if (canvas) {
+          if (this.textCanvasCache.size > 300) this.textCanvasCache.clear();
+          this.textCanvasCache.set(capturedVarKey, canvas);
+          this.textLastGoodCanvas.set(baseKey, canvas);
+        }
+      }).catch(() => { this.svgRenderPending.delete(baseKey); });
+    }
+
+    // Return last good (previous variation value) or base canvas while SVG is in flight.
+    const lastGood = this.textLastGoodCanvas.get(baseKey);
+    if (lastGood) return lastGood;
+
+    let baseCanvas = this.textCanvasCache.get(baseKey);
+    if (!baseCanvas) {
+      baseCanvas = renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
+      this.textCanvasCache.set(baseKey, baseCanvas);
+    }
+    return baseCanvas;
+  }
+
+  /** Returns a cached Promise for the woff2 data URL for the given font family. */
+  private getFontDataURL(family: string): Promise<string | null> {
+    let p = this.fontDataURLCache.get(family);
+    if (!p) {
+      p = this.fetchFontDataURL(family);
+      this.fontDataURLCache.set(family, p);
+    }
+    return p;
+  }
+
+  /** Fetch the woff2 for a font family and return it as a data: URL, or null if unavailable. */
+  private async fetchFontDataURL(family: string): Promise<string | null> {
+    const src = this.findFontSrcUrl(family);
+    if (!src) return null;
+    try {
+      const resp = await fetch(src);
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      return await new Promise<string>((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result as string);
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+    } catch { return null; }
+  }
+
+  /**
+   * Render text with font-variation-settings via SVG <foreignObject>.
+   * The woff2 is embedded as a data URL so the SVG blob is self-contained and
+   * font-variation-settings applies correctly in the HTML inside foreignObject.
+   */
+  private async renderTextSVG(
+    text: string,
+    fontStr: string,
+    family: string,
+    fontDataURL: string,
+    variationSettings: string,
+    fontColor: string,
+    fontBGColor: string,
+  ): Promise<HTMLCanvasElement> {
+    const baseKey = `${text}|${fontStr}|${fontColor}|${fontBGColor}`;
+    let baseCanvas = this.textCanvasCache.get(baseKey);
+    if (!baseCanvas) {
+      baseCanvas = renderTextToCanvas(text, fontStr, fontColor, fontBGColor || undefined);
+      this.textCanvasCache.set(baseKey, baseCanvas);
+    }
+    const { width, height } = baseCanvas;
+
+    const sizeMatch = /(\d+(?:\.\d+)?)px/.exec(fontStr);
+    const size = sizeMatch ? parseFloat(sizeMatch[1]) : 128;
+
+    const xmlText = text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const lines = xmlText.split('\n')
+      .map(l => `<div style="margin:0;padding:0">${l || ' '}</div>`)
+      .join('');
+
+    const svgXML = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><style>@font-face{font-family:'${family}';src:url(${fontDataURL}) format('woff2');font-weight:1 1000;font-style:oblique -90deg 90deg;}</style><foreignObject x="0" y="0" width="${width}" height="${height}"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:'${family}';font-size:${size}px;font-variation-settings:${variationSettings};color:${fontColor};line-height:${LINE_HEIGHT_FACTOR};padding:${PAD}px;box-sizing:border-box;margin:0;${fontBGColor ? `background:${fontBGColor};` : ''}width:${width}px;height:${height}px;overflow:hidden;">${lines}</div></foreignObject></svg>`;
+
+    const blob = new Blob([svgXML], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0);
+      return canvas;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  /** Scan document @font-face rules to find the woff2 src URL for a given font family. */
+  private findFontSrcUrl(family: string): string | null {
+    const familyLc = family.toLowerCase();
+    for (const sheet of Array.from(document.styleSheets)) {
+      try {
+        for (const rule of Array.from(sheet.cssRules)) {
+          if (!(rule instanceof CSSFontFaceRule)) continue;
+          const fam = rule.style.getPropertyValue('font-family').replace(/['"]/g, '').trim().toLowerCase();
+          if (fam !== familyLc) continue;
+          const src = rule.style.getPropertyValue('src');
+          const m = src.match(/url\(["']?([^"')]+\.woff2?)["']?\)/);
+          if (m) return m[1];
+        }
+      } catch (_) { /* cross-origin sheet */ }
+    }
+    return null;
   }
 
   /**
