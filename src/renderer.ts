@@ -11,6 +11,7 @@ import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
 import { getOpentypeFont, renderTextOpentype, resolveAxisTag } from './text-render-opentype';
+import { FONT_AXES } from './font-list';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
 
@@ -195,11 +196,15 @@ export class FrameRenderer {
     const sizeMatch = /(\d+(?:\.\d+)?)px/.exec(fontStr);
     const size = sizeMatch ? parseFloat(sizeMatch[1]) : 128;
 
-    // Build variation axis map, recovering correct case (e.g. _fontVariation_mono → MONO).
+    // Build variation axis map, recovering correct case and clamping to declared axis range.
     const variation: Record<string, number> = {};
+    const axes = FONT_AXES[family] ?? [];
     for (const [k, v] of Object.entries(ev)) {
       if (!k.startsWith('_fontVariation_')) continue;
-      variation[resolveAxisTag(family, k.slice(15))] = Number(v);
+      const tag = resolveAxisTag(family, k.slice(15));
+      const axisSpec = axes.find(a => a.tag === tag);
+      const val = Number(v);
+      variation[tag] = axisSpec ? Math.min(axisSpec.max, Math.max(axisSpec.min, val)) : val;
     }
 
     // Hosted fonts: try opentype.js path rendering (taint-free, supports variation).
@@ -217,7 +222,11 @@ export class FrameRenderer {
     return renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
   }
 
-  /** Scan document @font-face rules to find the woff2 src URL for a given font family. */
+  /**
+   * Scan document @font-face rules to find a .ttf src URL for a given font family.
+   * Returns the woff2 path with extension replaced by .ttf — opentype.js parses TTF
+   * natively without a browser decompressor.
+   */
   private findFontSrcUrl(family: string): string | null {
     const familyLc = family.toLowerCase();
     for (const sheet of Array.from(document.styleSheets)) {
@@ -228,7 +237,7 @@ export class FrameRenderer {
           if (fam !== familyLc) continue;
           const src = rule.style.getPropertyValue('src');
           const m = src.match(/url\(["']?([^"')]+\.woff2?)["']?\)/);
-          if (m) return m[1];
+          if (m) return m[1].replace(/\.woff2?$/, '.ttf');
         }
       } catch (_) { /* cross-origin sheet */ }
     }

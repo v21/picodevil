@@ -1,5 +1,4 @@
 import { parse, type Font } from 'opentype.js';
-import { decompress } from 'wawoff2';
 import { PAD, LINE_HEIGHT_FACTOR } from './text-render';
 import { FONT_AXES } from './font-list';
 
@@ -9,6 +8,8 @@ const fontLoading = new Set<string>();
 /**
  * Returns the loaded opentype.js Font for srcUrl, or null if not yet available.
  * Triggers an async load on first call for a given URL.
+ * srcUrl should be a .ttf path — opentype.js parses TTF/OTF natively without a
+ * separate decompressor, avoiding the wawoff2 WASM browser-init issues.
  */
 export function getOpentypeFont(srcUrl: string): Font | null {
   const f = fontCache.get(srcUrl);
@@ -17,10 +18,8 @@ export function getOpentypeFont(srcUrl: string): Font | null {
     fontLoading.add(srcUrl);
     fetch(srcUrl)
       .then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
-      .then(async buf => {
-        const raw = await decompress(new Uint8Array(buf));
-        const ab = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength);
-        fontCache.set(srcUrl, parse(ab as ArrayBuffer));
+      .then(buf => {
+        fontCache.set(srcUrl, parse(buf as ArrayBuffer));
       })
       .catch(err => console.warn('[uzu] opentype font load failed:', srcUrl, err));
   }
@@ -72,16 +71,14 @@ export function renderTextOpentype(
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  // Compute baseline offset from line-slot centre to font baseline.
-  // Matches Canvas 2D textBaseline='middle' positioning used by renderTextToCanvas.
   const ascPx = font.ascender / font.unitsPerEm * size;
   const emPx  = (font.ascender - font.descender) / font.unitsPerEm * size;
 
-  ctx.fillStyle = fontColor;
   for (let i = 0; i < lines.length; i++) {
     if (!lines[i]) continue;
     const baseline = PAD + i * lh + lh / 2 + ascPx - emPx / 2;
     const path = font.getPath(lines[i], PAD, baseline, size, opts);
+    path.fill = fontColor;
     path.draw(ctx);
   }
   return canvas;

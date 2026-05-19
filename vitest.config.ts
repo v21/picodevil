@@ -8,6 +8,7 @@ export default defineConfig({
     include: ["fast-check"],
   },
   test: {
+    globalSetup: ["src/test-font-setup.ts"],
     setupFiles: ["src/test-setup.ts"],
     exclude: ["server/**", "test/**", "node_modules/**"],
     browser: {

@@ -1,6 +1,8 @@
 declare module 'opentype.js' {
   interface Path {
     commands: Array<{ type: string; x?: number; y?: number }>;
+    fill: string | null;
+    stroke: string | null;
     draw(ctx: CanvasRenderingContext2D): void;
     toSVG(decimalPlaces?: number): string;
   }
