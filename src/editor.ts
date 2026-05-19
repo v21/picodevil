@@ -5,7 +5,7 @@ import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
 import { uzuHighlight } from "./highlight";
 import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
-import type { WidgetCallInfo } from "./transpiler";
+import type { WidgetCallInfo, FontPickerCallInfo } from "./transpiler";
 
 declare global {
   interface Window {
@@ -99,10 +99,42 @@ export function setupEditor(
   function evalAndDecorate(editorView: EditorView, code: string) {
     const result = window.uzuEval(code);
     showError(result.error);
-    // Push widget metadata into the editor for decoration
-    editorView.dispatch({
-      effects: setWidgetMeta.of(result.widgets),
+
+    const noArgPickers = result.widgets.filter(
+      (w): w is FontPickerCallInfo => w.kind === "fontPicker" && w.valueArgStart === w.valueArgEnd
+    );
+
+    if (noArgPickers.length === 0) {
+      editorView.dispatch({ effects: setWidgetMeta.of(result.widgets) });
+      return;
+    }
+
+    // Insert the default font name string into source for each no-arg fontPicker().
+    // Process in source order; track cumulative offset as we insert text.
+    const changes = noArgPickers.map((picker, i) => {
+      const priorLen = noArgPickers.slice(0, i).reduce((acc, p) => acc + `'${p.fontName}'`.length, 0);
+      const pos = picker.valueArgStart + priorLen;
+      return { from: pos, to: pos, insert: `'${picker.fontName}'` };
     });
+
+    // Adjust all widget positions to account for the inserted text.
+    const adjustedWidgets: WidgetCallInfo[] = result.widgets.map(w => {
+      const shift = noArgPickers
+        .filter(p => p.valueArgStart <= w.valueArgStart)
+        .reduce((acc, p) => acc + `'${p.fontName}'`.length, 0);
+      if (noArgPickers.includes(w as FontPickerCallInfo)) {
+        const insertLen = `'${(w as FontPickerCallInfo).fontName}'`.length;
+        return { ...w, valueArgStart: w.valueArgStart + shift - insertLen, valueArgEnd: w.valueArgEnd + shift };
+      }
+      return { ...w, valueArgStart: w.valueArgStart + shift, valueArgEnd: w.valueArgEnd + shift };
+    });
+
+    editorView.dispatch({
+      changes,
+      effects: setWidgetMeta.of(adjustedWidgets),
+      annotations: Transaction.addToHistory.of(true),
+    });
+    onCodeChange?.(editorView.state.doc.toString());
   }
 
   const evalKeymap = Prec.highest(keymap.of([

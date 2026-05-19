@@ -190,9 +190,15 @@ let y = 2`;
       expect(widgets[1].kind).toBe("fontPicker");
     });
 
-    it("returns no fontPicker widget when arg is missing", () => {
+    it("extracts fontPicker widget with default fontName when arg is missing", () => {
       const { widgets } = transpile("fontPicker()");
-      expect(widgets).toHaveLength(0);
+      expect(widgets).toHaveLength(1);
+      expect(widgets[0].kind).toBe("fontPicker");
+      if (widgets[0].kind === "fontPicker") {
+        expect(widgets[0].fontName).toBe("sans-serif");
+        // Zero-width: both positions point just before the closing )
+        expect(widgets[0].valueArgStart).toBe(widgets[0].valueArgEnd);
+      }
     });
   });
 
@@ -225,9 +231,14 @@ let y = 2`;
       expect(code).not.toContain("mini('Gluten')");
     });
 
-    it("ignores method call without string arg", () => {
+    it("extracts widget with default fontName when method call has no arg", () => {
       const { widgets } = transpile("text('hi').fontPicker()");
-      expect(widgets).toHaveLength(0);
+      expect(widgets).toHaveLength(1);
+      expect(widgets[0].kind).toBe("fontPicker");
+      if (widgets[0].kind === "fontPicker") {
+        expect(widgets[0].fontName).toBe("sans-serif");
+        expect(widgets[0].valueArgStart).toBe(widgets[0].valueArgEnd);
+      }
     });
 
     it("orders method-style and function-style widgets together", () => {

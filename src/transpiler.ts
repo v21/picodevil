@@ -96,6 +96,16 @@ function walkAST(node: any, widgets: WidgetCallInfo[]): any {
         valueArgEnd: firstArg.end,
         fontName: firstArg.value,
       });
+    } else if (!firstArg) {
+      // No arg: insert at the position just before ) so the widget can write back a font name
+      widgets.push({
+        kind: "fontPicker",
+        callStart: node.start,
+        callEnd: node.end,
+        valueArgStart: node.end - 1,
+        valueArgEnd: node.end - 1,
+        fontName: "sans-serif",
+      });
     }
   }
 
@@ -139,6 +149,16 @@ function walkAST(node: any, widgets: WidgetCallInfo[]): any {
           valueArgStart: firstArg.start,  // includes quote characters
           valueArgEnd: firstArg.end,
           fontName: firstArg.value,
+        });
+      } else if (!firstArg) {
+        // No arg: insert at the position just before ) so the widget can write back a font name
+        widgets.push({
+          kind: "fontPicker",
+          callStart: node.start,
+          callEnd: node.end,
+          valueArgStart: node.end - 1,
+          valueArgEnd: node.end - 1,
+          fontName: "sans-serif",
         });
       }
     }

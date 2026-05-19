@@ -201,6 +201,10 @@ function buildDecorations(
       return Decoration.widget({ widget, side: -1 }).range(info.valueArgStart);
     } else {
       const widget = new FontPickerWidget(index, info, onFontPickerChange);
+      if (info.valueArgStart === info.valueArgEnd) {
+        // No arg case: insert widget without replacing any text
+        return Decoration.widget({ widget, side: 1 }).range(info.valueArgStart);
+      }
       // Replace the string literal with the widget so the font name isn't shown twice
       return Decoration.replace({ widget }).range(info.valueArgStart, info.valueArgEnd);
     }
