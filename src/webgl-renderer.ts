@@ -1,5 +1,10 @@
 import type { Renderer, TileParams, TileSource } from './renderer-interface';
 import { TextureCache } from './texture-cache';
+import {
+  compileInto, OP_FLOATS,
+  OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
+  OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
+} from './effect-compiler';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -9,27 +14,15 @@ import { TextureCache } from './texture-cache';
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
-// Per-instance Float32Array layout (35 floats = 140 bytes):
-//   [0..1]   destOffset  (vec2)
-//   [2..3]   destSize    (vec2)
-//   [4..5]   uvOffset    (vec2)
-//   [6..7]   uvSize      (vec2)
-//   [8]      alpha       (float) ─┐
-//   [9]      texIndex    (float)  │ packed as vec4 a_scalars (loc 6)
-//   [10]     grey        (float)  │
-//   [11]     hueRot      (float) ─┘
-//   [12..13] pixUVStep   (vec2: UV-space step for pixelation; 0 = off)
-//   [14..29] transform   (mat4, column-major)
-//   [30]     contrast    (float: centred-contrast multiplier; 1 = identity)
-//   [31]     cropOffX    (float: crop sub-region left edge in UV space; for tile mode)
-//   [32]     brightness  (float: additive brightness offset; 0 = identity)
-//   [33]     cropOffY    (float: crop sub-region top edge in UV space; for tile mode)
-//   [34..35] tint        (vec2: x=tintHue [0,1 turns], y=tintStrength [unclamped])
-//   [36]     cropSizeX   (float: crop sub-region width in UV space; for tile mode)
-//   [37]     cropSizeY   (float: crop sub-region height in UV space; for tile mode)
-//   [38]     barrel      (float: barrel/pincushion distortion coefficient; 0 = off)
-//   [39]     tileMode    (float: 1=tile/tilecenter wrap via fract, 0=clip out-of-bounds to alpha 0)
-const INSTANCE_FLOATS = 40;
+// Per-instance Float32Array layout (26 floats = 104 bytes):
+//   [0..1]   destOffset   (vec2)
+//   [2..3]   destSize     (vec2)
+//   [4..5]   uvOffset     (vec2)
+//   [6..7]   uvSize       (vec2)
+//   [8..23]  transform    (mat4, column-major)
+//   [24]     effectStart  (float; index into ops[] in pairs of vec4)
+//   [25]     effectCount  (float; number of ops in this tile's chain)
+const INSTANCE_FLOATS = 26;
 const INSTANCE_STRIDE = INSTANCE_FLOATS * 4; // bytes
 
 // Attribute locations (fixed via layout(location=N) in shader)
@@ -39,13 +32,14 @@ const LOC_DEST_OFFSET = 2;
 const LOC_DEST_SIZE   = 3;
 const LOC_UV_OFFSET   = 4;
 const LOC_UV_SIZE     = 5;
-const LOC_SCALARS     = 6; // vec4: (alpha, texIndex, grey, hueRot)
-const LOC_PIX_UV_STEP = 7; // vec2
-const LOC_TRANSFORM   = 8; // mat4 occupies 8, 9, 10, 11
-const LOC_CONTRAST    = 12; // vec2: (contrast, cropOffX)
-const LOC_BRIGHTNESS  = 13; // vec2: (brightness, cropOffY)
-const LOC_TINT        = 14; // vec4: (tintHue, tintStrength, cropSizeX, cropSizeY)
-const LOC_BARREL      = 15; // vec2: (barrel, tileMode)
+const LOC_TRANSFORM   = 6; // mat4 occupies 6, 7, 8, 9
+const LOC_EFFECTS     = 10; // vec2: (effectStart, effectCount)
+
+// UBO size (vec4 slots). Each op = 2 vec4s. 1024 vec4s = 512 ops.
+// 16 KB is the WebGL2-guaranteed MAX_UNIFORM_BLOCK_SIZE minimum, so this works
+// everywhere. With per-batch dedup, 512 ops is plenty for typical patterns
+// (cropStack(25,25) with uniform effects collapses to a single ~3-op chain).
+const UBO_VEC4_CAPACITY = 1024;
 
 // ---------------------------------------------------------------------------
 // GLSL shaders
@@ -55,78 +49,62 @@ const VERT_SRC = /* glsl */`#version 300 es
 layout(location = 0) in vec2 a_position;
 layout(location = 1) in vec2 a_uv;
 
-// Per-instance attributes (divisor = 1)
 layout(location = 2) in vec2 a_destOffset;
 layout(location = 3) in vec2 a_destSize;
 layout(location = 4) in vec2 a_uvOffset;
 layout(location = 5) in vec2 a_uvSize;
-layout(location = 6) in vec4 a_scalars;  // x=alpha, y=texIndex, z=grey, w=hueRot
-layout(location = 7) in vec2 a_pixUVStep;
-layout(location = 8) in mat4 a_transform; // uses locations 8-11
-layout(location = 12) in vec2 a_contrast;   // x=contrast, y=cropOffX
-layout(location = 13) in vec2 a_brightness; // x=brightness, y=cropOffY
-layout(location = 14) in vec4 a_tint;       // xy=tintHue/tintStrength, zw=cropSizeXY
-layout(location = 15) in vec2 a_barrel;     // x=strength, y=tileMode
+layout(location = 6) in mat4 a_transform; // locations 6-9
+layout(location = 10) in vec2 a_effects;  // x=effectStart, y=effectCount
 
-flat out int v_texIndex;
+flat out int v_effectStart;
+flat out int v_effectCount;
 out vec2 v_uv;
-out float v_alpha;
-out float v_grey;
-out vec2 v_pixUVStep;
-flat out float v_hueRot;
-flat out float v_contrast;
-flat out float v_brightness;
-flat out vec2 v_tint;
-flat out vec2 v_barrel;
-flat out vec2 v_cropOff;
-flat out vec2 v_cropSize;
 
 void main() {
-  // Interpolate UV across the crop window (signed size handles flipping)
   v_uv = a_uvOffset + a_uv * a_uvSize;
-  v_texIndex = int(a_scalars.y);
-  v_alpha = a_scalars.x;
-  v_grey = a_scalars.z;
-  v_pixUVStep = a_pixUVStep;
-  v_hueRot = a_scalars.w;
-  v_contrast = a_contrast.x;
-  v_brightness = a_brightness.x;
-  v_tint = a_tint.xy;
-  v_barrel = a_barrel;
-  v_cropOff = vec2(a_contrast.y, a_brightness.y);
-  v_cropSize = a_tint.zw;
+  v_effectStart = int(a_effects.x);
+  v_effectCount = int(a_effects.y);
 
-  // Position the quad in 0..1 canvas coords, then convert to clip space
   vec2 pos = a_destOffset + (a_position - 0.5) * a_destSize;
   vec2 clip = pos * 2.0 - 1.0;
-  clip.y = -clip.y;  // canvas Y is down; clip Y is up
+  clip.y = -clip.y;
 
   gl_Position = a_transform * vec4(clip, 0.0, 1.0);
 }`;
 
 // Build the fragment shader source for a given number of texture units.
 function buildFragSrc(n: number): string {
-  const ifChain = Array.from({ length: n }, (_, i) =>
-    `${i === 0 ? 'if' : 'else if'} (v_texIndex == ${i}) color = texture(u_tex[${i}], uv);`
-  ).join('\n  ');
+  // SAMPLE op dispatches to one of N texture units via an if/else chain
+  // (GLSL can't dynamically index sampler arrays).
+  const sampleChain = Array.from({ length: n }, (_, i) =>
+    `${i === 0 ? 'if' : 'else if'} (texIdx == ${i}) color = texture(u_tex[${i}], uv);`
+  ).join('\n        ');
+
   return /* glsl */`#version 300 es
 precision mediump float;
 
 uniform sampler2D u_tex[${n}];
 
-flat in int v_texIndex;
+layout(std140) uniform Effects {
+  // Packed ops: each op is 2 consecutive vec4s.
+  //   ops[i*2].x = kind
+  //   ops[i*2].yzw, ops[i*2+1].xyzw = args (interpretation per kind)
+  vec4 ops[${UBO_VEC4_CAPACITY}];
+};
+
+flat in int v_effectStart;
+flat in int v_effectCount;
 in vec2 v_uv;
-in float v_alpha;
-in float v_grey;
-in vec2 v_pixUVStep;
-flat in float v_hueRot;
-flat in float v_contrast;
-flat in float v_brightness;
-flat in vec2 v_tint;
-flat in vec2 v_barrel;
-flat in vec2 v_cropOff;
-flat in vec2 v_cropSize;
 out vec4 fragColor;
+
+#define OP_SAMPLE      ${OP_SAMPLE}
+#define OP_BARREL      ${OP_BARREL}
+#define OP_PIXELATE    ${OP_PIXELATE}
+#define OP_WRAP        ${OP_WRAP}
+#define OP_CONTRAST    ${OP_CONTRAST}
+#define OP_BRIGHTNESS  ${OP_BRIGHTNESS}
+#define OP_COLOR_OKLAB ${OP_COLOR_OKLAB}
+#define OP_ALPHA       ${OP_ALPHA}
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
 // extreme contrast/tint without NaN from negative pow().
@@ -170,72 +148,79 @@ vec3 oklab_to_linear_rgb(vec3 lab) {
 }
 
 void main() {
-  vec2 raw = v_uv;
-  // Barrel/pincushion distortion in UV space. Positive = barrel (CRT look,
-  // corners go transparent); negative = pincushion. Applied before pixelation
-  // so pixel blocks are warped along with the image.
-  if (v_barrel.x != 0.0) {
-    vec2 d = raw - 0.5;
-    // Normalise by r²=0.25 (the value at edge centres) so edge centres are
-    // fixed (scale=1 there) and distortion grows radially from that circle.
-    float r2 = dot(d, d);
-    d *= 1.0 + v_barrel.x * (r2 - 0.25);
-    raw = d + 0.5;
-    // v_barrel.y=0: clip out-of-bounds to transparent (cover/fill/contain/none).
-    // v_barrel.y=1: let fract() wrap as usual (tile/tilecenter).
-    if (v_barrel.y < 0.5 && (raw.x < 0.0 || raw.x > 1.0 || raw.y < 0.0 || raw.y > 1.0)) {
-      fragColor = vec4(0.0);
-      return;
-    }
-  }
-  // Pixelation: quantise UV to a grid in texture space (before fract so
-  // tiling still works). The step is 0 when pixelation is off.
-  if (v_pixUVStep.x > 0.0) {
-    // (floor(raw/step) + 0.5) * step centres blocks at step/2, 3·step/2, …
-    // so every block has the same visual width — no half-sized block at the edges.
-    raw = (floor(raw / v_pixUVStep) + 0.5) * v_pixUVStep;
-    // For non-tile modes clamp the upper bound: raw=1.0 would give 1+step/2
-    // which fract() wraps to the first block. Clamp to the last block centre instead.
-    if (v_barrel.y < 0.5) {
-      raw = min(raw, 1.0 - v_pixUVStep * 0.5);
-    }
-  }
-  // Tile mode: fract within crop sub-region so only that region repeats.
-  // Non-tile: plain fract (no-op for in-bounds UVs; out-of-bounds already clipped above).
-  vec2 uv = v_barrel.y > 0.5
-    ? v_cropOff + fract((raw - v_cropOff) / v_cropSize) * v_cropSize
-    : fract(raw);
-  vec4 color;
-  ${ifChain}
-  else color = texture(u_tex[0], uv);
+  vec2 uv = v_uv;
+  vec4 color = vec4(0.0);
+  bool discarded = false;
 
-  // Contrast (centred at 0.5) then brightness.
-  color.rgb = (color.rgb - 0.5) * v_contrast + 0.5 + v_brightness;
-  // Grey, tint, and hue rotation share one OKLab round-trip for perceptual accuracy.
-  if (v_grey != 0.0 || v_tint.y != 0.0 || v_hueRot != 0.0) {
-    vec3 lab = linear_rgb_to_oklab(srgb_to_linear(color.rgb));
-    if (v_tint.y != 0.0) {
-      // Blend ab toward a fully-tinted target in Cartesian OKLab.
-      // No angle arithmetic → no antipodal discontinuity.
-      // strength=0: unchanged; 1: fully tinted at tintCref; unclamped for hyper effects.
-      float targetH = v_tint.x * 6.28318530718;
-      vec2 tinted_ab = abs(v_tint.y) * 0.125 * vec2(cos(targetH), sin(targetH));
-      lab.yz = mix(lab.yz, tinted_ab, v_tint.y);
+  // effectStart is already in vec4 slots; each op spans 2 vec4 slots.
+  for (int i = 0; i < v_effectCount; ++i) {
+    if (discarded) break;
+    int idx = v_effectStart + i * 2;
+    vec4 a = ops[idx];
+    vec4 b = ops[idx + 1];
+    int kind = int(a.x);
+
+    if (kind == OP_BARREL) {
+      // Barrel/pincushion: warp UV around centre; r²=0.25 is fixed.
+      // a.y = strength, a.z = clipMode (0 = clip out-of-bounds, 1 = wrap)
+      vec2 d = uv - 0.5;
+      float r2 = dot(d, d);
+      d *= 1.0 + a.y * (r2 - 0.25);
+      uv = d + 0.5;
+      if (a.z < 0.5 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) {
+        discarded = true;
+      }
+    } else if (kind == OP_PIXELATE) {
+      // a.yz = pixUVStep, a.w = clampMode (1 = clamp upper bound for non-tile)
+      vec2 step = a.yz;
+      uv = (floor(uv / step) + 0.5) * step;
+      if (a.w > 0.5) {
+        uv = min(uv, 1.0 - step * 0.5);
+      }
+    } else if (kind == OP_WRAP) {
+      // a.yz = cropOff, a.w/b.x = cropSize.x/y, b.y = tileMode (1 = wrap within crop subregion)
+      if (b.y > 0.5) {
+        vec2 cropOff = a.yz;
+        vec2 cropSize = vec2(a.w, b.x);
+        uv = cropOff + fract((uv - cropOff) / cropSize) * cropSize;
+      } else {
+        uv = fract(uv);
+      }
+    } else if (kind == OP_SAMPLE) {
+      int texIdx = int(a.y);
+      ${sampleChain}
+      else color = texture(u_tex[0], uv);
+    } else if (kind == OP_CONTRAST) {
+      // Contrast centred at 0.5.
+      color.rgb = (color.rgb - 0.5) * a.y + 0.5;
+    } else if (kind == OP_BRIGHTNESS) {
+      color.rgb += a.y;
+    } else if (kind == OP_COLOR_OKLAB) {
+      // a.y = grey, a.z = tintHue, a.w = tintStrength, b.x = hueRot
+      float grey = a.y;
+      float tintHue = a.z;
+      float tintStrength = a.w;
+      float hueRot = b.x;
+      vec3 lab = linear_rgb_to_oklab(srgb_to_linear(color.rgb));
+      if (tintStrength != 0.0) {
+        float targetH = tintHue * 6.28318530718;
+        vec2 tinted_ab = abs(tintStrength) * 0.125 * vec2(cos(targetH), sin(targetH));
+        lab.yz = mix(lab.yz, tinted_ab, tintStrength);
+      }
+      lab.yz *= (1.0 - grey);
+      if (hueRot != 0.0) {
+        float angle = hueRot * 6.28318530718;
+        float cosA = cos(angle), sinA = sin(angle);
+        lab.yz = vec2(cosA * lab.yz.x - sinA * lab.yz.y,
+                      sinA * lab.yz.x + cosA * lab.yz.y);
+      }
+      color.rgb = linear_to_srgb(oklab_to_linear_rgb(lab));
+    } else if (kind == OP_ALPHA) {
+      color.a *= a.y;
     }
-    // Grey: scale chroma (a,b) toward 0. 0=no change, 1=greyscale, <0=amplify.
-    lab.yz *= (1.0 - v_grey);
-    if (v_hueRot != 0.0) {
-      float angle = v_hueRot * 6.28318530718;
-      float cosA = cos(angle), sinA = sin(angle);
-      lab.yz = vec2(cosA * lab.yz.x - sinA * lab.yz.y,
-                    sinA * lab.yz.x + cosA * lab.yz.y);
-    }
-    color.rgb = linear_to_srgb(oklab_to_linear_rgb(lab));
   }
-  // Modulate alpha only — blend func uses SRC_ALPHA so multiplying
-  // RGB here too would apply alpha twice and darken the result.
-  color.a *= v_alpha;
-  fragColor = color;
+
+  fragColor = discarded ? vec4(0.0) : color;
 }`;
 }
 
@@ -408,7 +393,6 @@ function srcSize(source: MediaTileSource): [number, number] {
 interface DrawCommand {
   texture: WebGLTexture;
   blend:   string;
-  // Pre-computed, ready to pack into Float32Array
   destOffsetX: number;
   destOffsetY: number;
   destSizeX:   number;
@@ -417,6 +401,7 @@ interface DrawCommand {
   uvOffsetY:   number;
   uvSizeX:     number;
   uvSizeY:     number;
+  // Effect parameters (consumed by the effect-compiler when packing the batch).
   alpha:       number;
   grey:        number;
   pixUVStepX:  number;
@@ -443,10 +428,17 @@ interface DrawCommand {
  * WebGL2 rendering backend.
  *
  * Tiles are accumulated into a DrawCommand list each frame, then flushed in
- * batches via drawArraysInstanced. A batch breaks only when the blend mode
- * changes or a 17th unique source texture would be needed. This reduces GPU
- * command buffer pressure dramatically for patterns with many tiles
- * (e.g. cropStack(25,25) = 625 tiles → 1 draw call).
+ * batches via drawArraysInstanced. A batch breaks when the blend mode changes,
+ * a 17th unique source texture would be needed, or the per-tile ops would
+ * overflow the UBO (rare in practice — tiles with identical effect chains
+ * dedupe to a shared UBO slot, so e.g. cropStack(25,25) still fits one batch).
+ *
+ * The fragment shader is a small VM: each tile carries (effectStart,
+ * effectCount) instance attributes pointing into a UBO of packed ops. The
+ * shader loops over its tile's chain, dispatching on op-code. This makes the
+ * effect pipeline extensible (adding a new effect = one new shader branch +
+ * one new op-emitter in effect-compiler.ts) without per-instance attribute
+ * changes.
  */
 interface FBOEntry { fbo: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; }
 
@@ -456,10 +448,16 @@ export class WebGLRenderer implements Renderer {
   private readonly vao: WebGLVertexArrayObject;
   private readonly texCache: TextureCache;
   private readonly instanceVBO: WebGLBuffer;
+  private readonly opsUBO: WebGLBuffer;
   private readonly maxTexUnits: number;
   private readonly fbos = new Map<string, FBOEntry>();
 
   private instanceData = new Float32Array(256 * INSTANCE_FLOATS);
+  // Per-batch ops buffer. UBO_VEC4_CAPACITY vec4 slots × 4 floats = the upload size.
+  private readonly opsBuffer = new Float32Array(UBO_VEC4_CAPACITY * 4);
+  // Scratch buffer for compileInto so we don't allocate per-tile.
+  private readonly opsScratch = new Float32Array(8 * OP_FLOATS);
+
   private readonly pendingDraws: DrawCommand[] = [];
   /** The currently bound offscreen FBO (null = default canvas framebuffer). */
   private currentFBO: WebGLFramebuffer | null = null;
@@ -476,7 +474,8 @@ export class WebGLRenderer implements Renderer {
     this.maxTexUnits = Math.min(MAX_TEX_UNITS, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number);
     this.program     = createProgram(gl, VERT_SRC, buildFragSrc(this.maxTexUnits));
     this.instanceVBO = gl.createBuffer()!;
-    this.vao         = createVAO(gl, this.program, this.instanceVBO);
+    this.opsUBO      = gl.createBuffer()!;
+    this.vao         = createVAO(gl, this.instanceVBO);
     this.texCache    = new TextureCache(gl);
 
     // Bind texture units 0..N-1 to u_tex[0..N-1] once at init
@@ -485,6 +484,14 @@ export class WebGLRenderer implements Renderer {
       const loc = gl.getUniformLocation(this.program, `u_tex[${i}]`);
       if (loc) gl.uniform1i(loc, i);
     }
+
+    // Set up the Effects UBO: allocate, bind to point 0, link program block to point 0.
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.opsUBO);
+    gl.bufferData(gl.UNIFORM_BUFFER, UBO_VEC4_CAPACITY * 16, gl.DYNAMIC_DRAW);
+    const blockIdx = gl.getUniformBlockIndex(this.program, 'Effects');
+    gl.uniformBlockBinding(this.program, blockIdx, 0);
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.opsUBO);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
 
     // Handle context loss
     canvas.addEventListener('webglcontextlost', (e) => {
@@ -632,11 +639,18 @@ export class WebGLRenderer implements Renderer {
     const draws = this.pendingDraws;
     if (draws.length === 0) return;
 
-    // Greedily batch consecutive commands by blend mode, flushing when blend
-    // changes or a 17th unique texture would be needed.
+    // Compile-and-dedup state lives per batch. We compile each draw's effects
+    // into a packed ops chain, key it by exact float-buffer content, and reuse
+    // the same UBO offset for tiles with identical chains. cropStack(25, 25)
+    // collapses to one shared chain → 625 instances point to the same offset.
     let batchStart = 0;
     let texUnits   = new Map<WebGLTexture, number>();
     let blendMode  = draws[0].blend;
+    let opsLen    = 0;          // current vec4 offset into opsBuffer
+    let opsDedup  = new Map<string, { offset: number; count: number }>();
+    // Per-instance effect pointers, accumulated for the current batch.
+    const effectStart  = new Int32Array(draws.length);
+    const effectCount  = new Int32Array(draws.length);
 
     const flush = (end: number) => {
       if (end <= batchStart) return;
@@ -646,6 +660,13 @@ export class WebGLRenderer implements Renderer {
       for (const [tex, unit] of texUnits) {
         gl.activeTexture(gl.TEXTURE0 + unit);
         gl.bindTexture(gl.TEXTURE_2D, tex);
+      }
+
+      // Upload ops UBO for this batch (only the used range).
+      if (opsLen > 0) {
+        gl.bindBuffer(gl.UNIFORM_BUFFER, this.opsUBO);
+        gl.bufferSubData(gl.UNIFORM_BUFFER, 0, this.opsBuffer.subarray(0, opsLen * 4));
+        gl.bindBuffer(gl.UNIFORM_BUFFER, null);
       }
 
       // Grow instance buffer if needed
@@ -667,23 +688,9 @@ export class WebGLRenderer implements Renderer {
         d[base + 5]  = cmd.uvOffsetY;
         d[base + 6]  = cmd.uvSizeX;
         d[base + 7]  = cmd.uvSizeY;
-        d[base + 8]  = cmd.alpha;
-        d[base + 9]  = texUnits.get(cmd.texture)!;
-        d[base + 10] = cmd.grey;
-        d[base + 11] = cmd.hueRot;
-        d[base + 12] = cmd.pixUVStepX;
-        d[base + 13] = cmd.pixUVStepY;
-        d.set(cmd.transform, base + 14);
-        d[base + 30] = cmd.contrast;
-        d[base + 31] = cmd.cropOffX;
-        d[base + 32] = cmd.brightness;
-        d[base + 33] = cmd.cropOffY;
-        d[base + 34] = cmd.tintHue;
-        d[base + 35] = cmd.tintStrength;
-        d[base + 36] = cmd.cropSizeX;
-        d[base + 37] = cmd.cropSizeY;
-        d[base + 38] = cmd.barrel;
-        d[base + 39] = cmd.tileMode;
+        d.set(cmd.transform, base + 8);
+        d[base + 24] = effectStart[batchStart + k];
+        d[base + 25] = effectCount[batchStart + k];
       }
 
       this.setBlend(blendMode);
@@ -701,6 +708,57 @@ export class WebGLRenderer implements Renderer {
       }
     };
 
+    /** Compile cmd's effects with the supplied texIdx, dedup against this
+     *  batch's ops buffer, and write the result's (offset, count) into the
+     *  per-instance arrays. Returns false if ops would overflow the UBO. */
+    const tryCompileForBatch = (i: number, cmd: DrawCommand, texIdx: number): boolean => {
+      // Compile into scratch with the batch-local texIdx.
+      const opCount = compileInto({
+        texIndex:     texIdx,
+        alpha:        cmd.alpha,
+        grey:         cmd.grey,
+        hueRot:       cmd.hueRot,
+        pixUVStepX:   cmd.pixUVStepX,
+        pixUVStepY:   cmd.pixUVStepY,
+        contrast:     cmd.contrast,
+        brightness:   cmd.brightness,
+        tintHue:      cmd.tintHue,
+        tintStrength: cmd.tintStrength,
+        barrel:       cmd.barrel,
+        cropOffX:     cmd.cropOffX,
+        cropOffY:     cmd.cropOffY,
+        cropSizeX:    cmd.cropSizeX,
+        cropSizeY:    cmd.cropSizeY,
+        tileMode:     cmd.tileMode,
+      }, this.opsScratch, 0);
+
+      // Build dedup key. Float-array join is allocation-y but cheap enough for
+      // realistic tile counts; can be replaced with a numeric hash later.
+      const len = opCount * OP_FLOATS;
+      let key = '';
+      for (let j = 0; j < len; j++) key += this.opsScratch[j] + ',';
+
+      const existing = opsDedup.get(key);
+      if (existing) {
+        effectStart[i] = existing.offset;
+        effectCount[i] = existing.count;
+        return true;
+      }
+
+      // Each op uses 2 vec4 slots. Will it fit?
+      const vec4sNeeded = opCount * 2;
+      if (opsLen + vec4sNeeded > UBO_VEC4_CAPACITY) return false;
+
+      // Append to ops buffer (each op = 8 floats = 2 vec4s).
+      this.opsBuffer.set(this.opsScratch.subarray(0, len), opsLen * 4);
+      const offset = opsLen;
+      opsLen += vec4sNeeded;
+      opsDedup.set(key, { offset, count: opCount });
+      effectStart[i] = offset;
+      effectCount[i] = opCount;
+      return true;
+    };
+
     for (let i = 0; i < draws.length; i++) {
       const cmd = draws[i];
       const blendChange  = cmd.blend !== blendMode;
@@ -711,10 +769,29 @@ export class WebGLRenderer implements Renderer {
         batchStart = i;
         texUnits   = new Map();
         blendMode  = cmd.blend;
+        opsLen     = 0;
+        opsDedup   = new Map();
       }
 
       if (!texUnits.has(cmd.texture)) {
         texUnits.set(cmd.texture, texUnits.size);
+      }
+      const texIdx = texUnits.get(cmd.texture)!;
+
+      // Try to compile this command's ops into the current batch's UBO.
+      // If it overflows, flush the batch and retry with a fresh ops buffer.
+      if (!tryCompileForBatch(i, cmd, texIdx)) {
+        flush(i);
+        batchStart = i;
+        texUnits   = new Map();
+        blendMode  = cmd.blend;
+        opsLen     = 0;
+        opsDedup   = new Map();
+        texUnits.set(cmd.texture, 0);
+        const retryTexIdx = texUnits.get(cmd.texture)!;
+        // Should always succeed on retry — a single tile can produce at most
+        // 8 ops = 16 vec4s, far under UBO_VEC4_CAPACITY=1024.
+        tryCompileForBatch(i, cmd, retryTexIdx);
       }
     }
 
@@ -771,6 +848,7 @@ export class WebGLRenderer implements Renderer {
     gl.deleteProgram(this.program);
     gl.deleteVertexArray(this.vao);
     gl.deleteBuffer(this.instanceVBO);
+    gl.deleteBuffer(this.opsUBO);
   }
 
   private getOrCreateFBO(name: string): FBOEntry {
@@ -846,7 +924,6 @@ function createProgram(gl: WebGL2RenderingContext, vertSrc: string, fragSrc: str
  */
 function createVAO(
   gl: WebGL2RenderingContext,
-  _program: WebGLProgram,
   instanceVBO: WebGLBuffer,
 ): WebGLVertexArrayObject {
   const vao = gl.createVertexArray()!;
@@ -897,38 +974,17 @@ function createVAO(
   gl.vertexAttribPointer(LOC_UV_SIZE, 2, gl.FLOAT, false, s, 24);
   gl.vertexAttribDivisor(LOC_UV_SIZE, 1);
 
-  // scalars vec4: (alpha, texIndex, grey, hueRot) packed at offset 32
-  gl.enableVertexAttribArray(LOC_SCALARS);
-  gl.vertexAttribPointer(LOC_SCALARS, 4, gl.FLOAT, false, s, 32);
-  gl.vertexAttribDivisor(LOC_SCALARS, 1);
-
-  gl.enableVertexAttribArray(LOC_PIX_UV_STEP);
-  gl.vertexAttribPointer(LOC_PIX_UV_STEP, 2, gl.FLOAT, false, s, 48);
-  gl.vertexAttribDivisor(LOC_PIX_UV_STEP, 1);
-
-  // mat4: 4 consecutive vec4 attrib slots
+  // mat4: 4 consecutive vec4 attrib slots (offsets 32..32+48)
   for (let col = 0; col < 4; col++) {
     const loc = LOC_TRANSFORM + col;
     gl.enableVertexAttribArray(loc);
-    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, s, 56 + col * 16);
+    gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, s, 32 + col * 16);
     gl.vertexAttribDivisor(loc, 1);
   }
 
-  gl.enableVertexAttribArray(LOC_CONTRAST);
-  gl.vertexAttribPointer(LOC_CONTRAST, 2, gl.FLOAT, false, s, 120); // vec2: contrast, cropOffX
-  gl.vertexAttribDivisor(LOC_CONTRAST, 1);
-
-  gl.enableVertexAttribArray(LOC_BRIGHTNESS);
-  gl.vertexAttribPointer(LOC_BRIGHTNESS, 2, gl.FLOAT, false, s, 128); // vec2: brightness, cropOffY
-  gl.vertexAttribDivisor(LOC_BRIGHTNESS, 1);
-
-  gl.enableVertexAttribArray(LOC_TINT);
-  gl.vertexAttribPointer(LOC_TINT, 4, gl.FLOAT, false, s, 136); // vec4: tintHue, tintStrength, cropSizeX, cropSizeY
-  gl.vertexAttribDivisor(LOC_TINT, 1);
-
-  gl.enableVertexAttribArray(LOC_BARREL);
-  gl.vertexAttribPointer(LOC_BARREL, 2, gl.FLOAT, false, s, 152); // vec2: strength, tileMode
-  gl.vertexAttribDivisor(LOC_BARREL, 1);
+  gl.enableVertexAttribArray(LOC_EFFECTS);
+  gl.vertexAttribPointer(LOC_EFFECTS, 2, gl.FLOAT, false, s, 96); // vec2: (effectStart, effectCount)
+  gl.vertexAttribDivisor(LOC_EFFECTS, 1);
 
   gl.bindVertexArray(null);
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
