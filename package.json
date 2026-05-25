@@ -12,7 +12,9 @@
     "test:stress": "tsx test/stress-test.ts",
     "test:stress:headless": "tsx test/stress-test.ts --headless",
     "test:upload": "tsx test/upload-integration-test.ts --headless",
-    "test:url-state": "tsx test/url-state-integration.test.ts --headless"
+    "test:url-state": "tsx test/url-state-integration.test.ts --headless",
+    "golden:capture": "tsx test/golden-render.ts capture --headless",
+    "golden:compare": "tsx test/golden-render.ts compare --headless"
   },
   "keywords": [],
   "author": "",

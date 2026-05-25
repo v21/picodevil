@@ -120,11 +120,13 @@ window.uzuEval = (code) => evalController.eval(code);
 
 // --- render loop ---
 let lastRafAbsTime = performance.now();
+let rafPaused = false;
 
 // Expose active video elements for testing/debugging
 (window as any)._uzuActiveVideoEls = frameRenderer.activeVideoEls;
 
 function frame() {
+  if (rafPaused) { requestAnimationFrame(frame); return; }
   const rafAbsNow = performance.now();
   const interFrameGap = rafAbsNow - lastRafAbsTime;
   lastRafAbsTime = rafAbsNow;
@@ -148,6 +150,18 @@ function frame() {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+
+// Test-only deterministic-render hooks. Used by golden-render harness and
+// future visual regression tests. uzuRenderAt synchronously renders one frame
+// at a caller-supplied cycle position; uzuPauseRaf stops the running rAF loop
+// so subsequent captures aren't overwritten before being read.
+(window as any).uzuPauseRaf = () => { rafPaused = true; };
+(window as any).uzuResumeRaf = () => { rafPaused = false; };
+(window as any).uzuRenderAt = (cycle: number, cps = 0.5) => {
+  const t = Math.floor(cycle) + (cycle % 1);
+  setRuntimeCps(cps);
+  frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, performance.now());
+};
 
 // --- URL state ---
 let currentCode = defaultCode;
