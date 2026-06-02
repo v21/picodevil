@@ -1,9 +1,9 @@
 import {
   getAllEntries, addMedia, removeMedia, renameMedia, updateUrl, updateEntry,
   isYouTubeUrl, downloadYouTube, exportAll, importAll, clearAll, setOnChange,
-  uploadToServer, type MediaEntry,
+  uploadToServer, addFromServer, missingFromServer, type MediaEntry, type SourceItem,
 } from "./media-registry";
-import { getServerUrl, getServerStatus } from "./server-config";
+import { getServerUrl, getServerStatus, subscribe as subscribeServer } from "./server-config";
 import { createServerSettingsButton } from "./server-settings-ui";
 import {
   startWebcam, startScreenCapture, stopStream, removeStream,
@@ -12,11 +12,29 @@ import {
 
 let container: HTMLElement;
 
+/** Curated starter media, hosted on the static CDN (sources.json import/export shape). */
+const DEFAULTS_URL = "https://picodevil-static.b-cdn.net/sources.json";
+/** The fetched defaults list, or null until the one-shot fetch resolves (or fails). */
+let defaultSources: SourceItem[] | null = null;
+
 export function setupMediaLoader(el: HTMLElement) {
   container = el;
   setOnChange(render);
   setStreamOnChange(render);
+  // Re-render when the server connection status changes so the "Load all"
+  // footer button appears/disappears in step with the connection.
+  subscribeServer(render);
   render();
+
+  // Fetch the defaults bundle once. The "Defaults" button only shows when this
+  // resolves AND it contains media not already in the list, so a failed/blocked
+  // fetch simply leaves the button hidden.
+  fetch(DEFAULTS_URL)
+    .then(res => res.ok ? res.json() : null)
+    .then(items => {
+      if (Array.isArray(items)) { defaultSources = items; render(); }
+    })
+    .catch(() => {/* offline or CORS-blocked — button stays hidden */});
 
   // Reconnect persisted webcam streams (screen captures need manual reconnect)
   reconnectStreams().then(render);
@@ -77,12 +95,14 @@ function render() {
 
   // Add bar
   const addBar = document.createElement("div");
-  addBar.style.cssText = "display:flex;gap:4px;padding:8px;border-bottom:1px solid #333;";
+  addBar.style.cssText = "display:flex;gap:4px;padding:8px;border-bottom:1px solid #333;flex-wrap:wrap;";
 
   const input = document.createElement("input");
   input.type = "text";
   input.placeholder = "paste URL to add...";
-  input.style.cssText = "flex:1;background:#1a1a1a;color:#ccc;border:1px solid #444;padding:4px 8px;border-radius:3px;font-size:16px;";
+  // min-width:0 lets the flex:1 input shrink below its intrinsic width so the
+  // row doesn't overflow (and force a horizontal scrollbar) on a narrow sidebar.
+  input.style.cssText = "flex:1;min-width:0;background:#1a1a1a;color:#ccc;border:1px solid #444;padding:4px 8px;border-radius:3px;font-size:16px;";
 
   const addBtn = document.createElement("button");
   addBtn.textContent = "Add";
@@ -132,7 +152,10 @@ function render() {
   // List
   const list = document.createElement("div");
   list.dataset.list = "1";
-  list.style.cssText = "flex:1;overflow-y:auto;padding:4px 0;";
+  // min-height:0 lets this flex child shrink below its content so only the list
+  // scrolls — without it, a taller (wrapped) footer pushes an extra scrollbar
+  // onto the whole videos tab.
+  list.style.cssText = "flex:1;min-height:0;overflow-y:auto;padding:4px 0;";
 
   const entries = getAllEntries();
   if (entries.length === 0) {
@@ -149,18 +172,30 @@ function render() {
   container.appendChild(list);
   list.scrollTop = prevScrollTop;
 
-  // Footer buttons
+  // Footer buttons. Two groups: management/add actions on the left, server actions
+  // on the right. The footer wraps as a whole and the right group is a single flex
+  // child pushed over with margin-left:auto — so when the sidebar is too narrow for
+  // one line, the entire right group drops to a second (still right-aligned) line
+  // rather than buttons breaking at arbitrary points.
   const footer = document.createElement("div");
-  footer.style.cssText = "display:flex;gap:4px;padding:8px;border-top:1px solid #333;flex-wrap:wrap;";
+  footer.style.cssText = "display:flex;gap:4px;padding:8px;border-top:1px solid #333;flex-wrap:wrap;align-items:center;";
 
-  footer.appendChild(makeFooterBtn("Export", () => {
+  const leftGroup = document.createElement("div");
+  leftGroup.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;align-items:center;";
+  footer.appendChild(leftGroup);
+
+  const rightGroup = document.createElement("div");
+  rightGroup.style.cssText = "display:flex;gap:4px;align-items:center;margin-left:auto;";
+  footer.appendChild(rightGroup);
+
+  leftGroup.appendChild(makeFooterBtn("Export", () => {
     navigator.clipboard.writeText(exportAll()).then(
       () => showToast("Copied to clipboard"),
       () => showToast("Copy failed"),
     );
   }));
 
-  footer.appendChild(makeFooterBtn("Import", () => {
+  leftGroup.appendChild(makeFooterBtn("Import", () => {
     navigator.clipboard.readText().then((text) => {
       try {
         importAll(text);
@@ -183,16 +218,45 @@ function render() {
       clearAll();
     }, { once: true });
   });
-  footer.appendChild(clearBtn);
+  leftGroup.appendChild(clearBtn);
+
+  // "Defaults" (left group) — only when the fetched defaults contain media not
+  // already loaded. Disappears once everything's been pulled in.
+  const missingDefaults = defaultSources ? missingFromServer(defaultSources) : [];
+  if (missingDefaults.length > 0) {
+    leftGroup.appendChild(makeFooterBtn("Defaults", () => {
+      const added = addFromServer(missingDefaults);
+      showToast(`Added ${added} default${added === 1 ? "" : "s"}`);
+    }));
+  }
+
+  // "Load all" (right group) — only when we have a live connection. Pulls
+  // everything the server can currently serve via GET /list.
+  if (getServerUrl() && getServerStatus() === "ok") {
+    const addServerBtn = makeFooterBtn("Load all", async () => {
+      const base = getServerUrl();
+      if (!base) return;
+      addServerBtn.disabled = true;
+      try {
+        const res = await fetch(new URL("/list", base).href);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const items = await res.json() as SourceItem[];
+        const added = addFromServer(items);
+        showToast(added > 0 ? `Added ${added} from server` : "Already up to date");
+      } catch {
+        showToast("Couldn't reach server");
+      } finally {
+        addServerBtn.disabled = false;
+      }
+    });
+    rightGroup.appendChild(addServerBtn);
+  }
+
+  // Server status / configuration (right group)
+  const { el: serverBtn } = createServerSettingsButton();
+  rightGroup.appendChild(serverBtn);
 
   container.appendChild(footer);
-
-  // Server status / configuration — sits at the very bottom of the Videos tab
-  const serverBar = document.createElement("div");
-  serverBar.style.cssText = "padding:8px;border-top:1px solid #333;";
-  const { el: serverBtn } = createServerSettingsButton();
-  serverBar.appendChild(serverBtn);
-  container.appendChild(serverBar);
 }
 
 function makeRow(entry: MediaEntry): HTMLElement {

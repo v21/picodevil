@@ -213,6 +213,12 @@ The server URL is no longer a compile-time constant. It lives in localStorage (k
 
 There is **no `SERVER_ENABLED` flag** any more. Whether server flows run is pure-derived: `getServerUrl()` non-null AND last probe wasn't `"error"` (see [src/media-loader.ts](src/media-loader.ts) drag-drop path). On boot, [src/main.ts](src/main.ts) kicks off one health probe if a URL is configured; the settings UI button at the bottom of the Videos sidebar tab (created by [src/server-settings-ui.ts](src/server-settings-ui.ts)) lets users change the URL and shows live status.
 
+**"Load all" button** (Videos sidebar footer, right group, [src/media-loader.ts](src/media-loader.ts)): shown only when `getServerStatus() === "ok"`. It fetches `GET /list` from the server and calls `addFromServer()` in [src/media-registry.ts](src/media-registry.ts), which bulk-adds every servable video/image, skipping any whose **resolved** URL already exists (so it's idempotent across presses and dedups relative server paths against already-stored absolute URLs). `setupMediaLoader` subscribes to `server-config` so the button appears/disappears as the connection comes and goes.
+
+**"Defaults" button** (Videos sidebar footer, left group): loads curated starter media from the static CDN (`DEFAULTS_URL`, fetched once on setup). Shown only when `missingFromServer()` reports the defaults contain something not already loaded — so it self-hides once everything's pulled in. `missingFromServer()` is the shared pure dedup-by-resolved-URL check that `addFromServer()` also uses. Needs no server connection; a CORS-blocked/offline fetch just leaves it hidden.
+
+The footer is split into a `leftGroup` (Export/Import/Clear/Defaults, wraps internally) and a `rightGroup` (Load all + server pill) carrying `margin-left:auto`, so on a narrow sidebar the whole right group drops to a second line instead of buttons breaking at arbitrary points. The list uses `min-height:0` so only it scrolls (a wrapped footer doesn't add an outer scrollbar).
+
 ### Server response URL convention
 
 `/upload` and `/download` return `{ url: "/videos/foo.mp4" }` — leading-slash paths, no origin. Anything that consumes `entry.url` to actually fetch / set as `<video>.src` / upload as a texture passes it through `resolveUrl()` to get a full URL. External entries added via `loadVideo("name", "https://cdn.example.com/clip.mp4")` are absolute and `resolveUrl` leaves them alone.

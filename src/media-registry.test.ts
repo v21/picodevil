@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
-  loadVideo, loadImage, uploadToServer, setOnChange,
+  loadVideo, loadImage, uploadToServer, setOnChange, addFromServer, missingFromServer,
 } from "./media-registry";
+import { resolveUrl } from "./server-config";
 
 beforeEach(() => {
   clearAll();
@@ -296,6 +297,92 @@ describe("media registry", () => {
       // Not a hard failure - MediaRecorder might not work in headless
       expect(true).toBe(true);
     }
+  });
+});
+
+describe("addFromServer", () => {
+  it("adds entries from a server list with the right type", () => {
+    const added = addFromServer([
+      { name: "clip", url: "/videos/clip.mp4", type: "video" },
+      { name: "pic", url: "/images/pic.png", type: "image" },
+    ]);
+    expect(added).toBe(2);
+    expect(resolveMedia("clip")!.type).toBe("video");
+    expect(resolveMedia("pic")!.type).toBe("image");
+    expect(resolveMedia("clip")!.url).toBe("/videos/clip.mp4");
+  });
+
+  it("preserves the list order", () => {
+    addFromServer([
+      { name: "zebra", url: "/videos/zebra.mp4", type: "video" },
+      { name: "alpha", url: "/videos/alpha.mp4", type: "video" },
+    ]);
+    expect(getAllEntries().map(e => e.name)).toEqual(["zebra", "alpha"]);
+  });
+
+  it("is idempotent — skips entries whose resolved URL already exists", () => {
+    addFromServer([{ name: "clip", url: "/videos/clip.mp4", type: "video" }]);
+    const added = addFromServer([
+      { name: "clip", url: "/videos/clip.mp4", type: "video" },
+      { name: "new", url: "/videos/new.mp4", type: "video" },
+    ]);
+    expect(added).toBe(1);
+    expect(getAllEntries()).toHaveLength(2);
+  });
+
+  it("dedups a relative server URL against an already-present absolute URL", () => {
+    // Whatever a relative /videos/x path resolves to is what an existing
+    // absolute entry would have stored — adding it again must be a no-op.
+    const absolute = resolveUrl("/videos/dup.mp4");
+    addMedia(absolute, "existing");
+    const added = addFromServer([{ name: "dup", url: "/videos/dup.mp4", type: "video" }]);
+    expect(added).toBe(0);
+    expect(getAllEntries()).toHaveLength(1);
+  });
+
+  it("renames on name collision when the URL differs", () => {
+    addMedia("http://other.example/clip.mp4", "clip");
+    addFromServer([{ name: "clip", url: "/videos/clip.mp4", type: "video" }]);
+    const names = getAllEntries().map(e => e.name).sort();
+    expect(names).toEqual(["clip", "clip2"]);
+  });
+});
+
+describe("missingFromServer", () => {
+  it("returns the whole list when nothing is present", () => {
+    const list = [
+      { name: "a", url: "https://cdn.example/a.mp4", type: "video" as const },
+      { name: "b", url: "https://cdn.example/b.png", type: "image" as const },
+    ];
+    expect(missingFromServer(list)).toHaveLength(2);
+  });
+
+  it("excludes entries whose resolved URL already exists", () => {
+    addMedia("https://cdn.example/a.mp4", "a");
+    const missing = missingFromServer([
+      { name: "a", url: "https://cdn.example/a.mp4", type: "video" },
+      { name: "b", url: "https://cdn.example/b.mp4", type: "video" },
+    ]);
+    expect(missing.map(m => m.name)).toEqual(["b"]);
+  });
+
+  it("dedups within the list itself", () => {
+    const missing = missingFromServer([
+      { name: "a", url: "https://cdn.example/a.mp4", type: "video" },
+      { name: "a-again", url: "https://cdn.example/a.mp4", type: "video" },
+    ]);
+    expect(missing).toHaveLength(1);
+  });
+
+  it("is a pure check — does not mutate the registry", () => {
+    missingFromServer([{ name: "x", url: "https://cdn.example/x.mp4", type: "video" }]);
+    expect(getAllEntries()).toHaveLength(0);
+  });
+
+  it("returns empty once everything has been added", () => {
+    const list = [{ name: "a", url: "https://cdn.example/a.mp4", type: "video" as const }];
+    addFromServer(list);
+    expect(missingFromServer(list)).toHaveLength(0);
   });
 });
 

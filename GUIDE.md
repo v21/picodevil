@@ -936,6 +936,25 @@ Drag a video file from your file system onto the sidebar video tab. The file is 
 
 Supported formats: `.mp4`, `.mov`, `.webm`, `.mkv`, `.avi`
 
+### Add from server
+
+When the server is connected (the **Server** status pill at the bottom of the Videos tab shows green), a **Load all** button appears in the footer. Pressing it pulls in *everything* the server can currently serve — every cached video and image — and adds them to your media list in the order they were added to the server (oldest first).
+
+It's safe to press repeatedly: anything already in your list is skipped, so you only ever get the new items.
+
+Behind the scenes this calls the server's list endpoint:
+```
+GET http://localhost:47426/list
+```
+which returns the same `[{ name, url, type }]` shape as the sidebar's Import/Export. The same data is available from the command line for seeding another instance:
+```sh
+cd server && npm run list > sources.json
+```
+
+### Defaults
+
+A **Defaults** button on the left of the footer appears when there's curated starter media (hosted on the project CDN) you don't already have. Press it to add the missing clips; once you have them all, the button goes away. No server required — the defaults come straight from the CDN.
+
 ### Using media in code
 
 Once added via the sidebar, reference videos and images by their name (not full URL):

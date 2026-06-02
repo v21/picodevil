@@ -362,6 +362,9 @@ body {
 
 #tab-videos {
   padding: 0 !important;
+  /* Never scroll the videos tab horizontally — content wraps instead. (overflow-y:auto
+     from .tab-content would otherwise make overflow-x compute to auto and show a bar.) */
+  overflow-x: hidden;
 }
 
 #tab-reference.active {

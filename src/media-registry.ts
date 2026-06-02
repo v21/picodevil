@@ -187,6 +187,54 @@ export function importAll(json: string) {
   save();
 }
 
+export type SourceItem = { name?: string; url: string; type?: MediaEntry["type"] };
+
+/**
+ * Of a sources.json-shaped list, return the subset that isn't already present —
+ * i.e. whose resolved URL doesn't match any existing entry. Also dedups within
+ * the list itself. This is the single source of truth for "what would adding
+ * this list actually bring in" — used both by `addFromServer` and by callers
+ * deciding whether to even show an "add" affordance (e.g. the Defaults button).
+ * @internal
+ */
+export function missingFromServer(items: SourceItem[]): SourceItem[] {
+  const seen = new Set(registry.map(e => resolveUrl(e.url)));
+  const missing: SourceItem[] = [];
+  for (const item of items) {
+    if (!item?.url) continue;
+    const resolved = resolveUrl(item.url);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved); // dedup within the batch too
+    missing.push(item);
+  }
+  return missing;
+}
+
+/**
+ * Bulk-add entries fetched from a sources.json list (the server's `GET /list`
+ * endpoint, or the static defaults bundle). Skips any whose resolved URL already
+ * exists, so pressing an "add" button repeatedly is idempotent and won't
+ * duplicate media already present (even if the user renamed it). List order is
+ * preserved. Returns the number of new entries actually added.
+ * @internal
+ */
+export function addFromServer(items: SourceItem[]): number {
+  const missing = missingFromServer(items);
+  for (const item of missing) {
+    const finalName = uniqueName(item.name || deriveNameFromUrl(item.url));
+    const entry: MediaEntry = {
+      id: crypto.randomUUID(),
+      name: finalName,
+      url: item.url,
+      type: item.type ?? guessType(item.url),
+    };
+    registry.push(entry);
+    generateThumbnail(entry);
+  }
+  if (missing.length) save();
+  return missing.length;
+}
+
 /**
  * Register a video by name. Idempotent — no-op if name+url already match.
  * If the URL is a YouTube link, the server will download it automatically.
