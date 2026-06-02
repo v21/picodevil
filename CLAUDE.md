@@ -6,7 +6,9 @@
 
 picodevil is a live-coding visual performance tool. Users write JavaScript in a browser-based editor (CodeMirror), hit Ctrl+Enter to evaluate, and the code controls what gets drawn to a fullscreen canvas. It uses Strudel's mininotation system for rhythmic patterns of colors and videos.
 
-> **Name history**: this project was previously called **uzuvid**. The working directory is still `/Users/v/uzuvid/` and older git history, commit messages, and external links may use the old name. If you find a stray `uzuvid` / `uzu*` reference in code, it's a missed rename — flag it.
+> **Name history**: this project was previously called **uzuvid**. The working directory is now `/Users/v/picodevil/picodevil/` and older git history, commit messages, and external links may use the old name. If you find a stray `uzuvid` / `uzu*` reference in code, it's a missed rename — flag it.
+>
+> **Layout change (2026-06-02)**: the standalone Node server used to live at `server/` inside this repo. It was split out into its own repo (`picodevil-server`) and now lives at `../server/` — a sibling folder, not a subfolder. History was preserved via `git subtree split`. The frontend talks to it over HTTP at `http://localhost:3456` exactly as before; nothing in the frontend changed.
 
 ## Design principles
 
@@ -20,7 +22,7 @@ picodevil is a live-coding visual performance tool. Users write JavaScript in a 
 ## Project structure
 
 ```
-uzuvid/
+picodevil/
   index.html              — single-page app shell, loads src/main.ts via Vite
   vitest.config.ts        — vitest config (browser mode via Playwright)
   package.json            — Vite dev server, Strudel + CodeMirror deps
@@ -61,11 +63,9 @@ uzuvid/
     regression-cases.json       — saved regression cases for conformance replay
     arbitraries.ts              — fast-check arbitraries for code generation
     upload-integration-test.ts  — end-to-end Playwright test for file drag-and-drop upload
-  server/                 — standalone Node.js package (separate npm install)
-    server.js             — HTTP server: downloads YouTube videos via yt-dlp, serves MP4s; also accepts local file uploads
-    server.test.js        — tests (node --test), mocks spawn/execFile to avoid real downloads
-    package.json          — deps: yt-dlp-wrap, ffmpeg-static
 ```
+
+The Node server lives in a sibling repo at [`../server/`](../server/) — see [`../server/CLAUDE.md`](../server/CLAUDE.md). Frontend ↔ server is HTTP-only at `http://localhost:3456`.
 
 ## How the frontend works
 
@@ -197,12 +197,7 @@ Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().
 
 ## Server component
 
-The server (`server/`) is independent — separate package.json, separate `npm install`. It:
-- Auto-downloads the `yt-dlp` binary on first run
-- Bundles `ffmpeg-static` so no system ffmpeg is needed
-- `GET /download?v=YOUTUBE_URL` — downloads video via yt-dlp, re-encodes as I-frame-only MP4, returns `{ url: "http://localhost:3456/videos/ID.mp4" }`
-- `POST /upload?name=foo.mp4` — accepts raw binary body, re-encodes as I-frame-only MP4, returns `{ url, ready: true }`. Used for local file drag-and-drop.
-- `GET /videos/ID.mp4` — serves cached/uploaded videos with range request support
+The Node server lives in a sibling repo at [`../server/`](../server/) — its own `package.json`, its own `node_modules`, its own git history. See [`../server/CLAUDE.md`](../server/CLAUDE.md) for endpoints and CLI usage. The frontend talks to it over HTTP at `http://localhost:3456` (see `VIDEO_BASE` / `IMAGE_BASE` in [`src/config.ts`](src/config.ts)) — there's no code coupling.
 
 ### SERVER_ENABLED flag
 
@@ -233,8 +228,8 @@ When `SERVER_ENABLED=true`, dropping a video file onto the sidebar video tab:
 # Frontend (from root)
 npm install && npm run dev
 
-# Server (from server/)
-cd server && npm install && npm start
+# Server (from sibling repo ../server/)
+cd ../server && npm install && npm start
 
 # Unit tests (from root) — vitest in browser mode via Playwright
 npm test
