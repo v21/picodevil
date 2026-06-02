@@ -222,6 +222,68 @@ describe("matchSources", () => {
     });
   });
 
+  describe("minimum-seek assignment (wrap cascade)", () => {
+    // At a loop wrap, two playheads keep tracking their slots (no seek) while one wraps to
+    // loopStart (must seek). Greedy, processing the wrapped slot first, would grab the closest
+    // tracking element and shove everyone down (3 seeks). The seek-penalty optimum keeps the two
+    // tracking elements in place and seeks only the wrapping one.
+    it("keeps tracking elements put and seeks only the wrapping one", () => {
+      const src = "http://test/a.mp4";
+      // Two elements tracking slots 3.90 / 4.20 (currentTime ≈ slot → noSeek), one at 4.90 whose
+      // slot has wrapped to 1.90 (far from any current position → must seek).
+      const elA = makeVideoEl(3.90, src); elA._state.desiredTime = 3.90;
+      const elB = makeVideoEl(4.20, src); elB._state.desiredTime = 4.20;
+      const elC = makeVideoEl(4.90, src); elC._state.desiredTime = 4.90;
+      const free: FreePool = new Map([[src, [elA, elB, elC]]]);
+      const durations = new Map([[src, 10]]);
+      // Wrapped slot processed FIRST — the order that makes greedy cascade.
+      const needed = [
+        makeNeededVideo(src, 1.90),
+        makeNeededVideo(src, 3.90),
+        makeNeededVideo(src, 4.20),
+      ];
+      const result = matchSources(needed, free, durations, 0);
+      const bySlot = new Map(result.map(a => [a.needed.expectedTime, a.el as VideoEl]));
+      // Tracking elements stay on their own slots; the wrapping element takes loopStart.
+      expect(bySlot.get(3.90)).toBe(elA);
+      expect(bySlot.get(4.20)).toBe(elB);
+      expect(bySlot.get(1.90)).toBe(elC);
+    });
+  });
+
+  describe("minimum-seek assignment (surplus free elements)", () => {
+    // With more elements than slots (e.g. surplus free elements from a shrunk pattern, kept by the
+    // reservoir + parked near slots by prewarm), a committed element that is still seeking toward
+    // its slot must NOT be evicted by a free element that coincidentally sits near that slot.
+    // Continuing toward your own committed slot is not a NEW seek, so it must not cost SEEK_PENALTY.
+    it("keeps committed (mid-seek) elements on their slots; surplus free ones don't steal them", () => {
+      const src = "http://test/a.mp4";
+      // Four active elements committed to slots 2/4/6/8 but stranded mid-seek (currentTime far).
+      const a2 = makeVideoEl(9.0, src); a2._state.desiredTime = 2;
+      const a4 = makeVideoEl(1.0, src); a4._state.desiredTime = 4;
+      const a6 = makeVideoEl(3.0, src); a6._state.desiredTime = 6;
+      const a8 = makeVideoEl(5.0, src); a8._state.desiredTime = 8;
+      // Four surplus FREE elements parked just beside the slots (within drift → noSeek), no commit.
+      const f2 = makeVideoEl(2.1, src);
+      const f4 = makeVideoEl(4.1, src);
+      const f6 = makeVideoEl(6.1, src);
+      const f8 = makeVideoEl(8.1, src);
+      // Renderer prepends previously-active elements, so actives come first.
+      const free: FreePool = new Map([[src, [a2, a4, a6, a8, f2, f4, f6, f8]]]);
+      const durations = new Map([[src, 10]]);
+      const needed = [
+        makeNeededVideo(src, 2), makeNeededVideo(src, 4),
+        makeNeededVideo(src, 6), makeNeededVideo(src, 8),
+      ];
+      const result = matchSources(needed, free, durations, 0);
+      const bySlot = new Map(result.map(a => [a.needed.expectedTime, a.el as VideoEl]));
+      expect(bySlot.get(2)).toBe(a2);
+      expect(bySlot.get(4)).toBe(a4);
+      expect(bySlot.get(6)).toBe(a6);
+      expect(bySlot.get(8)).toBe(a8);
+    });
+  });
+
   describe("forward prediction", () => {
     it("uses predicted time (currentTime + speed * frameDt) for scoring", () => {
       // Element at 4.9s, speed 1, frameDt=1s → predicted=5.9; target=6 → forward seek 0.1

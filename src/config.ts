@@ -44,6 +44,25 @@ export const SHARE_TIME_THRESHOLD = 0.04;
  */
 export const BACKWARD_PENALTY = 1.5;
 
+/**
+ * Fixed cost added to a candidate that would have to *seek* to reach its slot (vs. one that
+ * can arrive by natural playback). The matcher minimises a global cost, so making any seek far
+ * more expensive than any seek *distance* turns the objective into "minimise the number of
+ * seeks": elements already tracking a slot lock in for free, and only genuinely-displaced ones
+ * (e.g. a playhead wrapping the loop) seek. Must dominate the largest realistic total distance
+ * sum (≈ slots × dur × BACKWARD_PENALTY); 1e6 clears that by orders of magnitude for clip-length
+ * media while staying well within float precision.
+ */
+export const SEEK_PENALTY = 1e6;
+
+/**
+ * Cost of spawning a fresh element for a slot instead of reusing a pooled one. Set high enough
+ * that reuse always wins when any candidate exists — reproducing the previous "create new only
+ * when the pool is empty" behaviour. Lower it (toward ~SEEK_PENALTY + decode-from-scratch) to let
+ * the matcher prefer a fresh decode over a very expensive backward-seek reuse.
+ */
+export const NEW_ELEMENT_COST = 1e9;
+
 /** Runtime CPS — updated each frame by main.ts, read by fit()/loopAt(). */
 let _runtimeCps = CYCLES_PER_SECOND;
 export function getRuntimeCps(): number { return _runtimeCps; }
