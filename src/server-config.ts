@@ -60,6 +60,10 @@ export function setServerUrl(url: string | null): void {
   health = null;
   lastError = null;
   notify();
+  // If clearing falls through to a dev default (or the new URL is set explicitly),
+  // probe so the status reflects reality rather than staying "unknown" forever.
+  const effective = getServerUrl();
+  if (effective) probeHealth(effective).catch(() => {/* status set internally */});
 }
 
 export function subscribe(cb: () => void): () => void {
@@ -185,8 +189,8 @@ export function checkCompatibility(
       ok: true,
       level: "warn",
       message: "Browsers block HTTP requests to non-localhost hosts from HTTPS pages. " +
-               "This URL won't reach your server. Run the server with HTTPS " +
-               "(use `tailscale serve` for a free *.ts.net HTTPS hostname), or run picodevil locally.",
+               "We won't be able to reach your server. Run the server with HTTPS " +
+               " or run picodevil locally.",
     };
   }
 

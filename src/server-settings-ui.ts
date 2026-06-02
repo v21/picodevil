@@ -4,7 +4,6 @@ import {
   getServerStatus,
   getServerHealth,
   getServerError,
-  probeHealth,
   subscribe,
   checkCompatibility,
   type CompatibilityResult,
@@ -26,39 +25,22 @@ const STATUS_COLOURS = {
  */
 export function createServerSettingsButton(): { el: HTMLElement; dispose: () => void } {
   const wrapper = document.createElement("div");
-  wrapper.style.cssText = "position:relative;width:100%;";
+  wrapper.style.cssText = "position:relative;display:inline-block;";
 
   const button = document.createElement("button");
-  button.style.cssText = [
-    "width:100%",
-    "display:flex",
-    "align-items:center",
-    "gap:8px",
-    "background:#1a1a1a",
-    "color:#ccc",
-    "border:1px solid #333",
-    "padding:6px 10px",
-    "border-radius:3px",
-    "cursor:pointer",
-    "font-size:14px",
-    "text-align:left",
-  ].join(";");
+  button.style.cssText = "background:#222;color:#aaa;border:1px solid #444;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;gap:6px;";
 
   const dot = document.createElement("span");
-  dot.style.cssText = "display:inline-block;width:10px;height:10px;border-radius:50%;flex-shrink:0;";
-  const label = document.createElement("span");
-  label.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-  const detail = document.createElement("span");
-  detail.style.cssText = "color:#666;font-size:12px;";
-  button.append(dot, label, detail);
+  dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;";
+  button.append(document.createTextNode("Server "), dot);
   wrapper.appendChild(button);
 
   const popover = document.createElement("div");
   popover.style.cssText = [
     "position:absolute",
     "bottom:calc(100% + 4px)",
-    "left:0",
     "right:0",
+    "width:280px",
     "background:#161616",
     "border:1px solid #444",
     "border-radius:4px",
@@ -69,6 +51,7 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
     "gap:8px",
     "font-size:13px",
     "color:#bbb",
+    "box-sizing:border-box",
   ].join(";");
   wrapper.appendChild(popover);
 
@@ -88,20 +71,8 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
   warning.style.cssText = "font-size:12px;line-height:1.4;padding:6px 8px;border-radius:3px;display:none;";
   popover.appendChild(warning);
 
-  const buttonRow = document.createElement("div");
-  buttonRow.style.cssText = "display:flex;gap:6px;";
-  const testBtn = makeBtn("Test");
-  const saveBtn = makeBtn("Save");
-  const clearBtn = makeBtn("Clear");
-  buttonRow.append(testBtn, saveBtn, clearBtn);
-  popover.appendChild(buttonRow);
-
-  function makeBtn(text: string) {
-    const b = document.createElement("button");
-    b.textContent = text;
-    b.style.cssText = "flex:1;background:#2a2a2a;color:#ccc;border:1px solid #444;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:13px;";
-    return b;
-  }
+  /** Tracks the last compatibility verdict so onBlur knows whether to save. */
+  let lastCompat: CompatibilityResult = { ok: true, level: "info" };
 
   function refresh() {
     const url = getServerUrl();
@@ -110,34 +81,19 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
     const err = getServerError();
     const c = STATUS_COLOURS[status];
     dot.style.background = c.dot;
-    label.style.color = c.text;
-    if (!url) {
-      label.textContent = "server: not configured";
-      detail.textContent = "";
-    } else if (status === "ok" && health) {
-      label.textContent = "server: connected";
-      detail.textContent = `v${health.version}`;
-    } else if (status === "checking") {
-      label.textContent = "server: checking…";
-      detail.textContent = "";
-    } else if (status === "error") {
-      label.textContent = "server: offline";
-      detail.textContent = err ?? "";
-    } else {
-      label.textContent = "server: not checked";
-      detail.textContent = "";
-    }
-    if (popover.style.display !== "none") {
-      // Only refresh input value when popover isn't open, to avoid wiping
-      // user-typed text mid-edit
-    }
+    let tip: string;
+    if (!url) tip = "server: not configured";
+    else if (status === "ok" && health) tip = `server: connected (v${health.version})`;
+    else if (status === "checking") tip = "server: checking…";
+    else if (status === "error") tip = `server: offline${err ? ` — ${err}` : ""}`;
+    else tip = "server: not checked";
+    button.title = tip;
   }
 
   function applyCompat(c: CompatibilityResult) {
+    lastCompat = c;
     if (!c.message) {
       warning.style.display = "none";
-      saveBtn.disabled = false;
-      testBtn.disabled = false;
       return;
     }
     warning.style.display = "block";
@@ -145,27 +101,33 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
     if (c.level === "error") {
       warning.style.background = "#3a1a1a";
       warning.style.color = "#fcc";
-      saveBtn.disabled = true;
-      testBtn.disabled = true;
     } else if (c.level === "warn") {
       warning.style.background = "#3a2e1a";
       warning.style.color = "#fc8";
-      saveBtn.disabled = false;
-      testBtn.disabled = false;
     } else {
       warning.style.background = "#1a2a3a";
       warning.style.color = "#8cf";
-      saveBtn.disabled = false;
-      testBtn.disabled = false;
     }
   }
 
   function updateCompat() {
-    if (!urlInput.value.trim()) {
+    const trimmed = urlInput.value.trim();
+    if (!trimmed) {
+      lastCompat = { ok: true, level: "info" };
       warning.style.display = "none";
       return;
     }
-    applyCompat(checkCompatibility(urlInput.value.trim()));
+    applyCompat(checkCompatibility(trimmed));
+  }
+
+  /** Commit the current input value to localStorage. setServerUrl probes automatically. */
+  function commit() {
+    const trimmed = urlInput.value.trim();
+    const current = getServerUrl() ?? "";
+    if (trimmed === current) return; // no change
+    if (trimmed === "") { setServerUrl(null); return; }
+    if (lastCompat.level === "error") return; // refuse hard errors
+    setServerUrl(trimmed);
   }
 
   function openPopover() {
@@ -191,27 +153,10 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
   document.addEventListener("click", onDocClick);
 
   urlInput.addEventListener("input", updateCompat);
-
-  testBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const url = urlInput.value.trim();
-    if (!url) return;
-    await probeHealth(url);
-  });
-
-  saveBtn.addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const url = urlInput.value.trim();
-    if (!url) return;
-    setServerUrl(url);
-    await probeHealth(url);
-  });
-
-  clearBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    urlInput.value = "";
-    setServerUrl(null);
-    updateCompat();
+  urlInput.addEventListener("blur", commit);
+  urlInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); urlInput.blur(); }
+    else if (e.key === "Escape") { closePopover(); }
   });
 
   const unsubscribe = subscribe(refresh);

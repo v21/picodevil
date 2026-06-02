@@ -92,7 +92,7 @@ describe("checkCompatibility", () => {
   it("warns on mixed content: HTTPS page + Tailscale hostname over HTTP", () => {
     const r = checkCompatibility("http://laptop.tail-net.ts.net:47426", "https:", "picodevil.com");
     expect(r.level).toBe("warn");
-    expect(r.message).toMatch(/tailscale/i);
+    expect(r.message).toMatch(/HTTPS/);
   });
 
   it("does NOT warn on HTTPS page + http://localhost (localhost is exempt from mixed-content)", () => {
