@@ -264,6 +264,18 @@ async function main() {
     args: ['--use-gl=angle', '--use-angle=metal', '--enable-unsafe-swiftshader'],
   });
   const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
+
+  // Point the app's "server" URL at the Vite origin for the whole run. The test
+  // media lives in public/test-assets/ and is served by Vite, but seeded entries
+  // (and generated .urlBase('/test-assets/') patterns) store bare leading-slash
+  // paths. resolveUrl() resolves bare paths against getServerUrl(), which in dev
+  // defaults to http://localhost:47426 — a server that isn't running — producing
+  // spurious 404s. Pinning it to the Vite origin makes /test-assets/* resolve to
+  // the page that actually serves them. Runs before every navigation's scripts.
+  await context.addInitScript((origin) => {
+    try { localStorage.setItem("picodevil-server-url", origin); } catch { /* denied */ }
+  }, url);
+
   const page = await context.newPage();
 
   console.log(`Loading app...`);

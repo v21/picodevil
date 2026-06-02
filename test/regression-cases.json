@@ -395,5 +395,24 @@
       "eval error: ReferenceError: tRue is not defined\n    at eval (eval at runTranspiled (http://localhost:5174/src/eval-sandbox.ts:193:3), <anonymous>:3:62)\n    at runTranspiled (http://localhost:5174/src/eval-sandbox.ts:193:37)\n    at EvalController.eval (http://localhost:5174/src/eval-controller.ts:58:7)\n    at window.uzuEval (http://localhost:5174/src/main.ts:97:43)\n    at eval (eval at evaluate (:290:30), <anonymous>:1:78)\n    at UtilityScript.evaluate (<anonymous>:292:16)\n    at UtilityScript.<anonymous> (<anonymous>:1:44)"
     ],
     "timestamp": "2026-05-17T22:24:24.695Z"
+  },
+  {
+    "code": "$: text('hello')",
+    "description": "shrunk from 3 shrinks",
+    "errors": [
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ],
+    "timestamp": "2026-06-02T22:07:59.711Z"
   }
 ]
