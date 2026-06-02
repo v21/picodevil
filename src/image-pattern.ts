@@ -3,7 +3,7 @@ import { mini } from "@strudel/mini";
 import { warn } from "./warnings";
 
 /**
- * Creates a pattern of still images. Images are served from the server component (default localhost:3456).
+ * Creates a pattern of still images. Images are served from the server component (default localhost:47426).
  *
  * @param {string | Pattern} pat mininotation string of image filenames, or an existing Pattern
  * @returns {Pattern} pattern of {_type: "image", src} objects

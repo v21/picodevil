@@ -8,7 +8,7 @@
  * Usage:
  *   npx tsx test/perf-trace.ts [--duration 5000]
  *
- * Requires the video server to be running on port 3456.
+ * Requires the video server to be running on port 47426.
  */
 
 import { chromium, type CDPSession } from "playwright";
@@ -24,9 +24,9 @@ const TRACE_DURATION_MS = parseInt(flag("trace", "20000"), 10);
 
 // The pattern to investigate
 const SETUP_CODE = [
-  `loadVideo('dvsa1', 'http://localhost:3456/videos/CGI_10.mp4')`,
-  `loadVideo('dvsa2', 'http://localhost:3456/videos/CGI_12.mp4')`,
-  `loadVideo('dvsa3', 'http://localhost:3456/videos/CGI_15.mp4')`,
+  `loadVideo('dvsa1', 'http://localhost:47426/videos/CGI_10.mp4')`,
+  `loadVideo('dvsa2', 'http://localhost:47426/videos/CGI_12.mp4')`,
+  `loadVideo('dvsa3', 'http://localhost:47426/videos/CGI_15.mp4')`,
 ].join("\n");
 const PATTERN_CODE = [
   `$: s("prev").alpha(1).scale(1.01)`,

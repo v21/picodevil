@@ -21,19 +21,19 @@ interface FlickerCase {
 const CASES: FlickerCase[] = [
   {
     name: "sync + begin(saw) + speed(1)",
-    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:3456/videos/').sync().begin(saw).speed(1)`,
+    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:47426/videos/').sync().begin(saw).speed(1)`,
   },
   {
     name: "sync + begin(sine)",
-    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:3456/videos/').sync().begin(sine)`,
+    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:47426/videos/').sync().begin(sine)`,
   },
   {
     name: "sync + speed(2)",
-    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:3456/videos/').sync().speed(2)`,
+    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:47426/videos/').sync().speed(2)`,
   },
   {
     name: "plain speed(1) (control)",
-    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:3456/videos/')`,
+    code: `$: video("HCP-4P0eoOo.mp4").urlBase('http://localhost:47426/videos/')`,
   },
 ];
 

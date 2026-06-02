@@ -65,7 +65,7 @@ picodevil/
     upload-integration-test.ts  — end-to-end Playwright test for file drag-and-drop upload
 ```
 
-The Node server lives in a sibling repo at [`../server/`](../server/) — see [`../server/CLAUDE.md`](../server/CLAUDE.md). Frontend ↔ server is HTTP-only at `http://localhost:3456`.
+The Node server lives in a sibling repo at [`../server/`](../server/) — see [`../server/CLAUDE.md`](../server/CLAUDE.md). Frontend ↔ server is HTTP-only at `http://localhost:47426`.
 
 ## How the frontend works
 

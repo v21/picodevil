@@ -4,7 +4,7 @@ import { mini } from "@strudel/mini";
 import { warn } from "./warnings";
 
 /**
- * Creates a pattern of video sources. Videos are served from the server component (default localhost:3456).
+ * Creates a pattern of video sources. Videos are served from the server component (default localhost:47426).
  *
  * By default, video playback is synced to the Strudel event that produced it:
  * each time a new event starts, the video seeks to the position it should be

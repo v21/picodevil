@@ -70,7 +70,7 @@ $: color("#ff0000 cyan darkblue")
 
 ### `video(mininotation)`
 
-Plays video files. Videos are served from the server component (localhost:3456).
+Plays video files. Videos are served from the server component (localhost:47426).
 
 ```js
 $: video("clip1.mp4")
@@ -923,7 +923,7 @@ Paste a YouTube URL into the video tab's input bar in the sidebar. The server do
 
 You can also call the endpoint directly:
 ```
-GET http://localhost:3456/download?v=YOUTUBE_URL
+GET http://localhost:47426/download?v=YOUTUBE_URL
 ```
 
 ### Local file drag-and-drop
@@ -968,6 +968,6 @@ $: screen("myclip")          // auto-detects type
 Use `loadVideo` / `loadImage` to register media imperatively (e.g. in a persistent snippet):
 
 ```js
-loadVideo("myclip", "http://localhost:3456/videos/ID.mp4")
+loadVideo("myclip", "http://localhost:47426/videos/ID.mp4")
 $: video("myclip")
 ```
