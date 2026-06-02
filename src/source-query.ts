@@ -1,4 +1,5 @@
-import { VIDEO_BASE, IMAGE_BASE, SHARE_TIME_THRESHOLD } from "./config";
+import { SHARE_TIME_THRESHOLD } from "./config";
+import { getVideoBase, getImageBase } from "./server-config";
 import { eventBeginFromHap } from "./event-begin";
 import { computeExpectedFromEvent } from "./video-pool";
 import { warn } from "./warnings";
@@ -121,13 +122,13 @@ function resolveNeededSource(
   const isImage = ev._type === "image";
 
   if (isImage) {
-    const base = ev.urlBase ?? IMAGE_BASE;
+    const base = ev.urlBase ?? getImageBase();
     const srcUrl = resolve(ev.src, base);
     return { kind: "image", srcUrl, expectedTime: 0, speed: 0, ev, hap };
   }
 
   // video
-  const base = ev.urlBase ?? VIDEO_BASE;
+  const base = ev.urlBase ?? getVideoBase();
   const srcUrl = resolve(ev.src, base);
   const speed = ev.speed != null ? Number(ev.speed) : 1;
   const isRolling = ev.rolling != null;

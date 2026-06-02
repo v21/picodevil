@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { stack } from "@strudel/core";
 import { queryNeeded, type NeededSource } from "./source-query";
-import { VIDEO_BASE, IMAGE_BASE } from "./config";
+import { getVideoBase, getImageBase } from "./server-config";
+
+const VIDEO_BASE = getVideoBase() || "http://localhost:47426/videos/";
+const IMAGE_BASE = getImageBase() || "http://localhost:47426/images/";
 import { screen } from "./screen-pattern";
 import { matchSources } from "./source-matcher";
 import { renderVideoFrame, type VideoEl } from "./video-playback";

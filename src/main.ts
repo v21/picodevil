@@ -5,6 +5,7 @@ import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CAC
 import { CpsController } from "./cps-controller";
 import { createMetrics, recordFrameMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
+import { resolveUrl, probeHealth, getServerUrl } from "./server-config";
 import { initRegistry as initPatternRegistry, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
@@ -60,7 +61,7 @@ const pdMetrics = createMetrics();
 const pool = createVideoPoolManager({
   resolveMediaUrl: (name, base) => {
     const entry = resolveMedia(name);
-    return entry ? entry.url : base + name;
+    return entry ? resolveUrl(entry.url) : base + name;
   },
   onDurationDiscovered: (srcUrl, duration) => {
     setDurationByUrl(srcUrl, duration);
@@ -114,6 +115,12 @@ const evalController = new EvalController({
 });
 
 initFontList(repopulateFontDatalist);
+
+// Probe the optional companion server in the background so SERVER_ENABLED-gated
+// flows know whether to upload/download. No-op if no URL is configured.
+if (getServerUrl()) {
+  probeHealth().catch(() => {/* status set internally */});
+}
 
 // called from editor on ctrl+enter
 window.pdEval = (code) => evalController.eval(code);

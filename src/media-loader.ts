@@ -3,7 +3,8 @@ import {
   isYouTubeUrl, downloadYouTube, exportAll, importAll, clearAll, setOnChange,
   uploadToServer, type MediaEntry,
 } from "./media-registry";
-import { SERVER_ENABLED } from "./config";
+import { getServerUrl, getServerStatus } from "./server-config";
+import { createServerSettingsButton } from "./server-settings-ui";
 import {
   startWebcam, startScreenCapture, stopStream, removeStream,
   isStreamActive, setStreamOnChange, reconnectStreams,
@@ -48,7 +49,7 @@ export function setupMediaLoader(el: HTMLElement) {
         const blobUrl = URL.createObjectURL(file);
         const name = file.name.replace(/\.[^.]+$/, "");
         const entry = addMedia(blobUrl, name);
-        if (SERVER_ENABLED) {
+        if (getServerUrl() && getServerStatus() !== "error") {
           uploadToServer(entry.name, file).catch(() => {/* error stored in entry */});
         }
       }
@@ -185,6 +186,13 @@ function render() {
   footer.appendChild(clearBtn);
 
   container.appendChild(footer);
+
+  // Server status / configuration — sits at the very bottom of the Videos tab
+  const serverBar = document.createElement("div");
+  serverBar.style.cssText = "padding:8px;border-top:1px solid #333;";
+  const { el: serverBtn } = createServerSettingsButton();
+  serverBar.appendChild(serverBtn);
+  container.appendChild(serverBar);
 }
 
 function makeRow(entry: MediaEntry): HTMLElement {

@@ -1,3 +1,5 @@
+import { getServerUrl, resolveUrl, migrateLegacyServerUrl } from "./server-config";
+
 const THUMB_STORAGE_PREFIX = "picodevil:thumb:";
 
 export type MediaEntry = {
@@ -46,8 +48,9 @@ function save() {
 export function initRegistry(entries: { id: string; name: string; url: string; type: MediaEntry["type"]; duration?: number; streamKind?: MediaEntry["streamKind"]; deviceId?: string }[]) {
   registry.length = 0;
   for (const entry of entries) {
+    const migratedUrl = entry.url ? migrateLegacyServerUrl(entry.url) : entry.url;
     const thumb = localStorage.getItem(THUMB_STORAGE_PREFIX + entry.id) ?? undefined;
-    registry.push({ ...entry, ...(thumb ? { thumbnail: thumb } : {}) } as MediaEntry);
+    registry.push({ ...entry, url: migratedUrl, ...(thumb ? { thumbnail: thumb } : {}) } as MediaEntry);
   }
   onChange?.();
   // Generate thumbnails for entries that don't have one (e.g. first load on a new device)
@@ -271,7 +274,8 @@ function pollTranscodeReady(entryId: string, stem: string, serverBase: string, i
 }
 
 /** Upload a local file to the server, re-encode as I-frame-only MP4, then update the entry URL. @internal */
-export function uploadToServer(name: string, file: File, serverBase = "http://localhost:3456"): Promise<void> {
+export function uploadToServer(name: string, file: File, serverBase?: string): Promise<void> {
+  serverBase = serverBase ?? getServerUrl() ?? "";
   return new Promise((resolve, reject) => {
     const entry = registry.find(e => e.name === name);
     if (!entry) return reject(new Error(`Entry not found: ${name}`));
@@ -345,7 +349,8 @@ export function uploadToServer(name: string, file: File, serverBase = "http://lo
 }
 
 /** Try downloading a YouTube URL via the server. Updates entry in place. */
-export async function downloadYouTube(name: string, serverBase = "http://localhost:3456") {
+export async function downloadYouTube(name: string, serverBase?: string) {
+  serverBase = serverBase ?? getServerUrl() ?? "";
   const entry = registry.find(e => e.name === name);
   if (!entry) {
     console.warn(`[downloadYouTube] entry not found for name="${name}"`);
@@ -410,7 +415,8 @@ function processThumbQueue() {
   if (thumbActive || thumbQueue.length === 0) return;
   thumbActive = true;
   const entry = thumbQueue.shift()!;
-  const isCrossOrigin = entry.url.startsWith("http");
+  const resolved = resolveUrl(entry.url);
+  const isCrossOrigin = resolved.startsWith("http");
 
   function done() { thumbActive = false; processThumbQueue(); }
 
@@ -443,7 +449,7 @@ function processThumbQueue() {
       clearTimeout(timeout);
       cleanup();
     });
-    vid.src = entry.url;
+    vid.src = resolved;
   } else {
     const img = new Image();
     if (isCrossOrigin) img.crossOrigin = "anonymous";
@@ -457,6 +463,6 @@ function processThumbQueue() {
       clearTimeout(timeout);
       done();
     });
-    img.src = entry.url;
+    img.src = resolved;
   }
 }

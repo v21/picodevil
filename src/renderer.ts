@@ -1,4 +1,5 @@
-import { VIDEO_BASE, IMAGE_BASE, PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME } from './config';
+import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME } from './config';
+import { getVideoBase } from './server-config';
 import { eventBeginFromHap } from './event-begin';
 import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
@@ -72,7 +73,7 @@ export class FrameRenderer {
     for (const h of probe) {
       const v = h.value;
       if (v?._type === 'video') {
-        const base = v.urlBase ?? VIDEO_BASE;
+        const base = v.urlBase ?? getVideoBase();
         this.pool.fetchVideoBlob(this.pool.resolveMediaUrl(v.src, base));
       }
     }

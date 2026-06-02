@@ -1,8 +1,9 @@
-/** Set to false when deploying without the local Node server (e.g. public hosting). */
-export const SERVER_ENABLED = true;
+/**
+ * Server URL is configured at runtime — see ./server-config.ts.
+ * Use `getVideoBase()` / `getImageBase()` / `resolveUrl()` from there
+ * instead of compile-time constants.
+ */
 
-export const VIDEO_BASE = "http://localhost:3456/videos/";
-export const IMAGE_BASE = "http://localhost:3456/images/";
 export const CYCLES_PER_SECOND = 0.5;
 /** How far ahead to query patterns for video prewarming, in milliseconds. */
 export const PREWARM_LOOKAHEAD_MS = 500;

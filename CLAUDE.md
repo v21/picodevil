@@ -8,7 +8,7 @@ picodevil is a live-coding visual performance tool. Users write JavaScript in a 
 
 > **Name history**: this project was previously called **uzuvid**. The working directory is now `/Users/v/picodevil/picodevil/` and older git history, commit messages, and external links may use the old name. If you find a stray `uzuvid` / `uzu*` reference in code, it's a missed rename — flag it.
 >
-> **Layout change (2026-06-02)**: the standalone Node server used to live at `server/` inside this repo. It was split out into its own repo (`picodevil-server`) and now lives at `../server/` — a sibling folder, not a subfolder. History was preserved via `git subtree split`. The frontend talks to it over HTTP at `http://localhost:3456` exactly as before; nothing in the frontend changed.
+> **Layout change (2026-06-02)**: the standalone Node server used to live at `server/` inside this repo. It was split out into its own repo (`picodevil-server`) and now lives at `../server/` — a sibling folder, not a subfolder. History was preserved via `git subtree split`. The frontend talks to it over HTTP at a user-configurable URL (default `http://localhost:47426`) — see "Server component" below.
 
 ## Design principles
 
@@ -197,14 +197,25 @@ Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().
 
 ## Server component
 
-The Node server lives in a sibling repo at [`../server/`](../server/) — its own `package.json`, its own `node_modules`, its own git history. See [`../server/CLAUDE.md`](../server/CLAUDE.md) for endpoints and CLI usage. The frontend talks to it over HTTP at `http://localhost:3456` (see `VIDEO_BASE` / `IMAGE_BASE` in [`src/config.ts`](src/config.ts)) — there's no code coupling.
+The Node server lives in a sibling repo at [`../server/`](../server/) — its own `package.json`, its own `node_modules`, its own git history. See [`../server/CLAUDE.md`](../server/CLAUDE.md) for endpoints and CLI usage. The frontend talks to it over HTTP at a user-configurable URL (default port `47426`) — there's no code coupling.
 
-### SERVER_ENABLED flag
+### Runtime server configuration ([src/server-config.ts](src/server-config.ts))
 
-`src/config.ts` exports `SERVER_ENABLED` (default `true`). When `false`:
-- Drag-and-drop files are registered as blob URLs only (no upload to server)
-- Intended for future public deployments where the Node server is not available
-- Set this to `false` before deploying without the server
+The server URL is no longer a compile-time constant. It lives in localStorage (key `picodevil-server-url`) and is exposed through:
+- `getServerUrl(): string | null` — current URL. In Vite dev mode (`import.meta.env.DEV`), defaults to `http://localhost:47426` when nothing is saved.
+- `setServerUrl(url | null)`, `subscribe(cb)` — write + react to changes.
+- `getServerStatus()` — `"unknown" | "checking" | "ok" | "error"`. Updated by `probeHealth()`.
+- `probeHealth(url?)` — hits `${url}/health`, validates `name === "picodevil-server"`, returns the parsed health response or `null`.
+- `checkCompatibility(url, pageProtocol?, pageHost?)` — pure static analysis used by the settings UI to surface mixed-content / typo / same-origin / non-http(s) warnings *before* probing.
+- `resolveUrl(pathOrUrl)` — turns whatever's stored on an entry into something the browser can fetch. Anything with a scheme (`http:`, `https:`, `blob:`, `data:`, …) or protocol-relative passes through unchanged. Bare paths (typically `/videos/abc.mp4`) are resolved against `getServerUrl()`.
+- `getVideoBase()` / `getImageBase()` — `${serverUrl}/videos/` / `${serverUrl}/images/`, or `""` when no server is configured.
+- `migrateLegacyServerUrl(url)` — narrow rewrite for old absolute `http://localhost:PORT/{videos,images}/...` localStorage entries. Anchored so only true-prefix matches are touched; external URLs pass through.
+
+There is **no `SERVER_ENABLED` flag** any more. Whether server flows run is pure-derived: `getServerUrl()` non-null AND last probe wasn't `"error"` (see [src/media-loader.ts](src/media-loader.ts) drag-drop path). On boot, [src/main.ts](src/main.ts) kicks off one health probe if a URL is configured; the settings UI button at the bottom of the Videos sidebar tab (created by [src/server-settings-ui.ts](src/server-settings-ui.ts)) lets users change the URL and shows live status.
+
+### Server response URL convention
+
+`/upload` and `/download` return `{ url: "/videos/foo.mp4" }` — leading-slash paths, no origin. Anything that consumes `entry.url` to actually fetch / set as `<video>.src` / upload as a texture passes it through `resolveUrl()` to get a full URL. External entries added via `loadVideo("name", "https://cdn.example.com/clip.mp4")` are absolute and `resolveUrl` leaves them alone.
 
 ### Local file drag-and-drop upload
 
@@ -353,6 +364,8 @@ When working through a list of tasks, **stop and check in with the user after co
 7. Don't commit changes unless asked
 
 Don't edit README yourself! This is a human written document. But do prompt the user if it's out of date.
+
+Don't edit `src/about.html` either — it's a human-written file, same rule as README.md. Surface a suggested change to the user instead of editing it, unless they specifically ask you to touch it.
 
 
 ## Key patterns to know

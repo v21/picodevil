@@ -12,11 +12,13 @@ This is currently not hosted anywhere, so to use this, you will need to clone th
 
 You can do this by running:
 `npm run start` in the main folder
-and `npm run start` in the subfolder "server" (needed to download videos from YouTube)
 
 And then opening [http://localhost:5173/](http://localhost:5173/) in your browser (currently only tested with Chrome)
 
 How to write code in it is outside the scope of this readme, but: write some code into the window, and press Ctrl-Enter to execute it. You can load videos by opening the sidebar - click the little arrow on the right hand side of the window. You can also see the command reference in there!
+
+There's also a optional server, which will let you do things like transcode videos so they can be scrubbed backwards, and allow downloading from YouTube - see [picodevil-server](https://github.com/v21/picodevil-server) for details.
+
 
 ## Differences from Strudel
 
