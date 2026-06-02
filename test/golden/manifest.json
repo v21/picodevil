@@ -1,0 +1,412 @@
+{
+  "seed": 42,
+  "viewport": [
+    256,
+    256
+  ],
+  "cycle": 0.5,
+  "cps": 0.5,
+  "count": 100,
+  "cases": [
+    {
+      "id": "g0000",
+      "code": "$: index(color(mini(\"green yellow@3/2 black\"))).cols(3).rows(4).gridMod().alpha(\"0*4@4 ~\").alpha(\"0.5? 0!4 1?, [0?0.3]!4? 0.75/4*2, <<0.25 1*2 0.5 1*2?0.4>@2 1?0.8 0.75 {0!3(4,8,1) 0}%2>!2!2 0 [0/2 [1 0.75 <0.25>@3? 0/2](3,6,1) <0.5/4?0.8 0.75>?0.5*4 0.75](4,7,0)(4,4,2)\")"
+    },
+    {
+      "id": "g0001",
+      "code": "setCps(2.8)\n$: stackN(3, image(\"redimg sprite@3\").crop(saw, saw2.range(0.00, 0.00), \"0.75@2@4 1(5,7,5)\", tri.range(0.00, 0.00)).font(fontPicker('serif'))).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0002",
+      "code": "setCps(10.0)\n$: text('line one\\nline two')"
+    },
+    {
+      "id": "g0003",
+      "code": "setCps(sine.range(0.10, 1.55))\n$: stackN(2, color(\"#00ff00!3 yellow(2,3,1)@2 [#fff@1 <pink?0.1 #fff(3,7) blue(3,7,5)*3 #000>??0.3]*2(5,8,7) {<#000> {green? cyan black/3}%5(2,4,1)}%4?0.2?0.7\").sometimesBy(0.24, x => x.slow(\"-4 <[1?0.2 0.75]?(3,7,1) -4*3 -16??>?*3 0.75!3?\"))).rowscols(2).gridMod().alpha(\"0.5\").scale(\"{[0.25/3]!2 0.5(5,5,4) <0.25?0.2 <-1 3(5,6,0) 2> 3@1!2 [[1/2!2 1*4@4 3*4/2 0.25!2@3]*3(4,8) 2!3]>/4}%3 2 [~?] [0.5 3*2@4 -1!2 {~*4/2 3*2? 3@1}%3!2]?\")"
+    },
+    {
+      "id": "g0004",
+      "code": "$: stack(screen(image(\"photo\")), text('A').fontBGColor('yellow').textColor('blue').height(\"0.75 1*3@1 0.75?0.1 {[0.5/3@3 0.75] 0.25 [1 1?(2,2,1) 0.75]!3}%4@2!2 | 1 <[1?]*4/3 0.75?0.2>*2 {~}? 0.5!3 | 0.25@2(5,5) ~ | 0.75/3?0.2 1@3 0.5?(4,5,0)\")).shuffleIndexCycle(\"3?0.4*3 3@1 5!2?0.3 3\").rowscols(2).gridMod().alpha(\"{[0.75? 0.25?]?0.2/3 0.75@3?0.8 0*2@4}%4(4,5) | [[0.75 {1(4,4,3) 1 1 0.75(3,3)*3}/4](4,4,1)]@4 ~!2@1\").alpha(\"~ 0 1?0.1? [{~?0.3*4 0.5 1}%3?0.8 1?0.7 [0.75 0 0.25 ~]?*3 1(5,8,6)]?0.4(5,5,1), 0.25?0.1 0.5!2 0@1 {[0.25?0.2*2 0.25 0.25@4](4,5,0) 0.75*2*3 0.5/4*2 0.25!4}%2?0.2?0.8, 0.5(5,5,1) ~/3/4\")"
+    },
+    {
+      "id": "g0005",
+      "code": "setCps(5.8)\n$: text('bar').blend(\"<color saturation exclusion [color(5,5)(2,4,3) exclusion@2 exclusion]>?@3 ~ overlay/3 multiply, <screen color-dodge overlay ~*2>\").cropStack(2, 1).gridMod().scale(saw2).scale(\"<[0.5*3 -1] [0.5] 0.5>? 0.5\")"
+    },
+    {
+      "id": "g0006",
+      "code": "$: index(s(\"[~?0.1@1 sprite!2] red?(5,5) green/3!2\").w(\"0.25@2 <[1/4 0.75?0.1 0.5]>\"), text('foo').textSize(79)).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0007",
+      "code": "setCps(2.4)\n$: stack(color(\"<pink red@2> {~ [blue green?]}%3/4!3 blue(2,8,7)!2\").rarely(x => x.rev()), color(\"yellow@4 #ff0000!4\").sometimesBy(0.41, x => x.x(saw))).shuffleStack(\"<[5 4*4?0.4](3,4,1) 5> ~?0.2 4?0.2 4 | 6 {<5@3 7> 1*2@4 8? [3? [[4 8]/4] [5*4!2 {5!2!2}%2?0.7 8 1]!4!3 2?]}%3@3@1 1 {2/4 6@3 1}%3\").index().rowscols(2).gridMod().scale(\"2@1@3 0.25!2*3\")"
+    },
+    {
+      "id": "g0008",
+      "code": "setCps(4.9)\n$: index(text('A').cropx(\"{0.25!4!3}%4 ~?0.8 | 0.25 0.75\").y(\"0.5\")).cols(2).rows(2).gridMod().alpha(\"1/3(2,5,0) 1 0.25\").alpha(sine.segment(8).lerp(\"quad quint {back(4,4,0)(2,8,0) <quint!4 linear*3> <~ <elastic?!2 linear(3,5,0)*4 {elastic!2?0.5 back}%4/4?0.2 bounce>!4 elastic!2?0.2>?(3,3,0)}%3!3\", \"out inout?0.8 <{in/2?0.2 inout}*3?0.2>?0.2, ~? in out inout\"))"
+    },
+    {
+      "id": "g0009",
+      "code": "$: stackN(2, screen(\"photo*4!2 yellow\").huerot(\"[<0>(4,7,4)]/4?0.2 1(2,3)*3\").huerot(cosine2).rotateY(\"0.5!2? 0.75(3,5,2), 0\").sync().cropx(\"-0.25!2, 1.1!3 -0.1\")).rowscols(2).gridMod().scale(isaw)"
+    },
+    {
+      "id": "g0010",
+      "code": "setCps(saw2.range(3.00, 0.53))\nmain: stackN(4, screen(\"red?0.2/2 photo!2/4\").rotateY(rand2.segment(8).lerp(\"bounce quint/4(2,4) | linear/4@2 expo*2 circ?0.8? cubic*4(3,6,4) | {{quart?@1}%2/4 back/2 [quart?0.1@3 expo*2 ~@3@2 quart](3,5,4)} [circ ~!3@2]*2 | {circ/3}%5?0.2 quint(4,8,3)!4\", \"<inout <~ inout!2*2 out!3(2,5)>>?0.2(3,6,4) out@2?0.3\")).pixelate(1).shuffleStack()).rowscols(4).gridMod().alpha(\"[0.5 1(5,8,5)(3,7,1) 0.25]@1(2,2,0)\")"
+    },
+    {
+      "id": "g0011",
+      "code": "loadImage('blueimg', '/test-assets/sprite2.png')\nsetCps(0.0)\nmuted_: screen(image(\"blueimg? | <photo*2@2 <redimg>!2? [blueimg? [redimg(3,5,2)]@4 [~ blueimg*4]!3]*4 photo?(4,6,2)> photo*4@4\")).top(\"0 1?0.5@3 0.25(4,4,0)? 0.75, 0.75*4 0.75*2*3 {~ ~ 1}%4? 0.75??, ~?0.8 ~\").cropy(\"0?/2\")"
+    },
+    {
+      "id": "g0012",
+      "code": "setCps(6.9)\n$: stepcat(color(mini(\"~@2?0.7, white@2 white!3 [[[#00ff00 #fff white*2 #000@2(3,5,2)]*2 red(3,5,0)(4,4,0) #0000ff](3,7,5)]\")).scaleY(itri.range(0.00, 0.00).segment(16).lerp(\"sine/2 circ!4!2 [{linear?}%2 [expo*2?]]@3\", \"[inout(4,6,5)?0.6]?0.2(3,4,0) out\")).font('italic sans-serif'), screen(\"sprite*3 blueimg?0.2\").shuffleIndexCycle(saw).scale(\"[3!2!3 {1? 0.25*2(4,5) 3 ~}%4*4?0.2 [-1*4]@1 {-1}%3]?(5,5,3), ~!4 ~?0.2\"))"
+    },
+    {
+      "id": "g0013",
+      "code": "setCpm(82.1)\nfg: image(\"{red.png}%3?0.1 sprite1.png!3 photo2.jpg/2 blue.png?\").urlBase('/test-assets/').focus(\"0.75!4?0.4 -0.125\", slider(0.000, 0.00, 2.00)).blend(\"hue\")"
+    },
+    {
+      "id": "g0014",
+      "code": "setCps(4.2)\n$: index(color(\"cyan!4? ~?@2 #0000ff*3 red(5,8,7)\").brightness(3.7524779440557394e+223), s(color(\"[#0000ff!4/4 ~*3 [yellow magenta?0.1 #fff@4?]@1] red(2,3)!3 #000!3 [green!2?0.1 #0000ff!2 #000], ~*3 ~(5,8)!4 orange@2 cyan!3/4\"))).cols(2).rows(4).gridMod().alpha(\"0/3 <0*4(2,8)>@3\").alpha(\"{~ 0.75!4!3 ~@3/2}%3*2\")"
+    },
+    {
+      "id": "g0015",
+      "code": "setCps(0.0)\nSbg: image(\"<[redimg?0.4 <redimg/2> blueimg*4]?>? | <{redimg/3!2 sprite}%4*2 blueimg@3 blueimg?0.1>!3?0.1 | [redimg(3,6,2) ~] sprite photo?0.5? <<photo> photo?*2 sprite?0.8>?0.2*3\").cropStack(2, 3).gridMod().scale(cosine.segment(8).spline(\"[0.1@4]@1 0.8(3,4,2) [0.8@4!4 1?? 1 [{1/2}%5?0.1? 0.5!2*2 0.1??0.6]!4(5,5,4)]!3!3 1?0.3?\"))"
+    },
+    {
+      "id": "g0016",
+      "code": "setCpm(91.8)\n$: index(color(\"#fff!3 <pink?/4>?0.1(4,5,0) {magenta*4 magenta(2,3,1) blue/2}%3\").height(sine2.range(0.00, 0.00).segment(8).lerp('bounce', \"out, [in*4 in!3?] [[out?0.2? out/2 <{inout(2,2,1) in}%5?? inout@4 out? out>]?0.1 {in in?0.5!3}%4@4 out](2,6,1) [[out in] inout!4*4 out!3@2 <out!2?0.2>]!2, ~ in!2!3 out/2?\"))).rowscols(3).gridMod().scale(\"{{3?0.3}%2!4*4}%5*3 0.5 | 2*4@3 | 1*4 ~/3/3 2\")"
+    },
+    {
+      "id": "g0017",
+      "code": "setCpm(53.4)\n$: color(\"<#000!4? blue> #ff0000\").scaleX(\"{~!4@4 [<<1.5(5,5,4) 1.5 <2>>> 1.5!4]/3 2}/3!4 3\").textSize(18)"
+    },
+    {
+      "id": "g0018",
+      "code": "setCps(2.0)\n$: screen(\"magenta?(3,4,3) yellow | yellow*4/4 ~? cyan*4!4 | ~(3,4,1)? [[magenta green/3]?0.5?0.4]\").contrast(2e-323).tint(\"[-0.25@3*3 {1?0.4!3 ~!3? 1? -0.25?@3}%4 1(5,8,2)]?0.3@4 0.25@1, 0.25?0.2*4 0, 0.25 1?0.1!4 [0.25 [-0.25@4 0.75!2 0.25/3 0.25](2,2) 0.25/4](4,4,3)\", steady(0.00))"
+    },
+    {
+      "id": "g0019",
+      "code": "setCpm(58.3)\nbg: stackN(4, color(\"[#00ff00(5,5,0)? {{orange/2 yellow/4 cyan*2(4,8,7)}%5 green?0.3}%2@2/4 blue(4,4,0)]??0.3 #fff ~ magenta@4, green(5,5)\")).rowscols(2).gridMod().alpha(\"0 {<0.75 0.75>*2!2}%5!4*3\").scale(\"~!3!4 <3 2!2>@2(5,7,5) 3?, [0.5(3,3,2)*2 {{3 0.25}%3*3!2 1*4/4 3/4@3 [1.5*4 0.5?0.6]/2?0.1}!4 1?!4]*3?0.3 1.5@1 -1?0.5 3/4/2, 2/2\")"
+    },
+    {
+      "id": "g0020",
+      "code": "setCps(0.4)\nmuted_: index(text('world').cropy(cosine.segment(16).spline(0.25)).fontColor('magenta').degrade()).cols(5).rows(3).gridMod()"
+    },
+    {
+      "id": "g0021",
+      "code": "setCpm(31.8)\n$: index(color(\"red@4?0.2 [#ff0000? {#0000ff@2 #ff0000/2(2,5)}%3 [~*2]/2@1]/4 blue!2, yellow(5,5,3), red white?*2 [#00ff00 purple] [cyan/3 #0000ff!2]@1\")).rowscols(3).gridMod().scale(rand2.div(3)).alpha(\"[0.75 0.5?0.4(5,6,5)] 1\")"
+    },
+    {
+      "id": "g0022",
+      "code": "setCps(2.0)\n_bg: index(color(mini(\"#0000ff #000\"))).cols(2).rows(3).gridMod().scale(square2)"
+    },
+    {
+      "id": "g0023",
+      "code": "setCps(7.1)\n$: stack(color(\"purple@1/3, [~ {#ff0000/2/2 {magenta(5,5) yellow*3}%3?/3}%3]?0.4@4 #0000ff/4!2\"), screen(\"green?0.3 ~@4\").top(\"0!2? 0.25!4 0.5?0.1\").textColor('#000'), screen(color(\"white/3 #ff0000!2? pink black\"))).shuffleStack(\"6(5,7,6)@2 1?0.7 4? {3!4/2}%3(3,8,4)\").index().rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0024",
+      "code": "$: screen(color(\"black <black {yellow?0.7}%3>(5,6,5)*3 <#0000ff red?0.2@1 purple/3?0.2>?0.1*3 ~@3@4, #ff0000?!2\")).shuffleStackCycle(tri)"
+    },
+    {
+      "id": "g0025",
+      "code": "setCps(isaw2.range(0.12, 7.75))\nbg: color(\"cyan@2?0.2 {white? #000!2}%4*3?0.2 #00ff00!3?, cyan\").cropStack(2, 3).gridMod()"
+    },
+    {
+      "id": "g0026",
+      "code": "setCps(10.0)\nmuted_: stackN(2, color(\"~? #00ff00@4 #fff!2\").grid(1, 1, 8).width(\"<0.75 [0.25*2](5,8,0)?0.3 0.25!4@1 0.25>?(2,7,2) [[<0.25@1!3>*2*4]?@3]*3\")).rowscols(4).gridMod().alpha(\"1 0.75 0.25 1 | 0.75?0.2/3\").scale(\"0.5!3@3 2!3/4 0.25@2!3 | 1.5 [~*3 0.25!4]@2? -1 | 0.5 | 2 -1(2,5,2)?\")"
+    },
+    {
+      "id": "g0027",
+      "code": "setCps(3.7)\n$: index(color(\"~?0.1\").shuffleIndexCycle(\"<[[1 4 2?0.4]?!4] 7>\").fontColor('#fff'), text('42').font(fontPicker('serif')).textSize(51)).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0028",
+      "code": "setCps(3.1)\n$: stack(color(\"~ {orange/2*3 yellow@4(3,3)}%5!4?\").tint(\"[0.75(3,3,2)!2 0.5 ~]*2 0.5@4/2 0 ~\", brandBy(0.12)), color(mini(\"cyan?0.6 [<#000 <green orange #00ff00>>(3,7,4)!2 [#00ff00@2?0.8]*4@2 {green/2 #fff?0.5*4 #fff}] [yellow?0.5? {cyan #0000ff}%5??0.3 {cyan? red}%2*4? [magenta*3@4 [#fff #0000ff](2,6,2)!4]?]?!3 pink/4\")), s('text:line_one').superimpose(x => x.brak())).shuffleIndex(14).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0029",
+      "code": "setCps(2.8)\nmuted_: stack(s('text:test_text'), screen(image(\"sprite <blueimg/4?0.4 redimg photo photo?0.2> sprite?\")).height(\"[0.25?]*2@2\")).shuffleStack(sine).index().rowscols(2).gridMod().alpha(square2.range(0.00, 0.00).segment(32).lerp('circ', 'inout')).alpha(\"[[0.25?*3](3,7,4)]*2 | 0.25 [0.5!4? [[0?(5,7,3) 0.5 0.25 0.25?0.3](3,3,1) 0.25(2,6,1)?0.5 0.75*2@3 0?0.3]!4 ~??0.2](5,5,3) 0.25?0.7\")"
+    },
+    {
+      "id": "g0030",
+      "code": "setCps(53.8)\n$: s(image(\"sprite [[<photo!4 redimg/4!2 sprite> sprite blueimg/4 redimg*2?]!4 {redimg?/2}%5] ~ ~\")).shuffleIndexCycle().rotate(\"[0.5?]@1?0.5 0.25@4 0? 0.75(2,6,5)\", \"~*3!4 1(4,4)\").cropStack(1, 3).gridMod().scale(isaw2.range(0.00, 0.00)).alpha(isaw2)"
+    },
+    {
+      "id": "g0031",
+      "code": "setCpm(38.1)\n$: stackN(4, color(\"#ff0000/4 ~\")).rowscols(2).gridMod().alpha(itri2)"
+    },
+    {
+      "id": "g0032",
+      "code": "setCps(0.0)\n$: stack(text('A'), text('42').mapOn('alpha', x => x.lerp('sine')), screen(\"cyan?0.7\"), image(\"sprite sprite(3,8,2)? photo/4\")).shuffleStack(\"<3@2@1 {1/4 7 [{3!4(3,3,0) 7? 7}%3(2,8)/4]*2(5,5,1)}%2>@4 7!2!3\").index().rowscols(2).gridMod().scale(\"1 -1/4\").scale(\"1.5/2*4 {[1@2 3@4?0.4]/2 3 {<1.5 1.5> 3}%5?? 3@2*4}%2@2\")"
+    },
+    {
+      "id": "g0033",
+      "code": "setCps(3.9)\n$: index(color(\"[#ff0000/4 [yellow/3?0.1]?0.8!3 orange/4/2]!3!4, [[cyan]*2 red]*4(2,3,1) white@4\").blend(\"~ ~ ~@2*4\")).rowscols(3).gridMod().scale(\"0.5/4?0.7 [[[1.5@2 1.5@4]? 0.5 2?0.2/4](3,8,6) 3]?(2,3,1) 3 -1?@2\")"
+    },
+    {
+      "id": "g0034",
+      "code": "setCpm(35.7)\n$: color(\"white!2/3 blue*4\").opacity(\"[0] 1 0.25? 0.5?0.2, ~\").cropStack(2, 1).gridMod().alpha(rand.segment(32).lerp('cubic', 'inout'))"
+    },
+    {
+      "id": "g0035",
+      "code": "setCps(10.0)\n$: text('A').h(\"0.25/3? 0.75 1 0.5?(3,3,2)\").cropStack(2, 3).gridMod()"
+    },
+    {
+      "id": "g0036",
+      "code": "setCps(0.8)\nSbg: image(\"~ blue.png\").urlBase('/test-assets/').often(x => x.when(\"1(4,8,4)?0.6 [0]/3 {1*4*3 0??0.3 0}%2 1\", x => x.fast(\"{[0.75 -4 0.25@4]?0.2?}%5/2 -16*4/2 ~?/3 {0.5 1(4,7,1) [0.125?0.8*4 -8 0.5]}%4@3\")))"
+    },
+    {
+      "id": "g0037",
+      "code": "setCps(2.0)\n$: stackN(3, screen(\"red!2?0.8 blue!2?0.2 yellow green?\").urlBase('/test-assets/').sometimesBy(0.30, x => x.alpha(\"<<1>?0.8 1 ~*2@1 0>(3,4), 1*3 0.75?0.3?, 0.75?\"))).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0038",
+      "code": "Sfg: index(screen(\"red\").urlBase('/test-assets/')).rowscols(3).gridMod()"
+    },
+    {
+      "id": "g0039",
+      "code": "setCps(3.5)\n$: stackN(2, color(\"[pink@1 [orange!3 ~ red(4,4)/3 {yellow}%4*2](2,6) pink? ~!4/4]? #00ff00 | <yellow? #000/4 [#0000ff?0.2!4 black]?0.4 black>(5,5,1) cyan orange ~!2\").textSize(43).tint(\"0\")).rowscols(2).gridMod().alpha(\"0*2?\").scale(\"0.5?0.3 [1 3!3 <3/3 1.5@3>(5,7,0)@1]!2, <~/3(2,4,0)>?0.8(2,8) ~?!2, 1??0.8 2?0.3?0.2\")"
+    },
+    {
+      "id": "g0040",
+      "code": "main: color(mini(\"purple@4?0.7\")).objectfit(\"contain\").x(\"0?0.3@2\").cropStack(2, 2).gridMod().alpha(rand2)"
+    },
+    {
+      "id": "g0041",
+      "code": "$: stackN(2, color(\"[black(2,6,0) [[blue?0.2? #ff0000] <#0000ff {white white@1/2 pink? purple!3}%2 purple@2!2 black>?0.7/3]/3?0.1 #0000ff?0.1 white]/4/4\").degrade()).rowscols(4).gridMod().alpha(\"0@3!2 0.75\").scale(\"<0.25!2(3,6,0) 1*4!2>@1*4 <{{1.5? 3??0.4}%4(5,6,1) 2/4/2 2/2 -1!4}%3*3/4 1.5 ~?0.5/3>??\")"
+    },
+    {
+      "id": "g0042",
+      "code": "setCps(6.5)\n$: s(color(\"pink? #0000ff??0.3, purple #fff?*4 purple@2, black*2!3 #ff0000?0.4\")).late(\"-0.25 2 {1? 4?/4}%2 {[{0.125!2@3 0.125?0.1 -0.25*4@1 -2(2,5,4)?}%4 -0.125/2? ~*2 16(5,5,3)?] -0.125 8 -1*3}%3\").cropStack(1, 3).gridMod().alpha(\"0.25/2/2 ~*2 {0.25@3? 0.75*4 [0.75*4!3 {0 0.25? 0.25/2!3}%3@4*4] 0.25*3}!3*2 0.5(2,4,3)!2, 0/2?0.2, 0.75 0.5@2@3 [1 <<0.25*4/4>/3!3 <1/2>/2?0.4> 0 0.75]?0.1\").scale(\"1? <{0.5}%3>@2*2\")"
+    },
+    {
+      "id": "g0043",
+      "code": "setCpm(71.2)\n$: stackN(4, screen(\"redimg*3 red\")).rowscols(4).gridMod().alpha(\"0.75/2/4\")"
+    },
+    {
+      "id": "g0044",
+      "code": "setCps(7.6)\n$: index(screen(\"~? | [cyan*3]*3\").shuffleStackCycle(\"5@1, {5!3 <1?? {6 5}%5 5!3? [3!2]?> 1}%5?(3,4,2), 3(3,4,2)?0.8 1@3*4\").barrel(\"<0.25!3? 0.75!2?0.3 -1*3 {-2/3@3 4}@4?>(3,6)!3 0.75(4,7,0) 4/4*4 [-8!2(5,8)]/3?\"), screen(\"blue.png? ~ [blue(5,5,4) [yellow?!3]*2@3 [[blue.png!3] red@2!3 blue(5,5)@1 photo1.jpg?(3,7,6)]@1@4] [red.png!4!4 photo1.jpg?0.6/4 photo1.jpg <blue*4>?0.3]@3@1, {<red.png ~/2 red!3 yellow>}%4(3,6)\").urlBase('/test-assets/')).cols(2).rows(3).gridMod().scale(\"<2!3 -1>(4,4,0)@1 -1@3?0.2 {3!2?0.2 [3?!4]/3*2 0.25(4,4,1)(4,4,3) 2??}%5@3?0.2, 0.5(3,3,2)@4 2?0.3 <0.5 [{2 0.25}%3 0.25 3? {2(4,4,1) 0.25}%4(3,5)@1]/3 2>\").scale(\"2/3 {1.5 ~@2?0.1 1??0.2 3}%2 [[<-1 3*4>*3 [1.5?0.6?0.2]?]?@3 3 <1.5*2!3 1 [<0.5*4!3>??]> 3?](3,8)*4 1?0.1(4,6,0)\")"
+    },
+    {
+      "id": "g0045",
+      "code": "setCps(cosine.range(0.59, 0.50))\n$: index(screen(color(\"#00ff00!4@4 ~\")).tint(\"0.25 0\", \"[<-2 0.5 0.125(2,6,4) -16!2>?]?\").grey(\"1(5,5,1)?0.3\")).cols(2).rows(3).gridMod()"
+    },
+    {
+      "id": "g0046",
+      "code": "setCps(10.0)\n_bg: stack(screen(color(\"#000 #000? #ff0000*3? ~ | {[white?0.1(4,6,5) pink?0.5@3]? ~?}%3(5,5,1) purple(5,8,4)?0.4\")).rotate(sine2.range(0.00, 0.00), \"~@1, ~ 0.75!3, ~/4 -0.25?0.1 ~!4?\").rotateX(itri2), text('world')).shuffleStackCycle(saw).indexCycle().rowscols(3).gridMod().alpha(\"[[0.25? 0!4]!4/4]*2!3 0.5*3 0.25(4,5) {<0.75/2? ~!2? 0?0.2 0>}%5?0.1(4,4,3)\").scale(isaw.range(0.00, 0.00))"
+    },
+    {
+      "id": "g0047",
+      "code": "$: stackN(2, text('hi')).rowscols(3).gridMod()"
+    },
+    {
+      "id": "g0048",
+      "code": "setCps(10.0)\n$: index(color(\"[yellow/3?0.4 {[{pink}%2/2@3 cyan!2 orange(5,5,2)/4 orange!2]}%3!2?0.5 magenta]?0.5!3 orange white(2,3)\").fontBGColor('#fff')).rowscols(3).gridMod().alpha(saw.range(0.00, 0.00).segment(16).lerp(\"<elastic ~>?0.2/2 | cubic?0.2@3 | expo quad(2,6,5) [back/2 cubic]!3?\", \"in/2 inout!2!3 out in*2\"))"
+    },
+    {
+      "id": "g0049",
+      "code": "setCps(10.0)\nbg: s(\"~?0.5\").opacity(square)\nmain: s(color(\"purple/3 cyan!3 yellow?(2,3,0) | {red*2 green}%5!3 white/4 #fff!3? purple@4/4 | [#fff/2*4](3,6,2)*4 purple ~/2@4 | yellow?*4 purple?0.4!2 white\")).scaleX(\"0.5? [1(5,5,2)!4 ~] ~(5,7,5) 3, 0.25?0.1(3,3,0) 0.5*4/4 0.5 ~?/3\")"
+    },
+    {
+      "id": "g0050",
+      "code": "setCps(126.3)\n$: color(\"white?0.2 [~](4,8,2) red <#0000ff?0.1!4 red <<orange>?!4 white/2(3,3,0) ~/4> #fff?0.2>*3?\")"
+    },
+    {
+      "id": "g0051",
+      "code": "setCps(2.6)\nmain: image(\"redimg*3? blueimg@4/2\").rotate(itri.segment(32).spline(\"0.3*4@4\"), \"0.5/3 0.75?@4 1@2\").rotateZ(\"1?0.2(3,3,2)\").fontBGColor('green').blend(\"soft-light/2*4\")\n$: color(\"<black(4,7,0) #000>@4 red/4 purple(5,5,3)(2,3,0) <magenta/4 purple(2,5,1)*2 #0000ff(4,6,5)@4>, yellow!3 {#000}*3/2 green@1\")"
+    },
+    {
+      "id": "g0052",
+      "code": "setCps(10.0)\nbg: image(\"[sprite/3 sprite*2 blueimg blueimg/2(2,8,7)]??0.1\").font('monospace').tint(isaw, -1.7107241358328563e+52).cropStack(2, 2).gridMod()"
+    },
+    {
+      "id": "g0053",
+      "code": "setCps(5.3)\n$: color(\"yellow, #fff? magenta?0.3*4, orange*2 white@2 #ff0000? [yellow*2*2]!3\").cropStack(3, 3).gridMod().scale(\"~?!2 1.5?0.4 <3??0.7 -1*4>??0.4 0.25*2, ~?0.3!2 0.25 0.5\").alpha(\"~@2 0.5 [[0.5/4 [1*4 1*2!4 1 [0.5 0.25!4@2]*4]!4 1/4@2](2,3,1)? 1?/3]*2 0.75?0.1\")"
+    },
+    {
+      "id": "g0054",
+      "code": "setCps(7.6)\n$: stack(color(\"blue@4 white(4,4)? black?0.8\").height(\"0.25 [{0.75/3 0.25/2/3 ~}(2,6,0)] 0.25 ~@2/3\"), image(\"[sprite]*2*4 ~ redimg?0.4 redimg\")).shuffleIndex(\"{1*2*4}%4 4(3,4,3), 5 4 2?0.5, 7*4(5,8,7)\").rowscols(3).gridMod().scale(rand.segment(32).lerp('sine', 'in'))"
+    },
+    {
+      "id": "g0055",
+      "code": "setCps(81.3)\nfg: stack(text('hello').fontSize(51), s('text:hello'), s(color(\"<#0000ff #0000ff?0.2/4> [orange/2*2 #fff black [pink/4 orange/4/4 red](5,5)], [black?? orange(2,5,1)](4,4,0)\"))).shuffleIndex(\"1 [5 3/3] ~?0.3(5,5,4) ~/3, 1 ~/3?, [[~*4 4/4?0.3]?0.3]?0.2 <3>(4,5,3)@4\").rowscols(3).gridMod().scale(\"<3 1.5@2 2*3 -1>!4 {0.25 [2 3]*2}%2(3,3,0) 2!4(2,3) [3/3 0.5 -1]\")"
+    },
+    {
+      "id": "g0056",
+      "code": "setCps(2.9)\n_fg: stackN(4, screen('text:hello_world').contrast(itri).blend(\"exclusion\")).rowscols(3).gridMod()"
+    },
+    {
+      "id": "g0057",
+      "code": "setCps(1.9)\n$: index(color(\"[~?0.4 #000!2!3 blue]?0.4 [green*4(4,4,0)]?? [~ ~?0.4?0.4 ~ #000?]@4*2, <<<cyan/3 orange!2? pink purple@1?>@2(4,5,0)> [blue@3@2] <blue!2?>/2? {magenta(3,7,6)? pink?0.9!3 white yellow}%3?>\")).rowscols(4).gridMod().alpha(\"0 ~?0.2\")"
+    },
+    {
+      "id": "g0058",
+      "code": "$: index(screen(\"blueimg@1*4 blueimg@2@2 [[~(4,4,0)] [green? green?0.4*4]/4!3 sprite*3? ~] sprite\").dur(\"-0.25/4?0.3\")).cols(2).rows(3).gridMod().alpha(square2.div(3)).alpha(isaw)"
+    },
+    {
+      "id": "g0059",
+      "code": "setCps(7.1)\n$: index(color(\"~(2,8,0)?0.8\")).rowscols(2).gridMod().alpha(\"[{0.25@2 0.5@3 1@3}%5!2!3](3,7,3)\").alpha(\"[0.75(4,4,3)]\")"
+    },
+    {
+      "id": "g0060",
+      "code": "setCpm(30.0)\n$: stackN(4, image(\"sprite1.png*3 sprite1.png!3(3,7,5) texture.webp*3?0.2 <~ texture.webp!3(5,5,0) <~ ~*2!2>?0.1 photo1.jpg/2>@2\").urlBase('/test-assets/').rotate(sine2, \"0.5 ~\")).rowscols(2).gridMod().alpha(\"0.25*2 [0.25@1?]/3 0 ~!3 | 0@2 0.25(2,4,3)!4 <0.5*2*4> | [[[1?0.1?]]?0.1(2,6) [[1/4?0.8](3,6)?0.7 0.25?0.1!4 0 1(2,2,0)(3,4,0)] 1]*2!4 0.25 ~ 0 | ~(5,7)?0.8 ~?0.2@3 [0.5 {1?@2}%5](5,5,2) 0.5@3\").scale(rand)"
+    },
+    {
+      "id": "g0061",
+      "code": "setCps(7.4)\nSbg: image(\"texture.webp/4 blue.png\").urlBase('/test-assets/').fontBGColor('orange').cropw(\"1!3!2 0.75 {[0.75??0.5 1?0.1 0.25?(2,8,4)]?!3 {1/4 0.25@2}%5!3?0.8 1@3}%3?@4\").grid(2, 1, 1).rotateY(\"0.25/4 0, 0/2 [0.5!3] -0.25, 0*4 0.75? [0.25*2?]/4@2\").cropStack(2, 1).gridMod()"
+    },
+    {
+      "id": "g0062",
+      "code": "$: stackN(3, text('hello').pixelate(3)).rowscols(2).gridMod().scale(\"[-1? 1@4?0.2 {3 [1.5@2(3,8,0) 1 3?0.2(2,6)]@3}%5 <{-1/4!4 3?0.2 0.5}%2/2?0.6 0.5*3>/2?](5,5,3)@1 [2 <-1@1!3 ~ 3? 3!3*3>?@3]*3!2\").alpha(rand2.range(0.00, 0.00).segment(16).lerp('bounce', 'inout'))"
+    },
+    {
+      "id": "g0063",
+      "code": "setCps(6.1)\nmain: image(\"sprite [<<[redimg](4,5,2)@1>/4(2,5,1) blueimg!4(3,7,6) photo/4!2 sprite@3>/2 redimg@2? <photo?!4 [[sprite]!2]!3 photo?0.5 photo> blueimg]!4/3\").scaleX(\"2!4/4 2 0.5 2\").cropwh(itri.segment(32).spline(\"0.8(5,5,0), 1??0.2 0.5?0.2/4, ~ 0.3!4@1 0.3/3\")).top(sine2).font('monospace')"
+    },
+    {
+      "id": "g0064",
+      "code": "setCps(3.5)\n$: screen(\"~?0.2@4\").urlBase('/test-assets/').left(\"0.75\").cropStack(2, 1).gridMod().scale(\"1/2 [-1@3?0.3 ~ 3/3](3,6,4) <2/3(3,5,4) 3 <-1/2 1!2 {3 0.25*3 0.25 0.5}%2?>(5,5)>/2*2 0.5\").alpha(\"[0.75/2?0.5 0.75? [0.25!2?0.2 0.75 0.25*4 0.75*4] 1]!4\")"
+    },
+    {
+      "id": "g0065",
+      "code": "_bg: stack(screen(\"red@3!3 {red.png@3 green!2?}%3\").urlBase('/test-assets/'), screen('text:foo_bar').rarely(x => x.speed(brandBy(0.20)))).shuffleIndexCycle(4).rowscols(4).gridMod().alpha(square2).alpha(cosine2.segment(8).spline(0.10))"
+    },
+    {
+      "id": "g0066",
+      "code": "setCps(4.9)\n_fg: color(\"#fff\").contrast(\"~ [{-8*3?0.2 -0.5?@1 -0.25}%4!3]?0.1 8/4@2\")"
+    },
+    {
+      "id": "g0067",
+      "code": "setCps(9.2)\nSfg: stackN(3, color(\"~@3 magenta/4 white!4/2\").pixelate(1).tint(cosine.range(0.00, 0.00))).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0068",
+      "code": "setCps(sine.range(0.17, 0.83))\nbg: index(s(color(\"<#0000ff [#0000ff #0000ff/2(3,3,1)] [blue orange?0.3*3]?0.1>?0.3 ~/3\")).blend(\"hard-light\"), screen(image(\"[{photo!4@1 blueimg?0.2}%2*3!3] redimg!4?\"))).rowscols(2).gridMod().alpha(rand2.segment(8).spline(0.49))"
+    },
+    {
+      "id": "g0069",
+      "code": "setCps(1.8)\n$: stackN(3, color(\"~?0.1 ~(3,8,2) #0000ff!4/3\").tint(isaw.segment(16).spline(0.60), run(2))).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0070",
+      "code": "setCpm(98.0)\n_fg: color(mini(\"purple??0.2 black(3,7,6) #ff0000!3\")).cropStack(2, 3).gridMod().scale(\"<0.5>*3*4 <[0.5!4?0.2 ~(3,7)] ~ 0.5!3 0.25?0.2!3> 1!2?\")"
+    },
+    {
+      "id": "g0071",
+      "code": "setCps(6.5)\n$: stack(screen(\"redimg redimg [blue*2@3]!3\").huerot(\"~@4(5,5,0) {{~ 0.25*2?0.5 0.75*3}%4?0.5?0.5 0*2*2 0.5*3}%3(3,6,2) 1!3?0.2\").sync(true), screen(image(\"photo? [photo(4,4,1)!2 blueimg]?0.2(2,4,3) photo {sprite}\")).degradeBy(0.52), image(\"sprite1.png!4\").urlBase('/test-assets/').h(\"0.75!2*3 1!3? [1]@4?0.2\").scaleX(\"1/2 [[-1 3?0.3 2]@1? 1.5/2 [-1]@1(2,7,2) 0.25*4]\").tint(rand.range(0.00, 2.00), \"16, ~(5,5,0)@2 0.5(3,3,1)*3, -2?0.6\"), image(\"{[blueimg@4? [sprite@3?0.2 blueimg*3 redimg blueimg]*2 redimg*3 [sprite sprite@2]]/3 redimg}%3@2 sprite*3(3,5,3) [blueimg redimg photo? photo!4]*3?, ~\")).shuffleIndex(0).rowscols(3).gridMod().alpha(isaw.range(0.00, 0.00)).alpha(\"0.75\")"
+    },
+    {
+      "id": "g0072",
+      "code": "loadImage('redimg', '/test-assets/red.png')\nsetCps(10.0)\n$: color(\"yellow?@3 {purple}%5?/3 #0000ff/3, #ff0000/3?0.1\")"
+    },
+    {
+      "id": "g0073",
+      "code": "setCps(0.3)\n$: stack(color(mini(\"~@1 <blue green <purple cyan@4> magenta/3> {black(3,3,0) {blue??0.3} green}%2!2\")), color(\"[pink?0.2 white?0.2]\")).shuffleIndex(sine).rowscols(3).gridMod().scale(\"<0.5*2*2>?0.1 1.5@4\")"
+    },
+    {
+      "id": "g0074",
+      "code": "setCps(8.0)\n$: stack(image(\"{sprite2.png blue.png}%5 <[photo2.jpg?]@1 photo2.jpg>? ~!4?0.1\").urlBase('/test-assets/').rotate(\"<[1@2? 0/3 1!2 0.25*3(5,8)] -0.25? 0.25@2/3> 0(5,5) 0.5 0.25!4(2,4,3)\").fontSize(26), image(\"~\").urlBase('/test-assets/').fontBGColor('white')).shuffleStack(saw).index().rowscols(4).gridMod().alpha(rand.segment(16).lerp('expo', \"[out/4!3 [out@4(5,5) [in?*2]*2(4,7,6)]*4] in!3@3 in@3!3\"))"
+    },
+    {
+      "id": "g0075",
+      "code": "setCps(7.1)\n$: stack(color(\"[[[{green?(2,3) orange #fff}%2!2/2](4,6,2)!3]@4@1 #00ff00*3? [[purple white](4,4,1)]]!4 {black*4@1 <{#00ff00}%5?0.1 red/3>(5,6,3) ~!3}%3!4, [[[[purple?](2,8,6) red@1]]?]?/3\").rotate(\"0.5!3\"), color(\"[white?]?0.3(4,7)\").shuffleIndex().scaleX(\"1.5/2/3 1@2? 2!2(2,4) 3(5,5), 1.5@2 0.5?0.4, [0.25*4 {[0.5@1*4 -1 0.5!4 ~(5,5,3)] 0.25@2 0.25}%2 1 1?]\")).shuffleIndex(rand).rowscols(2).gridMod().alpha(\"0.5 0.5 {{{0.75(2,8,6) 0.25 1? 0?}%3 1 1}%2? 0.75@1}%4/3 <~/3?0.5 0(3,4,3)!4>\").scale(\"0.25 ~!4 0.5/2/3 [0.5!2]!2\")"
+    },
+    {
+      "id": "g0076",
+      "code": "setCps(2.0)\nSfg: stackN(4, text('test')).rowscols(3).gridMod().scale(\"~!2 1.5\").alpha(\"[0 [[0.5(2,2,0) 0.25 0.25?0.2] 0.25?0.4]@2?0.2] 0.25\")"
+    },
+    {
+      "id": "g0077",
+      "code": "setCps(isaw.range(3.93, 0.72))\n_fg: text('bar').font(fontPicker('serif')).cropw(\"0.25 1?0.7 [0.5?0.1](2,7,1)\").cropStack(2, 1).gridMod().scale(\"[0.25*3@1 1.5/3 0.25!3 0.25*4]?\").alpha(rand)"
+    },
+    {
+      "id": "g0078",
+      "code": "loadImage('blueimg', '/test-assets/sprite2.png')\nsetCps(3.4)\n$: s(image(\"redimg [sprite!4!4 ~ redimg]/3/4\")).scaleY(\"[1.5 ~]/2 0.25/2 0.5?0.9@4\").pixelate(19)"
+    },
+    {
+      "id": "g0079",
+      "code": "loadImage('photo', '/test-assets/texture.webp')\nsetCpm(30.0)\noverlay: index(image(\"blueimg@4?0.1 photo/2@4\").rotateZ(isaw).h(\"{0.5/2 {[1/4(2,6,2) {1?0.7@1 0.25 0.25*2}%4(4,6,3) 0.75/3 0.75?0.1] {<0.75 1 0.5*4(4,4) 1> 0.5*2?0.2 ~?/4}%4?@3}*2}%3? 0.5*4 {0.25 1!2 {0.75?} 0.5}%5 0.75\"), image(\"texture.webp?0.8 texture.webp?\").urlBase('/test-assets/').cropw(\"1(3,8,0)@3 0.75(3,4,2), 0.5(3,4,0)!2\").cropx(\"~ <0.5?0.2 0>(4,5,2) {0.75/2@4 0}?0.7*3 ~?\")).cols(4).rows(4).gridMod().alpha(\"0.75 ~*2 0.25/2\")"
+    },
+    {
+      "id": "g0080",
+      "code": "setCpm(30.0)\n$: index(color(mini(\"{[green(3,3,2)/2 #ff0000] [white orange(3,6,0) #ff0000]? ~(5,5,2)?}%3(4,4,3)\")).font(fontPicker('sans-serif')), image(\"sprite2.png!2 ~?0.2\").urlBase('/test-assets/')).rowscols(2).gridMod().scale(\"[{-1*2 3@1@3 3!4 3}%5!3 1 [1@1!4]/4 <0.25!2!4 -1 -1@3/3>?0.2]\").alpha(\"[{0.25 0?0.1 0.25??0.5}?0.4!2 [0.75!4 0@3 0.25*4!4 {0.5 [0.5/2(5,6) 0.25]!3?}(3,7,0)]/3*2 0.75 1!4@1]?\")"
+    },
+    {
+      "id": "g0081",
+      "code": "fg: color(\"[~*4? [#00ff00(3,4)*4] white]?0.2!3 #0000ff\").mapOn('rotateZ', x => x.lerp()).cropStack(3, 3).gridMod().alpha(\"~@1?0.6, 0.25*4 0/4@2 1?/2\").scale(saw2)"
+    },
+    {
+      "id": "g0082",
+      "code": "setCps(7.7)\nSfg: stackN(4, color(mini(\"#0000ff\"))).rowscols(4).gridMod().alpha(\"{[1?] 0}%2!4/3 1?? 0.25!4\")"
+    },
+    {
+      "id": "g0083",
+      "code": "setCps(1.1)\n$: color(\"blue [~@2*2]/4?0.2 #ff0000*3/2 black?*3, [~*4? ~(3,3,0)]\")"
+    },
+    {
+      "id": "g0084",
+      "code": "$: stack(screen(color(\"{[magenta*2? white@4 <pink? yellow>] green/2!4 purple}%3(4,4)!2 [#ff0000/3*4 purple*4?](3,7,2)\")), screen(\"{red}%4*4\").shuffleStack(sine), s(\"blue?/3 green blue?0.1\").urlBase('/test-assets/').scaleX(rand.segment(32).spline(\"0.8*3@1 <0.8 ~@1/2> 0.1(5,7,4)(4,4,1) {0.8}\")), color(\"orange [[[cyan(3,3,1)?0.3]@1*4]/3? [#00ff00 #ff0000*4/2 green/2*3 #0000ff]] <purple@4 #000!4>*2/3\").shuffleStackCycle(\"<~*2?>?0.1?0.1\")).shuffleIndex(34).rowscols(4).gridMod().alpha(\"1?0.2\").alpha(\"0.75?? 0.75 [[[[1 0/2? 1??]]/3(4,8) 0.75 0.25 [1!3 0.75/2(2,6,3) 0.75 0.5!3](4,5,4)!4]@2? 0.75/3?0.1 {0.25 0!3 1} 1(5,8,6)?]!2\")"
+    },
+    {
+      "id": "g0085",
+      "code": "setCps(10.0)\n$: index(color(\"green ~@4?, magenta!4 <<<blue*3 #00ff00*4*2>?0.3!3 black?*2 black*2@3>>/4, {pink?*3 black}%3 <red <black(4,8,5)(5,7,1) green? #ff0000?0.6 #00ff00/4>!3 [black!3!3 purple*3 black]?0.2>\")).rowscols(3).gridMod().alpha(\"0.75!3? 0.75/2\").alpha(\"{0.75(5,6,4) 0.5 0.75/4}%2 ~*2 <[0(5,5,1) 0 1 {0.5?0.2?0.4 0.5/4 1 0!3?}%5/2@3]!2*3>(4,6,4) [1?0.1*3 0.5(4,5) [1@4 0.75/3*4]]@1*3\")"
+    },
+    {
+      "id": "g0086",
+      "code": "setCps(7.9)\n_fg: index(text('hi').font(fontPicker('monospace')).font(fontPicker('monospace')).when((itri2).gt(0.5), x => x.slow(choose(8, 0.1, 2)))).rowscols(2).gridMod().scale(rand2)"
+    },
+    {
+      "id": "g0087",
+      "code": "setCps(7.7)\n$: index(image(\"sprite1.png? photo2.jpg@2 blue.png?0.2\").urlBase('/test-assets/').x(\"[[<2 [-0.25?!3 0!3/3 -0.5?]*2 2@2!2>?0.2(4,6,1) 2*2 0?0.2/4 -0.5?0.4]/2 -0.5 [0*3 2?]??0.5]@3 1.5*3?, -0.5/3\").left(\"0?0.1(4,4,1) [-0.25?]*2@3 <[0 1.5*3@3 1.5 -0.5]@1 -0.25 [~ -0.5@1?]?0.5>?*4\")).rowscols(4).gridMod().alpha(\"[0.5 <[0.25?(5,6,0) 0?0.4?0.3](2,4,2)? 0.5>?0.3 0/3/2]/2?0.3\")"
+    },
+    {
+      "id": "g0088",
+      "code": "setCps(10.0)\n$: color(mini(\"pink*4/2\")).mapOn('y', x => x.lerp()).fontColor('#00ff00')"
+    },
+    {
+      "id": "g0089",
+      "code": "setCps(10.0)\n$: index(s(image(\"redimg?, sprite, redimg\")), image(\"texture.webp?0.3 ~\").urlBase('/test-assets/').cropw(\"1/4*4 1 {0.25(2,6,5) [0.25?0.6] 0.5*4}%3?? [0.75*2@4 0.75 1 1?0.8](4,5)\").rarely(x => x.rev()).font('monospace'), screen(\"red blue!2\")).rowscols(4).gridMod().alpha(\"<1@2 <0.5(4,5,0)!4 0.75 0.75!2>*2@1>/3 1 [[0.25@2/2] {0.5(4,4,0) 0(5,5,0)?0.6} [0] ~!4]/3 1\").scale(\"~? 1*2@3 ~!2/2 ~\")"
+    },
+    {
+      "id": "g0090",
+      "code": "$: stackN(3, s(\"<~> blueimg/4 ~*2!3 ~(5,8,1)\")).rowscols(2).gridMod().scale(\"<{[0.25 3?0.1 3(4,8,0)!4]@1}%5>@4/4 <{-1?0.2 0.5*2!2 0.25?0.9(2,3,2) -1}%3 [{1.5(2,3,0)? 0.25!3 ~?0.1!3 1.5?}%5 <[1/2@1 0.5*2 1.5*4]!4 2>?0.8] 0.25@1>@3? ~@4?0.2\").scale(rand.range(0.00, 0.00).segment(32).lerp('elastic', \"inout?@2 in(5,5,0)?\"))"
+    },
+    {
+      "id": "g0091",
+      "code": "setCps(5.9)\n$: stackN(4, text('hello').late(2.888890773215536e+278).shuffleStack(tri).scaleX(\"-1 3 -1?0.8*3 [3 <3 1!2@1>]*4(3,7)\")).rowscols(2).gridMod()"
+    },
+    {
+      "id": "g0092",
+      "code": "$: text('world').cropStack(2, 1).gridMod()"
+    },
+    {
+      "id": "g0093",
+      "code": "setCps(2.0)\n$: s(color(\"[#fff/2 #0000ff(3,6,0) {black?0.1?}%4!4/2 #fff(2,6)]!2*3 cyan #00ff00\")).cropStack(2, 3).gridMod().alpha(\"[<0.75 0.5(4,4) 0.5*4 0@1>?(4,5) ~!4 1(4,6,3)*3](4,4,1)!3 0.75?0.9 1? ~ | [0.5@3(5,5,0) ~ 0.75*2] ~(4,4,2) <0!3 0.25(3,6,5)/2>?0.2?0.3 | 0.75? <0.5/3*3>(4,8,6) | 0@1!3 {0@1}%2*2?\")"
+    },
+    {
+      "id": "g0094",
+      "code": "Sfg: stack(image(\"sprite2.png/2 red.png(3,5,0)\").urlBase('/test-assets/').cropy(\"{-0.25?0.1(5,5,0) <1.1 [1.1*3?0.9 -0.1 {1.25?}%4!3*2 1.5]*3>}%5?\").shuffleStack(sine).h(tri2.segment(16).spline(\"0.1 0.5!3@2 [0.3?0.1@3](5,5,2) 0.5 | 0.8/4\")), color(\"purple*3 {green@3}%2\")).shuffleIndex(\"~!4(5,6,4) ~ 2!3/3 3(3,6,5), {~?}%3 ~?? 7, 1!3? 8 [4? ~]?0.3!2\").rowscols(3).gridMod().scale(\"[0.25 [0.25@1!3](3,4)*2 [0.25]!2*2 1*4], [<1.5(5,7,1)> [3@4]?0.1*4] ~\")"
+    },
+    {
+      "id": "g0095",
+      "code": "setCps(sine2.range(1.38, 0.72))\nSbg: color(\"~@4*4\").cropStack(3, 2).gridMod().alpha(\"{[0.5 1!3 0.75]?0.8/2 <0.25?0.2 <0 0(4,4,0)/4 0.75> 1 1*4> ~/4 0.25!2(5,8,0)}(4,4,1)?\").alpha(itri.div(2))"
+    },
+    {
+      "id": "g0096",
+      "code": "setCps(1.6)\n$: index(screen(\"~\").shuffleIndexCycle().blend(\"screen\").croph(\"1@4!2 [0.25?]!2 ~\")).rowscols(2).gridMod().scale(isaw)"
+    },
+    {
+      "id": "g0097",
+      "code": "$: stack(screen(\"green\").shuffleIndexCycle(\"3 ~*2 ~ 7@2/3\"), color(\"<[#0000ff]*3*2 [[red/4 #0000ff(2,7,0)]*4]@4?>*4 [purple*3 #0000ff [pink!4](5,5,0)? [black/2!2 {pink?0.3@1 yellow}%2*2/3 purple@2 green]] #0000ff, yellow!3 [purple*4!2 green!2]\").y(\"0.5 0!2\"), color(\"red cyan\").barrel(1.4876961580557804e+153)).shuffleStackCycle(\"[~/3!2 ~ <5/2(4,7,6)>]?0.2*2\").indexCycle().rowscols(3).gridMod().scale(\"[~@2(4,8,3) ~? {~ -1?0.5 2 1.5}%5/3!3 [<3 0.5@4 1.5(2,6,2) 1.5@2>/3(5,8) <-1 0.25? 3?0.4>@1@1]]\")"
+    },
+    {
+      "id": "g0098",
+      "code": "setCps(0.0)\nmain: index(text('hi').contrast(slider(0.000, 0.00, 0.00)), color(mini(\"[[#000?]](3,6) <[pink cyan!4 #fff] #ff0000@2?0.8 ~??>? [blue/3@2](2,5,0)?0.3\")).shuffleIndex()).cols(2).rows(4).gridMod()"
+    },
+    {
+      "id": "g0099",
+      "code": "overlay: s('text:hello_world')"
+    }
+  ]
+}
