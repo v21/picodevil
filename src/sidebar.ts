@@ -2,6 +2,8 @@ import { setupReference } from "./reference";
 import { setupMediaLoader } from "./media-loader";
 import { setupPerfPanel } from "./perf-panel";
 import { setupAudioTab } from "./audio-sidebar";
+import { setupExamples } from "./examples";
+import aboutHtml from "./about.html?raw";
 
 const STORAGE_KEY = "uzuvid-sidebar";
 
@@ -69,6 +71,10 @@ export function setupSidebar() {
   if (perfTab) setupPerfPanel(perfTab);
   const audioTab = document.getElementById("tab-audio");
   if (audioTab) setupAudioTab(audioTab);
+  const aboutTab = document.getElementById("tab-about");
+  if (aboutTab) aboutTab.innerHTML = aboutHtml;
+  const examplesTab = document.getElementById("tab-examples");
+  if (examplesTab) setupExamples(examplesTab);
 
   // Tabs
   const tabs = panel.querySelectorAll<HTMLButtonElement>(".tabs button");
