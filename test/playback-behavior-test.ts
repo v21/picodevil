@@ -23,13 +23,13 @@ const DURATION_MS = parseInt(args[args.indexOf("--duration") + 1] || "4000", 10)
 // ---------------------------------------------------------------------------
 
 async function waitForApp(page: Page) {
-  await page.waitForFunction(() => typeof (window as any).uzuEval === "function", null, { timeout: 10000 });
+  await page.waitForFunction(() => typeof (window as any).pdEval === "function", null, { timeout: 10000 });
 }
 
 /** Evaluate a pattern expression, wait ms, then return video element currentTime values. */
 async function samplePositions(page: Page, code: string, sampleCount: number, intervalMs: number): Promise<number[][]> {
   await page.evaluate((c: string) => {
-    (window as any).uzuEval(c);
+    (window as any).pdEval(c);
   }, code);
 
   // Wait for video metadata to load (pool element needs duration)

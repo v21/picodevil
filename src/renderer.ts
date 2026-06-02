@@ -17,7 +17,7 @@ import { FONT_AXES } from './font-list';
 
 type VideoPool = ReturnType<typeof createVideoPoolManager>;
 
-/** Subset of uzuMetrics that the frame renderer updates. */
+/** Subset of pdMetrics that the frame renderer updates. */
 export interface FrameMetrics {
   shareHits: number;
   xLog: number[];
@@ -64,7 +64,7 @@ export class FrameRenderer {
   }
 
   /**
-   * Called from uzuEval after new screens are registered.
+   * Called from pdEval after new screens are registered.
    * Pre-fetches blobs for all video sources visible in the screen.
    */
   prewarmBlobs(screen: Screen): void {
@@ -91,20 +91,20 @@ export class FrameRenderer {
     this.metrics.driftSeeksThisFrame = 0;
 
     // Phase 1: pattern query
-    performance.mark('uzu-phase-start');
+    performance.mark('pd-phase-start');
     const { needed, eventMap, allEvents } = queryNeeded(screens, t, cps, this.pool.videoDurations, this.pool.resolveMediaUrl);
     this.lastEventCount = allEvents.length;
-    this._endPhase('uzu query', this.metrics.phaseQuery);
+    this._endPhase('pd query', this.metrics.phaseQuery);
 
     // Phase 2: element assignment (pool matching)
-    performance.mark('uzu-phase-start');
+    performance.mark('pd-phase-start');
     this.assignElements(needed, eventMap, t, cps, frameDt);
-    this._endPhase('uzu assign', this.metrics.phaseAssign);
+    this._endPhase('pd assign', this.metrics.phaseAssign);
 
     // Phase 3: draw — single pass in declaration order; named FBOs rendered inline.
     // videoFrameProcessed prevents renderVideoFrame being called twice for non-H named
     // patterns, which render to both their FBO and the main canvas.
-    performance.mark('uzu-phase-start');
+    performance.mark('pd-phase-start');
     const videoFrameProcessed = new Set<VideoEl>();
     const namedByIndex = new Map(namedScreens.map(n => [n.screenIndex, n.name]));
 
@@ -142,21 +142,21 @@ export class FrameRenderer {
     // Blit canvas → "prev" FBO for next-frame feedback
     this.renderer.captureAll();
 
-    this._endPhase('uzu draw', this.metrics.phaseDraw);
+    this._endPhase('pd draw', this.metrics.phaseDraw);
 
     // Phase 4: prewarm (lookahead query + element prep)
-    performance.mark('uzu-phase-start');
+    performance.mark('pd-phase-start');
     if (cps > 0) this.prewarmSources(screens, cycle, cps);
-    this._endPhase('uzu prewarm', this.metrics.phasePrewarm);
+    this._endPhase('pd prewarm', this.metrics.phasePrewarm);
   }
 
-  /** Measure from the last 'uzu-phase-start' mark, push duration to arr, clear entries. */
+  /** Measure from the last 'pd-phase-start' mark, push duration to arr, clear entries. */
   private _endPhase(name: string, arr: number[]): void {
-    performance.measure(name, 'uzu-phase-start');
+    performance.measure(name, 'pd-phase-start');
     const entries = performance.getEntriesByName(name, 'measure');
     const last = entries[entries.length - 1];
     if (last) { arr.push(last.duration); if (arr.length > 300) arr.shift(); }
-    performance.clearMarks('uzu-phase-start');
+    performance.clearMarks('pd-phase-start');
     performance.clearMeasures(name);
   }
 

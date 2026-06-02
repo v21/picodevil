@@ -131,24 +131,24 @@ async function renderCase(page: Page, url: string, code: string): Promise<PixelD
   // poke at window state.
   await page.goto(url, { waitUntil: "load" });
   await page.waitForFunction(
-    () => typeof (window as any).uzuEval === "function"
-      && typeof (window as any).uzuRenderAt === "function"
-      && typeof (window as any).uzuPauseRaf === "function",
+    () => typeof (window as any).pdEval === "function"
+      && typeof (window as any).pdRenderAt === "function"
+      && typeof (window as any).pdPauseRaf === "function",
     null, { timeout: 10000 },
   );
 
-  await page.evaluate(() => (window as any).uzuPauseRaf());
+  await page.evaluate(() => (window as any).pdPauseRaf());
 
   await page.evaluate((entries: typeof REGISTRY_SEED) => {
-    const addMedia = (window as any).uzuAddMedia;
+    const addMedia = (window as any).pdAddMedia;
     if (addMedia) for (const { name, url } of entries) addMedia(url, name);
   }, REGISTRY_SEED);
 
   const evalError = await page.evaluate((c: string) => {
-    try { (window as any).uzuEval(c); return null; }
+    try { (window as any).pdEval(c); return null; }
     catch (e: any) { return e?.message || String(e); }
   }, code);
-  if (evalError) throw new Error(`uzuEval threw: ${evalError}`);
+  if (evalError) throw new Error(`pdEval threw: ${evalError}`);
 
   // Wait for fonts to finish loading — text() tiles otherwise render with the
   // CSS fallback face for the first few frames after eval.
@@ -164,7 +164,7 @@ async function renderCase(page: Page, url: string, code: string): Promise<PixelD
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     await page.waitForTimeout(i === 0 ? SETTLE_MS : 100);
     last = await page.evaluate(({ cycle, cps }: { cycle: number; cps: number }) => {
-      (window as any).uzuRenderAt(cycle, cps);
+      (window as any).pdRenderAt(cycle, cps);
       const c = document.getElementById("c") as HTMLCanvasElement;
       const w = c.width, h = c.height;
       // Read via a 2D canvas to get post-composited pixels without depending on

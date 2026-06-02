@@ -1,10 +1,12 @@
-# uzuvid - agent orientation doc
+# picodevil - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-05-18.
+> This file is machine-authored for use by coding agents. Last updated 2026-06-02.
 
 ## What is this?
 
-uzuvid is a live-coding visual performance tool. Users write JavaScript in a browser-based editor (CodeMirror), hit Ctrl+Enter to evaluate, and the code controls what gets drawn to a fullscreen canvas. It uses Strudel's mininotation system for rhythmic patterns of colors and videos.
+picodevil is a live-coding visual performance tool. Users write JavaScript in a browser-based editor (CodeMirror), hit Ctrl+Enter to evaluate, and the code controls what gets drawn to a fullscreen canvas. It uses Strudel's mininotation system for rhythmic patterns of colors and videos.
+
+> **Name history**: this project was previously called **uzuvid**. The working directory is still `/Users/v/uzuvid/` and older git history, commit messages, and external links may use the old name. If you find a stray `uzuvid` / `uzu*` reference in code, it's a missed rename — flag it.
 
 ## Design principles
 
@@ -73,7 +75,7 @@ uzuvid/
    - Computes cycle position from elapsed time and `cyclesPerSecond`
    - Queries each screen pattern with `queryArc(t, t)` (zero-width instant query)
    - `FrameRenderer.render()` calls `queryNeeded` to collect needed sources, calls `matchSources` to assign pool elements by seek-cost scoring, then dispatches `TileParams` to the active `Renderer` backend
-4. `window.uzuEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
+4. `window.pdEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
 
 ## Renderer architecture
 
@@ -278,17 +280,17 @@ The render loop is instrumented with `performance.mark` / `performance.measure` 
 
 | Measure name | What it covers |
 |---|---|
-| `uzu query` | Pattern `.queryArc()` calls — building the event list |
-| `uzu assign` | `matchSources` — seek-cost scoring and greedy assignment of pool elements to needed sources |
-| `uzu draw` | Video frame rendering + GPU dispatch (`beginFrame` → `endFrame`) |
-| `uzu prewarm` | Lookahead query + prewarm element creation/seeking |
+| `pd query` | Pattern `.queryArc()` calls — building the event list |
+| `pd assign` | `matchSources` — seek-cost scoring and greedy assignment of pool elements to needed sources |
+| `pd draw` | Video frame rendering + GPU dispatch (`beginFrame` → `endFrame`) |
+| `pd prewarm` | Lookahead query + prewarm element creation/seeking |
 
 **Interactive profiling workflow (for exploratory investigation):**
 1. `npm run dev` — start the dev server
 2. Open Chrome at `http://localhost:5173`
 3. Write and evaluate your pattern in the editor
 4. Open DevTools → Performance tab → Record → interact for a few seconds → Stop
-5. In the flame chart, look for `uzu query / uzu assign / uzu draw / uzu prewarm` in the "Timings" lane — these show exactly which phase is eating time. GPU work (compositing, texture upload) appears separately in the GPU track and is **not** captured by our JS marks.
+5. In the flame chart, look for `pd query / pd assign / pd draw / pd prewarm` in the "Timings" lane — these show exactly which phase is eating time. GPU work (compositing, texture upload) appears separately in the GPU track and is **not** captured by our JS marks.
 6. The sidebar Perf tab shows a live frame-time graph and pool stats while you experiment.
 
 **Note on total frame time:** our JS marks cover only JS execution. Browser compositing and GPU work happen after `endFrame()` and are not included — the inter-frame gap (shown in the perf panel as "frame gap") is the real perceived cost. If JS phases look fast but frame gap is high, the bottleneck is GPU-side (too many texture uploads, too large a canvas, etc.).
@@ -297,7 +299,7 @@ The render loop is instrumented with `performance.mark` / `performance.measure` 
 - Reports `p50/p95` for each phase alongside total frame times in the stderr summary
 - Use `--case <substring>` to target a single scenario during investigation
 - Phase times are also in the JSON output (`cases[].phases.{query,assign,draw,prewarm}`)
-- stress-test only measures JS-side frame times from `uzuMetrics`; it cannot see GPU work, video decode, or IPC costs
+- stress-test only measures JS-side frame times from `pdMetrics`; it cannot see GPU work, video decode, or IPC costs
 
 **Deep CDP trace profiling (`test/perf-trace.ts`):**
 
@@ -313,7 +315,7 @@ To investigate a specific pattern:
    - **Inter-frame gaps** — p50/p95/max of time between `BeginMainThreadFrame` events. This is the real perceived frame rate, including GPU stalls.
    - **GPU/CC thread events** — work happening on the GPU process thread, separate from JS.
    - **Media/Video/Decode events** — `MojoVideoDecoder::Decode`, `MojoVideoDecoderService::OnDecoderOutput` (max here = decode spike causing a frame drop), `RendererImpl::SetPlaybackRate` (high call counts = excessive rate-setting each frame), `RendererImpl::StartPlayingFrom` (= seeks; high rate = seek storm).
-   - **uzu named measures** — our `performance.measure` spans if captured (requires `blink.user_timing` category; may be empty in some configurations).
+   - **pd named measures** — our `performance.measure` spans if captured (requires `blink.user_timing` category; may be empty in some configurations).
    - **Slow rAF frames** — events found *inside* rAF callbacks that took >20ms, to identify which JS operations correlate with frame drops.
 
 Key things to look for:

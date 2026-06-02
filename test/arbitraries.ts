@@ -1,5 +1,5 @@
 /**
- * fast-check arbitraries for uzuvid code generation.
+ * fast-check arbitraries for picodevil code generation.
  *
  * These mirror the grammar from the old monkey tester but use fast-check's
  * Arbitrary combinators, giving us automatic shrinking when tests fail.

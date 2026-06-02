@@ -3,14 +3,14 @@ import { EditorState, Prec, Transaction, type Extension } from "@codemirror/stat
 import { javascriptLanguage } from "@codemirror/lang-javascript";
 import { basicSetup } from "codemirror";
 import { onWarnings, warn } from "./warnings";
-import { uzuHighlight } from "./highlight";
+import { pdHighlight } from "./highlight";
 import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
 import type { WidgetCallInfo, FontPickerCallInfo } from "./transpiler";
 
 declare global {
   interface Window {
-    uzuEval: (code: string) => { error: string | null; widgets: WidgetCallInfo[] };
-    uzuSetCode: (code: string) => void;
+    pdEval: (code: string) => { error: string | null; widgets: WidgetCallInfo[] };
+    pdSetCode: (code: string) => void;
   }
 }
 
@@ -22,11 +22,11 @@ export function setupEditor(
   onCodeChange?: (code: string) => void,
 ): EditorView {
   const errorEl = document.createElement("div");
-  errorEl.className = "uzu-error";
+  errorEl.className = "pd-error";
   parent.appendChild(errorEl);
 
   const warnEl = document.createElement("div");
-  warnEl.className = "uzu-warning";
+  warnEl.className = "pd-warning";
   parent.appendChild(warnEl);
 
   function showError(msg: string | null) {
@@ -97,7 +97,7 @@ export function setupEditor(
 
   /** Eval code and push widget decorations into the editor. */
   function evalAndDecorate(editorView: EditorView, code: string) {
-    const result = window.uzuEval(code);
+    const result = window.pdEval(code);
     showError(result.error);
 
     const noArgPickers = result.widgets.filter(
@@ -162,11 +162,11 @@ export function setupEditor(
     parent,
     state: EditorState.create({
       doc: initialCode,
-      extensions: [basicSetup, javascriptLanguage, uzuHighlight, evalKeymap, widgets, changeListener],
+      extensions: [basicSetup, javascriptLanguage, pdHighlight, evalKeymap, widgets, changeListener],
     }),
   });
 
-  window.uzuSetCode = (code: string) => {
+  window.pdSetCode = (code: string) => {
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: code },
     });

@@ -5,7 +5,7 @@ import { setupAudioTab } from "./audio-sidebar";
 import { setupExamples } from "./examples";
 import aboutHtml from "./about.html?raw";
 
-const STORAGE_KEY = "uzuvid-sidebar";
+const STORAGE_KEY = "picodevil-sidebar";
 
 function loadState(): { open?: boolean; tab?: string; width?: number } {
   try {

@@ -1,5 +1,5 @@
 {
-  "name": "uzuvid-server",
+  "name": "picodevil-server",
   "version": "1.0.0",
   "description": "YouTube video URL resolver and download server",
   "main": "server.js",

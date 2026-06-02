@@ -108,6 +108,13 @@
   box-sizing: border-box;
 }
 
+#tab-about * {
+  margin: revert;
+  padding: revert;
+}
+
+
+
 html,
 body {
   width: 100%;
@@ -203,7 +210,7 @@ body {
   animation: cm-eval-flash 0.7s;
 }
 
-.uzu-widget-slider {
+.pd-widget-slider {
   width: 80px;
   height: 14px;
   vertical-align: middle;
@@ -213,7 +220,7 @@ body {
   background-color: rgb(255, 213, 213);
 }
 
-.uzu-widget-fontpicker {
+.pd-widget-fontpicker {
   width: 200px;
   margin: 0 2px;
   padding: 0 2px;
@@ -225,7 +232,7 @@ body {
   font-style: italic;
 }
 
-.uzu-error {
+.pd-error {
   display: none;
   position: fixed;
   bottom: 15px;
@@ -512,7 +519,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.uzu-warning {
+.pd-warning {
   display: none;
   position: fixed;
   bottom: 50px;

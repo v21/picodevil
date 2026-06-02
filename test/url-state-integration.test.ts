@@ -48,7 +48,7 @@ async function openFreshPage(browser: Browser, appUrl: string, hash = ""): Promi
   });
   const url = hash ? `${appUrl}#${hash}` : appUrl;
   await page.goto(url);
-  await page.waitForFunction(() => typeof (window as any).uzuEval === "function", { timeout: 10000 });
+  await page.waitForFunction(() => typeof (window as any).pdEval === "function", { timeout: 10000 });
   return { page, errors };
 }
 
@@ -83,7 +83,7 @@ async function testHashUpdatesOnTyping(tp: TestPage, errors: string[]) {
 
   // Set code via the exposed setter and wait for debounce
   await page.evaluate((code) => {
-    (window as any).uzuSetCode(code);
+    (window as any).pdSetCode(code);
   }, testCode);
 
   await page.waitForTimeout(DEBOUNCE_WAIT_MS);
@@ -137,7 +137,7 @@ async function testBlobEntryPreservedInHash(tp: TestPage, errors: string[]) {
   // Add a blob entry via the registry
   await page.evaluate(async () => {
     const blobUrl = URL.createObjectURL(new Blob(["fake"], { type: "video/mp4" }));
-    (window as any).uzuAddMedia(blobUrl, "blobclip");
+    (window as any).pdAddMedia(blobUrl, "blobclip");
   });
 
   await page.waitForTimeout(DEBOUNCE_WAIT_MS);
@@ -174,7 +174,7 @@ async function testWipeHashGivesDefault(browser: Browser, appUrl: string, errors
 
   // Now navigate to the app without a hash (simulates wiping the hash)
   await page.goto(appUrl);
-  await page.waitForFunction(() => typeof (window as any).uzuEval === "function", { timeout: 10000 });
+  await page.waitForFunction(() => typeof (window as any).pdEval === "function", { timeout: 10000 });
 
   // Media registry should be empty (no stale localStorage bleed)
   const mediaNames: string[] = await page.evaluate(async () => {
@@ -218,7 +218,7 @@ async function testLargeStateWarning(tp: TestPage, errors: string[]) {
 
   // Check for warning element visible in the DOM
   const warningText: string = await page.evaluate(() => {
-    const warn = document.querySelector(".uzu-warning");
+    const warn = document.querySelector(".pd-warning");
     return (warn as HTMLElement)?.textContent ?? "";
   });
 

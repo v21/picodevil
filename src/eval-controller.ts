@@ -64,7 +64,7 @@ export class EvalController<CpsSnap> {
     // Phase 3: Clear state and execute
     this.deps.clearActiveVideos();
     clearWarnings();
-    if (typeof window !== "undefined") (window as any).uzuWarnings = [];
+    if (typeof window !== "undefined") (window as any).pdWarnings = [];
     this.screens = [];
     this.namedScreens = [];
     resetRegistry();

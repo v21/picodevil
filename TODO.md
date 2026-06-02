@@ -1,3 +1,39 @@
+modulates:
+
+scale - use luminance
+uv offset - use hue & luminance (oklab space)
+rot - luminance
+huerot - luninance
+pixelate - also luminance
+grey - luminance too
+
+we also want to be able to swizzle channels
+
+and do rgb to okhsv and back again
+
+setuv (doesn't offset uv but instead uses texture to set it)
+
+something to make hue varying in x and luminance varying in y (setuv identity)
+
+mask
+
+
+
+
+also to rip off hydra some more:
+voronoi noise
+perlin noise
+static noise
+
+
+
+
+
+
+
+
+
+
 cropwh should scale the size of tiling? or scale() ought to. i think scale() ought to.
 
 fontpicker caching is busted
@@ -20,6 +56,14 @@ $: text("glossing")
 .fontsize(slider(464,10,1000))
 
 only animates some letters
+
+
+$: text("abcdefghijklmnopqrstuvwxyz")
+  .fontpicker('Anybody')
+.fontaxis('wght', sine.range(100,900).slow(3))
+.fontaxis('ital', sine.range(0,1))
+
+doesn't italicise ilj
 
 
 add a fontaxis('WGHT', slider(100,100,1000)) param

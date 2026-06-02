@@ -65,7 +65,7 @@ class SliderWidget extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const input = document.createElement("input");
     input.type = "range";
-    input.className = "uzu-widget-slider";
+    input.className = "pd-widget-slider";
     input.min = String(this.info.args[1] ?? 0);
     input.max = String(this.info.args[2] ?? 1);
     input.step = String(this.info.args[3] ?? 0.001);
@@ -107,7 +107,7 @@ let fontDatalist: HTMLDataListElement | null = null;
 function getOrCreateDatalist(): HTMLDataListElement {
   if (!fontDatalist) {
     fontDatalist = document.createElement("datalist");
-    fontDatalist.id = "uzu-font-list";
+    fontDatalist.id = "pd-font-list";
     document.body.appendChild(fontDatalist);
   }
   return fontDatalist;
@@ -150,8 +150,8 @@ class FontPickerWidget extends WidgetType {
 
     const input = document.createElement("input");
     input.type = "text";
-    input.setAttribute("list", "uzu-font-list");
-    input.className = "uzu-widget-fontpicker";
+    input.setAttribute("list", "pd-font-list");
+    input.className = "pd-widget-fontpicker";
     input.value = this.info.fontName;
 
     const index = this.index;

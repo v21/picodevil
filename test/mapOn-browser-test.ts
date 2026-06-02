@@ -33,15 +33,15 @@ async function main() {
   });
 
   await page.goto(url);
-  await page.waitForFunction(() => typeof (window as any).uzuEval === "function", null, { timeout: 10000 });
+  await page.waitForFunction(() => typeof (window as any).pdEval === "function", null, { timeout: 10000 });
 
   // Reset xLog
-  await page.evaluate(() => (window as any).uzuMetrics.reset());
+  await page.evaluate(() => (window as any).pdMetrics.reset());
 
   // Eval the mapOn pattern — this is the pattern reported to NOT produce smooth movement
   const evalError = await page.evaluate(() => {
     try {
-      (window as any).uzuEval(`$: s("red").x(".1 -.1").mapOn("x", x=>x.spline())`);
+      (window as any).pdEval(`$: s("red").x(".1 -.1").mapOn("x", x=>x.spline())`);
       return null;
     } catch (e: any) {
       return e?.message || String(e);
@@ -58,7 +58,7 @@ async function main() {
   // Wait 2 seconds to collect x values from multiple frames
   await page.waitForTimeout(2000);
 
-  const xLog: number[] = await page.evaluate(() => (window as any).uzuMetrics.xLog);
+  const xLog: number[] = await page.evaluate(() => (window as any).pdMetrics.xLog);
 
   const distinctValues = new Set(xLog.map((v) => Math.round(v * 1000) / 1000));
 

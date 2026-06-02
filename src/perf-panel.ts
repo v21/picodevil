@@ -196,8 +196,8 @@ export function setupPerfPanel(container: HTMLElement) {
   }
 
   function update() {
-    const m = (window as any).uzuMetrics;
-    const info = (window as any).uzuPerfInfo?.();
+    const m = (window as any).pdMetrics;
+    const info = (window as any).pdPerfInfo?.();
 
     if (m) {
       const interTimes = m.interFrameTimes as number[];

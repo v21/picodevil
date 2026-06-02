@@ -1,4 +1,4 @@
-const THUMB_STORAGE_PREFIX = "uzuvid:thumb:";
+const THUMB_STORAGE_PREFIX = "picodevil:thumb:";
 
 export type MediaEntry = {
   /** Stable identity — survives renames, persisted to localStorage */

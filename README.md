@@ -1,4 +1,4 @@
-# uzuvid (temporary name)
+# picodevil
 
 
 
@@ -110,3 +110,9 @@ Alternatively, you can use `sync()` to cue the position of the videos to the glo
 You can also do `rolling()` so that a playing video element won't reset it's position when it's speed is changed. So you can do `s("a").speed("1 0")` to play, then pause, then keep playing, etc.
 
 Like, Strudel, there is also `fit()`, which sets the speed of the video to fit the length of the video within the pattern.
+
+
+## Credits
+
+Fairyfloss theme
+Obviously Strudel

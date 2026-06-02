@@ -23,4 +23,4 @@ const highlightStyle = HighlightStyle.define([
   { tag: tags.invalid,                                 color: "#F92672" },
 ]);
 
-export const uzuHighlight = syntaxHighlighting(highlightStyle);
+export const pdHighlight = syntaxHighlighting(highlightStyle);

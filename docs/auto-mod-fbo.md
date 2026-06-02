@@ -17,7 +17,7 @@ Hydra's equivalent is one line:
 src(o0).modulate(src(o0).scale(0.5), 0.1).out()
 ```
 
-The friction in uzuvid is real for live coding — every modulator wants a named-line shuffle. We deferred fixing this in v1 because hidden allocations make perf cliffs invisible: when every `.modulate(...)` call site can quietly create a new canvas-sized FBO, a 25-cell grid with 25 distinct inline modulators silently becomes 25 FBO uploads per frame.
+The friction in picodevil is real for live coding — every modulator wants a named-line shuffle. We deferred fixing this in v1 because hidden allocations make perf cliffs invisible: when every `.modulate(...)` call site can quietly create a new canvas-sized FBO, a 25-cell grid with 25 distinct inline modulators silently becomes 25 FBO uploads per frame.
 
 This doc is the design for adding inline source-pattern modulator arguments later, with the cost-visibility problem addressed.
 
@@ -54,7 +54,7 @@ The renderer resolves `src` to the corresponding FBO texture via the same `name 
 
 Every frame's render pass marks each `__auto_mod_*` FBO it references (a `touchedThisFrame` flag on the FBO entry). After the pass, unmarked auto FBOs are released — their GL textures freed, their entries removed.
 
-The counter resets to 0 at the start of each `uzuEval` call, so re-evaluation of the same source produces the same names again. Names that were valid before re-eval but aren't reached after re-eval simply don't get touched and are swept on the next frame.
+The counter resets to 0 at the start of each `pdEval` call, so re-evaluation of the same source produces the same names again. Names that were valid before re-eval but aren't reached after re-eval simply don't get touched and are swept on the next frame.
 
 User-declared hidden patterns (`Hmod: ...`) are tracked separately and never swept by this mechanism — they live until the user removes the declaration.
 

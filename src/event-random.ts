@@ -1,5 +1,5 @@
 /**
- * Uzuvid per-event random functions.
+ * Picodevil per-event random functions.
  *
  * These wrap Strudel's random signals and tag them with `_perEvent: true`.
  * When used as a control value (e.g. `.alpha(rand)`), createMixParam detects

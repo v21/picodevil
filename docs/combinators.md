@@ -1,6 +1,6 @@
-# How uzuvid combines patterns
+# How picodevil combines patterns
 
-uzuvid controls (`.alpha()`, `.speed()`, `.x()`, etc.) need to merge a control value into a source pattern's events. Strudel provides several combinators for this. uzuvid uses a custom one. This doc explains why.
+picodevil controls (`.alpha()`, `.speed()`, `.x()`, etc.) need to merge a control value into a source pattern's events. Strudel provides several combinators for this. picodevil uses a custom one. This doc explains why.
 
 ## Background: Haps, wholes, and parts
 
@@ -8,7 +8,7 @@ A Strudel pattern produces **Haps** (events) when queried. Each Hap has:
 
 - **whole** — the full timespan the event "wants" to occupy (e.g., 0–4 for a 4-cycle event). `undefined` for signals (continuous patterns like `sine`).
 - **part** — the portion of the whole that was actually returned by this query. Always a subset of the query arc and a subset of whole.
-- **value** — the event's payload (in uzuvid: an object like `{_type:"video", src:"a.mp4", alpha:0.5, ...}`)
+- **value** — the event's payload (in picodevil: an object like `{_type:"video", src:"a.mp4", alpha:0.5, ...}`)
 
 Example: `video("a.mp4").slow(4)` queried at arc 1–2:
 ```
@@ -62,9 +62,9 @@ Mirrors appLeft but keeps the control pattern's structure. Rarely used for contr
 
 The control pattern is time-compressed to fit within each source event. Used for things like `note("c e g").set.squeeze(velocity("0.5 1"))`.
 
-## The problem with appBoth for uzuvid
+## The problem with appBoth for picodevil
 
-uzuvid originally chose appBoth (set.mix) because we need frame-time sampling — `.alpha(sine)` should pulse smoothly every frame, not step at event boundaries.
+picodevil originally chose appBoth (set.mix) because we need frame-time sampling — `.alpha(sine)` should pulse smoothly every frame, not step at event boundaries.
 
 But appBoth clips whole spans:
 
@@ -86,9 +86,9 @@ This breaks `fit()`, `chop()`, `loopAt()`, and anything else that reads `hap.who
 
 The problem isn't limited to `begin`/`end` — ANY control using appBoth clips the whole. `.alpha(0.5).chop(4)` creates wrong sub-events. `.speed(2).fit()` computes wrong speed. It's a whole category of bugs.
 
-## uzuvid's solution: frame-time appLeft
+## picodevil's solution: frame-time appLeft
 
-uzuvid's `createMixParam` uses a custom combiner that takes the best of both:
+picodevil's `createMixParam` uses a custom combiner that takes the best of both:
 
 - **Queries both patterns at frame time** (like appBoth) — continuous signals animate smoothly
 - **Preserves the source pattern's whole** (like appLeft) — chop/fit see the true event duration
@@ -133,7 +133,7 @@ appBoth (set.mix):
    Intersects wholes: 0–4 ∩ 1.5–2 = 1.5–2
    Result: whole = 1.5–2 ✗ (CLIPPED)   part = 1.7   alpha = 1
 
-uzuvid custom:
+picodevil custom:
    Queries both at frame state [1.7–1.701]
    → source: whole=0–4, part=1.7
    → ctrl: whole=1.5–2, part=1.7 (or whole=undefined for signals)
@@ -146,7 +146,7 @@ uzuvid custom:
 With signals (e.g., `alpha(sine)`), the control hap has `whole = undefined`:
 
 - **appBoth**: result whole = undefined (event structure destroyed!)
-- **uzuvid custom**: result whole = source's whole (preserved, signal is just a value source)
+- **picodevil custom**: result whole = source's whole (preserved, signal is just a value source)
 
 This means `video("a.mp4").slow(8).alpha(sine).chop(4)` works correctly — the signal doesn't destroy the event structure that chop needs.
 
@@ -168,9 +168,9 @@ The rest of the logic (part intersection, whole preservation, value merging) is 
 
 ## Summary
 
-| | appLeft | appBoth | uzuvid custom |
+| | appLeft | appBoth | picodevil custom |
 |---|---------|---------|---------------|
 | Control sampled at | event onset | frame time | frame time (or onset for _perEvent) |
 | Source whole | preserved | clipped by intersection | preserved |
 | Signal + discrete | works | whole destroyed (undefined) | whole preserved |
-| Used for | Strudel's `registerControl` | Strudel's `set.mix` | uzuvid's `createMixParam` |
+| Used for | Strudel's `registerControl` | Strudel's `set.mix` | picodevil's `createMixParam` |

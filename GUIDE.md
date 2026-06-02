@@ -1,6 +1,6 @@
-# uzuvid user guide
+# picodevil user guide
 
-uzuvid is a live-coding visual instrument. You write JavaScript in a browser editor, press **Ctrl+Enter** to evaluate, and the code controls what gets drawn to a fullscreen canvas. Everything is built on rhythmic patterns from [Strudel](https://strudel.cc).
+picodevil is a live-coding visual instrument. You write JavaScript in a browser editor, press **Ctrl+Enter** to evaluate, and the code controls what gets drawn to a fullscreen canvas. Everything is built on rhythmic patterns from [Strudel](https://strudel.cc).
 
 ## Getting started
 
@@ -23,7 +23,7 @@ This makes it easier to type live without worrying about capitalisation.
 
 ## Basic concepts
 
-Everything in uzuvid is a **pattern** — a function of time that produces values. Patterns cycle: each cycle, the pattern repeats. The default speed is 0.5 cycles per second (one cycle = 2 seconds).
+Everything in picodevil is a **pattern** — a function of time that produces values. Patterns cycle: each cycle, the pattern repeats. The default speed is 0.5 cycles per second (one cycle = 2 seconds).
 
 ### The `$:` syntax
 
@@ -148,13 +148,13 @@ An inline editor widget — like `slider()` — that embeds a font typeahead inp
 
 ```js
 $: text('Hello').font(fontPicker('sans-serif')).fontSize(120)
-$: text('uzuvid').font(fontPicker('Gluten')).fontSize(96)
+$: text('picodevil').font(fontPicker('Gluten')).fontSize(96)
 $: s("clip.mp4").font(fontPicker('Recursive'))   // works on any source (ignored by non-text)
 ```
 
 The widget renders as a text field next to the font name in the editor. Type to filter or pick from the dropdown list. When you select a font, the source code updates in place and the pattern reflects the change immediately — no re-eval needed.
 
-The preset list includes web-safe generics (`sans-serif`, `serif`, `monospace`, `Impact`, `Comic Sans MS`, …) and all self-hosted fonts bundled with uzuvid. If the browser grants the `Local Fonts` permission (`queryLocalFonts()`), local system fonts are appended and shown with a `(local)` label indicating they won't be portable to other machines.
+The preset list includes web-safe generics (`sans-serif`, `serif`, `monospace`, `Impact`, `Comic Sans MS`, …) and all self-hosted fonts bundled with picodevil. If the browser grants the `Local Fonts` permission (`queryLocalFonts()`), local system fonts are appended and shown with a `(local)` label indicating they won't be portable to other machines.
 
 Unlike slider, fontPicker has no "drag" phase — selecting from the dropdown always adds a single undo step.
 
@@ -208,7 +208,7 @@ $: text("hello")           // drawn over the hue-rotated canvas
 
 ## Mininotation
 
-uzuvid uses Strudel's mininotation for expressing patterns concisely. **Double-quoted strings** are automatically treated as mininotation. Single-quoted strings are plain strings (used for literal arguments like file paths).
+picodevil uses Strudel's mininotation for expressing patterns concisely. **Double-quoted strings** are automatically treated as mininotation. Single-quoted strings are plain strings (used for literal arguments like file paths).
 
 ### Key mininotation syntax
 
@@ -872,7 +872,7 @@ $: color("red").alpha(run(4).div(4))  // 0, 0.25, 0.5, 0.75
 
 ## Pattern methods from Strudel
 
-Since uzuvid patterns are Strudel patterns, all standard Strudel methods work:
+Since picodevil patterns are Strudel patterns, all standard Strudel methods work:
 
 ```js
 $: color("red blue").slow(2)          // half speed (one color per 2 cycles)

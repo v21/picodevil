@@ -124,7 +124,7 @@ function extractStrudelSignals(source: string, names: Set<string>): RefEntry[] {
 function buildReferenceData(root: string): RefCategory[] {
   const categories: RefCategory[] = [];
 
-  // --- uzuvid source files ---
+  // --- picodevil source files ---
   const fileMap: [string, string][] = [
     ["Sources", "src/color-pattern.ts"],
     ["Sources", "src/video-pattern.ts"],
@@ -238,7 +238,7 @@ const RESOLVED_ID = "\0" + VIRTUAL_ID;
 export default function referencePlugin() {
   let root = "";
   return {
-    name: "uzuvid-reference",
+    name: "picodevil-reference",
     configResolved(config: any) {
       root = config.root;
     },

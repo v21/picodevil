@@ -36,7 +36,7 @@ const TIMEOUT_MS = parseInt(flag("timeout", "30000"), 10);
 // ---------------------------------------------------------------------------
 
 function startMediaServer(port: number): Promise<{ server: http.Server; downloadDir: string }> {
-  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "uzuvid-upload-test-"));
+  const downloadDir = fs.mkdtempSync(path.join(os.tmpdir(), "picodevil-upload-test-"));
 
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -116,8 +116,8 @@ async function openFreshPage(browser: Browser, appUrl: string): Promise<{ page: 
     if (msg.type() === "error") errors.push(`[console.error] ${msg.text()}`);
   });
   await page.goto(appUrl);
-  await page.evaluate(() => localStorage.removeItem("uzuvid-media-registry"));
-  await page.waitForFunction(() => typeof (window as any).uzuEval === "function", { timeout: 10000 });
+  await page.evaluate(() => localStorage.removeItem("picodevil-media-registry"));
+  await page.waitForFunction(() => typeof (window as any).pdEval === "function", { timeout: 10000 });
   await page.locator("#tab-videos").waitFor({ state: "attached", timeout: 5000 });
   return { page, errors };
 }
@@ -130,7 +130,7 @@ async function testServerEnabled(page: Page, errors: string[]) {
   await dropFile(page, "server-clip.mp4");
 
   const serverUrlAppeared = await page.waitForFunction(() => {
-    const raw = localStorage.getItem("uzuvid-media-registry");
+    const raw = localStorage.getItem("picodevil-media-registry");
     if (!raw) return false;
     return (JSON.parse(raw) as any[]).some(
       (e) => e.name === "server-clip" && e.url?.startsWith("http://localhost:3456/videos/")
@@ -188,7 +188,7 @@ async function testServerDisabled(page: Page, errors: string[]) {
       // blob entries aren't persisted, but check in-memory via the registry
       // We can't import the registry here (separate module instance), so check
       // for absence of a server URL in localStorage after waiting
-      const raw = localStorage.getItem("uzuvid-media-registry");
+      const raw = localStorage.getItem("picodevil-media-registry");
       if (!raw) return true; // nothing persisted — blob entries never hit localStorage
       return !(JSON.parse(raw) as any[]).some(
         (e) => e.name === "noupload-clip" && e.url?.startsWith("http://")

@@ -1,5 +1,5 @@
 /**
- * Performance tracer for uzuvid.
+ * Performance tracer for picodevil.
  *
  * Opens a headful browser, loads a user-specified pattern, captures a
  * Chrome DevTools Protocol performance trace, and prints a summary of
@@ -53,13 +53,13 @@ async function main() {
   page.on("pageerror", (e) => console.error("PAGE ERROR:", e.message));
 
   await page.goto(url);
-  await page.waitForFunction(() => typeof (window as any).uzuEval === "function", null, { timeout: 10000 });
+  await page.waitForFunction(() => typeof (window as any).pdEval === "function", null, { timeout: 10000 });
   console.error("App loaded.");
 
   // Load video first (imperative, non-pattern)
   if (SETUP_CODE) {
     await page.evaluate((code: string) => {
-      try { (window as any).uzuEval(code); } catch (e) { console.error(e); }
+      try { (window as any).pdEval(code); } catch (e) { console.error(e); }
     }, SETUP_CODE);
     // Wait for video metadata to load
     await page.waitForTimeout(2000);
@@ -67,7 +67,7 @@ async function main() {
 
   // Run the pattern
   await page.evaluate((code: string) => {
-    try { (window as any).uzuEval(code); } catch (e: any) { console.error("eval error:", e?.message); }
+    try { (window as any).pdEval(code); } catch (e: any) { console.error("eval error:", e?.message); }
   }, PATTERN_CODE);
   console.error("Pattern running. Warming up...");
 
@@ -230,23 +230,23 @@ async function main() {
     }
   }
 
-  // 7. uzu named measures (blink.user_timing)
-  // Look for measure events by name prefix "uzu"
-  const uzuByName = new Map<string, { total: number; count: number; max: number; vals: number[] }>();
+  // 7. pd named measures (blink.user_timing)
+  // Look for measure events by name prefix "pd"
+  const pdByName = new Map<string, { total: number; count: number; max: number; vals: number[] }>();
   for (const e of allEvents) {
-    if (!e.name?.startsWith("uzu")) continue;
+    if (!e.name?.startsWith("pd")) continue;
     if (e.ph !== "X" && e.ph !== "R") continue;
     const dur = e.dur ?? 0;
-    const entry = uzuByName.get(e.name) ?? { total: 0, count: 0, max: 0, vals: [] };
+    const entry = pdByName.get(e.name) ?? { total: 0, count: 0, max: 0, vals: [] };
     entry.total += dur;
     entry.count++;
     entry.max = Math.max(entry.max, dur);
     entry.vals.push(dur);
-    uzuByName.set(e.name, entry);
+    pdByName.set(e.name, entry);
   }
-  if (uzuByName.size > 0) {
-    console.log("\n=== uzu named measures ===");
-    for (const [name, { total, count, max, vals }] of uzuByName) {
+  if (pdByName.size > 0) {
+    console.log("\n=== pd named measures ===");
+    for (const [name, { total, count, max, vals }] of pdByName) {
       vals.sort((a, b) => a - b);
       const p50 = vals[Math.floor(vals.length * 0.5)] / 1000;
       const p95 = vals[Math.floor(vals.length * 0.95)] / 1000;

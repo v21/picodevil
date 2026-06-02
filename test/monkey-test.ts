@@ -1,5 +1,5 @@
 /**
- * Property-based monkey tester for uzuvid.
+ * Property-based monkey tester for picodevil.
  *
  * Uses fast-check for generation and automatic shrinking. When a test
  * fails, fast-check reduces the failing input to a minimal reproduction.
@@ -101,12 +101,12 @@ async function runCase(
   // Fresh page state for each test sequence
   await page.goto(url);
   await page.waitForFunction(
-    () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+    () => typeof window.pdEval === "function", null, { timeout: 10000 },
   );
 
   // Seed the media registry with test entries
   await page.evaluate((entries: typeof REGISTRY_SEED) => {
-    const addMedia = (window as any).uzuAddMedia;
+    const addMedia = (window as any).pdAddMedia;
     if (addMedia) {
       for (const { name, url } of entries) addMedia(url, name);
     }
@@ -119,8 +119,8 @@ async function runCase(
     for (const code of codes) {
       const evalError = await page.evaluate((c: string) => {
         try {
-          if (typeof window.uzuSetCode === "function") window.uzuSetCode(c);
-          window.uzuEval(c);
+          if (typeof window.pdSetCode === "function") window.pdSetCode(c);
+          window.pdEval(c);
           return null;
         } catch (e: any) {
           return e?.message || String(e);
@@ -135,7 +135,7 @@ async function runCase(
 
       // Collect runtime warnings
       const runtimeWarnings: string[] = await page.evaluate(() => {
-        const w = (window as any).uzuWarnings ?? [];
+        const w = (window as any).pdWarnings ?? [];
         return [...w];
       }).catch(() => []);
       for (const w of runtimeWarnings) {
@@ -150,7 +150,7 @@ async function runCase(
         caseErrors.push("Page crashed or became unresponsive");
         await page.goto(url);
         await page.waitForFunction(
-          () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+          () => typeof window.pdEval === "function", null, { timeout: 10000 },
         ).catch(() => {});
         break; // can't continue sequence after crash
       }
@@ -181,7 +181,7 @@ async function runCase(
         const currentHash = await page.evaluate(() => window.location.hash);
         await page.goto(url + currentHash);
         await page.waitForFunction(
-          () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+          () => typeof window.pdEval === "function", null, { timeout: 10000 },
         ).catch((e: any) => {
           caseErrors.push(`[url-reload] page failed to load after URL restore: ${e.message}`);
         });
@@ -207,7 +207,7 @@ async function runCase(
         // Reload the page fresh (without hash) to restore clean state for next case
         await page.goto(url);
         await page.waitForFunction(
-          () => typeof window.uzuEval === "function", null, { timeout: 10000 },
+          () => typeof window.pdEval === "function", null, { timeout: 10000 },
         ).catch(() => {});
       }
     }
@@ -268,7 +268,7 @@ async function main() {
 
   console.log(`Loading app...`);
   await page.goto(url);
-  await page.waitForFunction(() => typeof window.uzuEval === "function", null, { timeout: 10000 });
+  await page.waitForFunction(() => typeof window.pdEval === "function", null, { timeout: 10000 });
 
   const existingFailures = loadFailures();
 

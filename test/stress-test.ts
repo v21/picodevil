@@ -1,5 +1,5 @@
 /**
- * Performance stress tester for uzuvid.
+ * Performance stress tester for picodevil.
  *
  * Runs demanding video patterns in a real browser, collects frame timing
  * metrics, and outputs structured JSON results. Designed to be run by
@@ -195,7 +195,7 @@ async function main() {
   const page = await context.newPage();
 
   await page.goto(url);
-  await page.waitForFunction(() => typeof window.uzuEval === "function", null, { timeout: 10000 });
+  await page.waitForFunction(() => typeof window.pdEval === "function", null, { timeout: 10000 });
 
   const activeCases = FILTER ? CASES.filter(tc => tc.name.toLowerCase().includes(FILTER)) : CASES;
   if (FILTER && activeCases.length === 0) {
@@ -211,12 +211,12 @@ async function main() {
     page.on("pageerror", onPageError);
 
     // Reset metrics
-    await page.evaluate(() => (window as any).uzuMetrics.reset());
+    await page.evaluate(() => (window as any).pdMetrics.reset());
 
     // Run the test case
     const evalError = await page.evaluate((code: string) => {
       try {
-        window.uzuEval(code);
+        window.pdEval(code);
         return null;
       } catch (e: any) {
         return e?.message || String(e);
@@ -230,7 +230,7 @@ async function main() {
       for (let i = 0; i < 5; i++) {
         await page.waitForTimeout(DURATION_MS / 6);
         await page.evaluate((code: string) => {
-          try { window.uzuEval(code); } catch {}
+          try { window.pdEval(code); } catch {}
         }, tc.code);
       }
       await page.waitForTimeout(DURATION_MS / 6);
@@ -240,7 +240,7 @@ async function main() {
 
     // Collect metrics
     const metrics = await page.evaluate(() => {
-      const m = (window as any).uzuMetrics;
+      const m = (window as any).pdMetrics;
       return {
         frameTimes: [...m.frameTimes] as number[],
         seeksHistory: [...m.seeksHistory] as number[],
@@ -302,7 +302,7 @@ async function main() {
 
     // Navigate fresh for next case
     await page.goto(url);
-    await page.waitForFunction(() => typeof window.uzuEval === "function", null, { timeout: 10000 });
+    await page.waitForFunction(() => typeof window.pdEval === "function", null, { timeout: 10000 });
   }
 
   await browser.close();

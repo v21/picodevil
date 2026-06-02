@@ -55,13 +55,13 @@ async function main() {
 
   for (const tc of CASES) {
     await page.goto(url, { timeout: 30000 });
-    await page.waitForFunction(() => typeof window.uzuEval === "function", null, { timeout: 15000 });
+    await page.waitForFunction(() => typeof window.pdEval === "function", null, { timeout: 15000 });
 
     // Inject flicker detection: record el.currentTime each frame
     await page.evaluate(`window._flickerSamples = []`);
 
     // Eval the pattern
-    await page.evaluate(`try { window.uzuEval(${JSON.stringify(tc.code)}); } catch(e) { console.error(e); }`);
+    await page.evaluate(`try { window.pdEval(${JSON.stringify(tc.code)}); } catch(e) { console.error(e); }`);
 
     // Wait for video to load from server
     await page.waitForTimeout(2000);
@@ -77,7 +77,7 @@ async function main() {
         function sample() {
           if (Date.now() - startTime > durationMs) return;
           setTimeout(function() {
-            var fa = window._uzuFrameAssignments;
+            var fa = window._pdFrameAssignments;
             if (fa) {
               fa.forEach(function(el) {
                 if (el && el.duration > 0) {

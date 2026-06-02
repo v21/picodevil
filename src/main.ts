@@ -38,19 +38,19 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- performance metrics (exposed for stress testing) ---
-const uzuMetrics = createMetrics();
-(window as any).uzuMetrics = uzuMetrics;
-(window as any).uzuPerfInfo = () => {
+const pdMetrics = createMetrics();
+(window as any).pdMetrics = pdMetrics;
+(window as any).pdPerfInfo = () => {
   let blobCacheBytes = 0;
   for (const s of pool.videoBlobSizes.values()) blobCacheBytes += s;
   return {
-    naturalCount: uzuMetrics.naturalCount,
-    seekCount: uzuMetrics.seekModeCount,
-    screensCount: uzuMetrics.screensCount,
-    eventsPerFrame: uzuMetrics.eventsPerFrame,
-    seeksThisFrame: uzuMetrics.seeksThisFrame,
-    seeksPer300f: uzuMetrics.seeksHistory.reduce((a, b) => a + b, 0),
-    driftSeeksPer300f: uzuMetrics.driftSeeksHistory.reduce((a, b) => a + b, 0),
+    naturalCount: pdMetrics.naturalCount,
+    seekCount: pdMetrics.seekModeCount,
+    screensCount: pdMetrics.screensCount,
+    eventsPerFrame: pdMetrics.eventsPerFrame,
+    seeksThisFrame: pdMetrics.seeksThisFrame,
+    seeksPer300f: pdMetrics.seeksHistory.reduce((a, b) => a + b, 0),
+    driftSeeksPer300f: pdMetrics.driftSeeksHistory.reduce((a, b) => a + b, 0),
     blobCacheBytes,
     blobCacheCount: pool.videoBlobUrls.size,
   };
@@ -74,7 +74,7 @@ const pool = createVideoPoolManager({
   maxBlobBytes: MAX_BLOB_CACHE_BYTES,
 });
 
-const frameRenderer = new FrameRenderer(activeRenderer, pool, uzuMetrics);
+const frameRenderer = new FrameRenderer(activeRenderer, pool, pdMetrics);
 const cpsController = new CpsController(CYCLES_PER_SECOND, performance.now());
 
 /**
@@ -95,8 +95,8 @@ function setCpm(cpm: number | Pattern) {
 }
 
 // Expose media registry for monkey tester
-(window as any).uzuAddMedia = addMedia;
-(window as any).uzuClearMedia = clearMediaRegistry;
+(window as any).pdAddMedia = addMedia;
+(window as any).pdClearMedia = clearMediaRegistry;
 
 const evalController = new EvalController({
   clearActiveVideos: () => pool.clearVideos(frameRenderer.activeVideoEls.splice(0)),
@@ -116,14 +116,14 @@ const evalController = new EvalController({
 initFontList(repopulateFontDatalist);
 
 // called from editor on ctrl+enter
-window.uzuEval = (code) => evalController.eval(code);
+window.pdEval = (code) => evalController.eval(code);
 
 // --- render loop ---
 let lastRafAbsTime = performance.now();
 let rafPaused = false;
 
 // Expose active video elements for testing/debugging
-(window as any)._uzuActiveVideoEls = frameRenderer.activeVideoEls;
+(window as any)._pdActiveVideoEls = frameRenderer.activeVideoEls;
 
 function frame() {
   if (rafPaused) { requestAnimationFrame(frame); return; }
@@ -140,7 +140,7 @@ function frame() {
   const frameDuration = performance.now() - rafAbsNow;
   const perfMem = (performance as any).memory;
   recordFrameMetrics(
-    uzuMetrics, frameDuration, interFrameGap,
+    pdMetrics, frameDuration, interFrameGap,
     frameRenderer.activeVideoEls, pool.freeVideoPool,
     evalController.screens.length, frameRenderer.lastEventCount,
     perfMem ? perfMem.usedJSHeapSize : undefined,
@@ -152,12 +152,12 @@ function frame() {
 requestAnimationFrame(frame);
 
 // Test-only deterministic-render hooks. Used by golden-render harness and
-// future visual regression tests. uzuRenderAt synchronously renders one frame
-// at a caller-supplied cycle position; uzuPauseRaf stops the running rAF loop
+// future visual regression tests. pdRenderAt synchronously renders one frame
+// at a caller-supplied cycle position; pdPauseRaf stops the running rAF loop
 // so subsequent captures aren't overwritten before being read.
-(window as any).uzuPauseRaf = () => { rafPaused = true; };
-(window as any).uzuResumeRaf = () => { rafPaused = false; };
-(window as any).uzuRenderAt = (cycle: number, cps = 0.5) => {
+(window as any).pdPauseRaf = () => { rafPaused = true; };
+(window as any).pdResumeRaf = () => { rafPaused = false; };
+(window as any).pdRenderAt = (cycle: number, cps = 0.5) => {
   const t = Math.floor(cycle) + (cycle % 1);
   setRuntimeCps(cps);
   frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, performance.now());

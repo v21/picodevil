@@ -14,7 +14,7 @@ export function setupExamples(container: HTMLElement) {
     const btn = document.createElement("button");
     btn.textContent = ex.name;
     btn.addEventListener("click", () => {
-      window.uzuSetCode(ex.code);
+      window.pdSetCode(ex.code);
     });
     li.appendChild(btn);
     list.appendChild(li);

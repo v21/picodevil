@@ -1,9 +1,9 @@
 /**
- * Runtime warning system for uzuvid.
+ * Runtime warning system for picodevil.
  *
  * Collects warnings during rendering, deduped by message.
  * Warnings are shown in the editor overlay and exposed to the monkey tester
- * via window.uzuWarnings.
+ * via window.pdWarnings.
  */
 
 const warnings = new Set<string>();
@@ -13,7 +13,7 @@ let listeners: ((msgs: string[]) => void)[] = [];
 export function warn(msg: string) {
   if (warnings.has(msg)) return;
   warnings.add(msg);
-  console.warn("[uzu]", msg);
+  console.warn("[pd]", msg);
 }
 
 /** Flush warnings and notify listeners. Call once per eval or periodically. */
@@ -43,8 +43,8 @@ export function warningCount(): number {
 
 // Expose for monkey tester
 if (typeof window !== "undefined") {
-  (window as any).uzuWarnings = [] as string[];
+  (window as any).pdWarnings = [] as string[];
   onWarnings((msgs) => {
-    (window as any).uzuWarnings.push(...msgs);
+    (window as any).pdWarnings.push(...msgs);
   });
 }
