@@ -11,6 +11,7 @@
  *   (`<br>`), so manually-aligned/indented lines stay on separate lines.
  * - **Bullet lists** — lines starting with `-` or `*` become `<ul><li>` items.
  * - **Inline code** — `` `text` `` becomes `<code>text</code>`.
+ * - **Bold** — `**text**` becomes `<strong>text</strong>`.
  *
  * The input is our own build-time JSDoc (not user input), but we still escape
  * HTML so the output is safe to assign via innerHTML.
@@ -20,10 +21,24 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Escape, then turn `code` spans into <code>. Backticks survive escaping, and
-// the code content is escaped before being wrapped, so it stays safe.
+/**
+ * Inserts `<wbr>` (zero-width line-break opportunities) into already-escaped
+ * code so long method chains can wrap at natural boundaries when the container
+ * is narrow — before a `.` that follows a call/identifier/bracket/string, and
+ * after commas. The char-before-dot is restricted to non-digits so decimals
+ * like `0.35` are never split. Looks identical to a single line when wide.
+ */
+export function insertCodeBreaks(escaped: string): string {
+  return escaped.replace(/([)\]A-Za-z_$"'])\./g, "$1<wbr>.").replace(/,/g, ",<wbr>");
+}
+
+// Escape, then turn `code` spans into <code> and **text** into <strong>.
+// Backticks/asterisks survive escaping; code is matched first so **markers**
+// inside a code span stay literal, while a code span inside **bold** still works.
 function renderInline(s: string): string {
-  return escapeHtml(s).replace(/`([^`]+)`/g, (_, code) => `<code>${code}</code>`);
+  return escapeHtml(s)
+    .replace(/`([^`]+)`/g, (_, code) => `<code>${insertCodeBreaks(code)}</code>`)
+    .replace(/\*\*([^*]+?)\*\*/g, (_, t) => `<strong>${t}</strong>`);
 }
 
 export function renderReferenceMarkdown(text: string): string {

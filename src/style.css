@@ -472,6 +472,9 @@ body {
 .ref-entry-desc {
   color: #bbb;
   margin: 4px 0;
+  /* Break opportunities (<wbr>) handle most wrapping; this is the backstop for
+     a single token longer than the column (e.g. a long URL in inline code). */
+  overflow-wrap: anywhere;
 }
 
 .ref-entry-desc p {
@@ -518,6 +521,7 @@ body {
   margin: 4px 0;
   overflow-x: auto;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Perf panel */

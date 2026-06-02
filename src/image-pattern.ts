@@ -9,7 +9,9 @@ import { warn } from "./warnings";
  * @returns {Pattern} pattern of {_type: "image", src} objects
  * @example
  * $: image("photo.jpg")
- * $: image("a.png b.jpg")                 // alternates each cycle
+ *
+ * // alternates each cycle
+ * $: image("a.png b.jpg")
  * $: image("photo.jpg").objectfit("contain").alpha(0.5)
  *
  */

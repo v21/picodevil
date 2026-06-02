@@ -18,11 +18,18 @@ import { warn } from "./warnings";
  * @param {string | Pattern} pat mininotation string of video filenames, or an existing Pattern
  * @returns {Pattern} pattern of {_type: "video", src} objects
  * @example
- * $: video("clip1.mp4")                        // single video, fullscreen
- * $: video("clip1.mp4 clip2.mp4")              // alternates each cycle
+ * // single video, fullscreen
+ * $: video("clip1.mp4")
+ *
+ * // alternates each cycle
+ * $: video("clip1.mp4 clip2.mp4")
  * $: video("clip.mp4").speed(-1).objectfit("contain")
- * $: video("clip.mp4").slow(5).speed(2)        // plays 5 cycles at 2× speed
- * $: video("clip.mp4").sync()                  // plays freely from cycle 0
+ *
+ * // plays 5 cycles at 2× speed
+ * $: video("clip.mp4").slow(5).speed(2)
+ *
+ * // plays freely from cycle 0
+ * $: video("clip.mp4").sync()
  *
  */
 export function video(pat: string | Pattern): Pattern {

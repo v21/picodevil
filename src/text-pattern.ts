@@ -20,7 +20,9 @@ import { warn } from "./warnings";
  * $: text('hello world')
  * $: text('line one\nline two').fontSize(48)
  * $: text('hello').font('bold IBM Plex Mono').fontColor('cyan')
- * $: text('A B C').fontSize("24 48")      // alternates font sizes
+ *
+ * // alternates font sizes
+ * $: text('A B C').fontSize("24 48")
  * $: text('hi').fontBGColor('black').fontColor('white')
  */
 export function text(pat: string | Pattern): Pattern {

@@ -428,8 +428,11 @@ PatternProto.arpWith = PatternProto.arpWith;
  * Repeat each event n times within its original timespan.
  * @param {number | Pattern} n repetitions per event
  * @example
- * $: s("clip.mp4 dronecanyon").ply(2)   // each clip plays twice as fast, back-to-back
- * $: s("red blue").ply("<1 2 3>")        // cycle through 1, 2, 3 repetitions
+ * // each clip plays twice as fast, back-to-back
+ * $: s("clip.mp4 dronecanyon").ply(2)
+ *
+ * // cycle through 1, 2, 3 repetitions
+ * $: s("red blue").ply("<1 2 3>")
  */
 PatternProto.ply = PatternProto.ply;
 

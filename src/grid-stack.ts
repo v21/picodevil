@@ -9,9 +9,14 @@ import { nextLayoutParent, deriveRandSeed } from "./layout-counter";
  * so `rand` and friends are decorrelated across copies automatically.
  *
  * @example
- * $: stackN(4, color("red"))                          // 4 red layers, each with different rand
- * $: stackN(4, color("red"), color("blue"))           // red, blue, red, blue
- * $: stackN(sine.range(1,4).slow(4), color("red"))   // dynamic count
+ * // 4 red layers, each with different rand
+ * $: stackN(4, color("red"))
+ *
+ * // red, blue, red, blue
+ * $: stackN(4, color("red"), color("blue"))
+ *
+ * // dynamic count
+ * $: stackN(sine.range(1,4).slow(4), color("red"))
  */
 export function stackN(n: any, ...args: any[]): Pattern {
   const pats = args.flatMap((a) => (Array.isArray(a) ? a : [a])).map(reify);

@@ -9,9 +9,14 @@
  *
  * @param {number|Pattern} cps cycles per second
  * @example
- * setCps(1)     // one cycle per second
- * setCps(0.25)  // one cycle every 4 seconds
- * setCps(0)     // freeze at current position
+ * // one cycle per second
+ * setCps(1)
+ *
+ * // one cycle every 4 seconds
+ * setCps(0.25)
+ *
+ * // freeze at current position
+ * setCps(0)
  */
 export function setCps(cps: number): void { void cps; }
 
@@ -21,8 +26,11 @@ export function setCps(cps: number): void { void cps; }
  *
  * @param {number|Pattern} cpm cycles per minute
  * @example
- * setCpm(120)   // 120 bpm (2 cps)
- * setCpm(60)    // 60 bpm (1 cps)
+ * // 120 bpm (2 cps)
+ * setCpm(120)
+ *
+ * // 60 bpm (1 cps)
+ * setCpm(60)
  */
 export function setCpm(cpm: number): void { void cpm; }
 

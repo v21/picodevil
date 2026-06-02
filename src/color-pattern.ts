@@ -8,9 +8,14 @@ import { warn } from "./warnings";
  * @param {string | Pattern} pat mininotation string or existing Pattern of color values
  * @returns {Pattern} pattern of {_type: "color", color} objects
  * @example
- * $: color("red blue green")           // three colors per cycle
- * $: color("#ff0000 cyan darkblue")    // hex and named colors
- * $: color("<red blue> <green yellow>") // alternates across cycles
+ * // three colors per cycle
+ * $: color("red blue green")
+ *
+ * // hex and named colors
+ * $: color("#ff0000 cyan darkblue")
+ *
+ * // alternates across cycles
+ * $: color("<red blue> <green yellow>")
  *
  */
 export function color(pat: string | Pattern): Pattern {

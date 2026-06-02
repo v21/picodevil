@@ -39,4 +39,19 @@ describe("highlightJsToHtml", () => {
   it("does not throw on empty input", () => {
     expect(highlightJsToHtml("")).toBe("");
   });
+
+  it("inserts <wbr> before method-chain dots so chains can wrap", () => {
+    const html = highlightJsToHtml('video("c.mp4").i(0).circle(0.35)');
+    expect(html).toContain("<wbr>.i(");
+    expect(html).toContain("<wbr>.circle(");
+    // a decimal must NOT be split
+    expect(html).not.toContain("0<wbr>.35");
+    // <wbr> is zero-width: stripping tags recovers the exact source
+    expect(text(html)).toBe('video("c.mp4").i(0).circle(0.35)');
+  });
+
+  it("does not break inside string literals (paths/urls)", () => {
+    const html = highlightJsToHtml('video("clip.mp4")');
+    expect(html).not.toContain("clip<wbr>.mp4");
+  });
 });

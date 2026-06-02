@@ -43,9 +43,14 @@ const _origStriate = PatternProto.striate;
  * @param {number | Pattern} n number of slices per event
  * @returns {Pattern} pattern with n sub-events per original event
  * @example
- * $: s("clip.mp4").chop(8)                      // 8 slices per cycle
- * $: s("clip.mp4").chop(8).rev()                // reversed within each cycle
- * $: s("clip.mp4").begin(0.2).end(0.8).chop(4)  // chop within region
+ * // 8 slices per cycle
+ * $: s("clip.mp4").chop(8)
+ *
+ * // reversed within each cycle
+ * $: s("clip.mp4").chop(8).rev()
+ *
+ * // chop within region
+ * $: s("clip.mp4").begin(0.2).end(0.8).chop(4)
  *
  */
 PatternProto.chop = function (...args: any[]) {
@@ -60,7 +65,8 @@ PatternProto.chop = function (...args: any[]) {
  * @param {number | Pattern} n number of slices
  * @returns {Pattern} pattern cycling through n slices across n repetitions
  * @example
- * $: s("clip.mp4").striate(4)                   // cycles through 4 slices across 4 repetitions
+ * // cycles through 4 slices across 4 repetitions
+ * $: s("clip.mp4").striate(4)
  *
  */
 PatternProto.striate = function (...args: any[]) {
@@ -158,9 +164,14 @@ PatternProto.syncStack = function (nArg: any) {
  * @param {number} [colsArg] number of columns (default = rows)
  * @returns {Pattern} pattern with rows×cols simultaneous spatially-cropped sub-events
  * @example
- * $: s("clip.mp4").cropStack(2).gridMod()                    // 2×2 grid, reassembled
- * $: s("clip.mp4").cropStack(2, 3).gridMod()                 // 2 rows, 3 columns
- * $: s("clip.mp4").cropStack(2).alpha("1 0.5 1 0.5").gridMod()  // alternating cell opacity
+ * // 2×2 grid, reassembled
+ * $: s("clip.mp4").cropStack(2).gridMod()
+ *
+ * // 2 rows, 3 columns
+ * $: s("clip.mp4").cropStack(2, 3).gridMod()
+ *
+ * // alternating cell opacity
+ * $: s("clip.mp4").cropStack(2).alpha("1 0.5 1 0.5").gridMod()
  */
 PatternProto.cropStack = function (rowsArg: any = 2, colsArg?: any) {
   warnIfSignal(this, "cropStack");
@@ -212,8 +223,11 @@ const _origRev = PatternProto.rev;
  *
  * @returns {Pattern} pattern with per-cycle reversal
  * @example
- * $: s("clip.mp4").chop(8).rev()                // slices reversed within each cycle
- * $: s("a.mp4 b.mp4 c.mp4").rev()              // plays c, b, a each cycle
+ * // slices reversed within each cycle
+ * $: s("clip.mp4").chop(8).rev()
+ *
+ * // plays c, b, a each cycle
+ * $: s("a.mp4 b.mp4 c.mp4").rev()
  *
  */
 PatternProto.rev = function (...args: any[]) {
@@ -228,7 +242,8 @@ const _origRevv = PatternProto.revv;
  *
  * @returns {Pattern} pattern with global reversal
  * @example
- * $: s("clip.mp4").loopAt(4).chop(8).revv()     // all 8 slices in reverse order
+ * // all 8 slices in reverse order
+ * $: s("clip.mp4").loopAt(4).chop(8).revv()
  *
  */
 PatternProto.revv = function (...args: any[]) {
@@ -253,8 +268,11 @@ function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }
  * @param {number | string | Pattern} ipat index pattern selecting which slices to play
  * @returns {Pattern} pattern playing the selected slices
  * @example
- * $: s("clip.mp4").slice(8, "0 3 5 7")          // play slices 0, 3, 5, 7
- * $: s("clip.mp4").slice(8, "0 1 2 3 4 5 6 7".rev()) // all slices reversed
+ * // play slices 0, 3, 5, 7
+ * $: s("clip.mp4").slice(8, "0 3 5 7")
+ *
+ * // all slices reversed
+ * $: s("clip.mp4").slice(8, "0 1 2 3 4 5 6 7".rev())
  *
  */
 PatternProto.slice = function (n: any, ipat: any) {
@@ -284,8 +302,11 @@ PatternProto.slice = function (n: any, ipat: any) {
  * @param {number | string | Pattern} ipat index pattern selecting which slices to play
  * @returns {Pattern} pattern playing speed-fitted slices
  * @example
- * $: s("clip.mp4").splice(8, "0 3 5 7")         // play slices 0, 3, 5, 7 at fitted speed
- * $: s("clip.mp4").splice(4, "0 1 2 3")         // 4 speed-fitted slices per cycle
+ * // play slices 0, 3, 5, 7 at fitted speed
+ * $: s("clip.mp4").splice(8, "0 3 5 7")
+ *
+ * // 4 speed-fitted slices per cycle
+ * $: s("clip.mp4").splice(4, "0 1 2 3")
  *
  */
 PatternProto.splice = function (n: any, ipat: any) {
@@ -529,9 +550,14 @@ function findCurrentIndex(evs: NumEvent[], t: number): number {
  * @param {string | Pattern} direction easing direction (or pattern of directions): "in", "out", "inout"
  * @returns {Pattern} continuous pattern that transitions smoothly between values
  * @example
- * $: color("red").x("0 0.5".lerp())                       // smooth linear slide
- * $: video("clip.mp4").alpha("0 1".lerp("sine", "inout"))  // smooth sine fade
- * $: color("red").scale("0.5 1 0.5".lerp("bounce", "out")) // bouncy scale
+ * // smooth linear slide
+ * $: color("red").x("0 0.5".lerp())
+ *
+ * // smooth sine fade
+ * $: video("clip.mp4").alpha("0 1".lerp("sine", "inout"))
+ *
+ * // bouncy scale
+ * $: color("red").scale("0.5 1 0.5".lerp("bounce", "out"))
  *
  */
 PatternProto.lerp = function (curve: any = "linear", direction: any = "inout") {
@@ -583,8 +609,11 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number, t
  * @param {number | Pattern} tension smoothness of the curve (0 = sharp corners, 0.5 = default, 1 = very smooth)
  * @returns {Pattern} continuous pattern with smooth spline interpolation
  * @example
- * $: video("clip.mp4").x("0 0.3 0.7 1".spline())        // smooth path
- * $: color("red").alpha("0 1 0.5 1".spline(0.8))         // high-tension smooth alpha
+ * // smooth path
+ * $: video("clip.mp4").x("0 0.3 0.7 1".spline())
+ *
+ * // high-tension smooth alpha
+ * $: color("red").alpha("0 1 0.5 1".spline(0.8))
  *
  */
 PatternProto.spline = function (tension: any = 0.5) {
@@ -652,9 +681,14 @@ const _toOps: Record<string, { op: (a: number, b: number) => number; identity: n
  * @param {number | Pattern} amount value or pattern to combine with
  * @returns {Pattern}
  * @example
- * $: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")        // shift x by .2 or .5 each cycle
- * $: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")        // alternate: add to x, then y
- * $: s("clip.mp4").alpha(".5 1").mulOn('alpha', ".8 1")       // multiply alpha field
+ * // shift x by .2 or .5 each cycle
+ * $: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")
+ *
+ * // alternate: add to x, then y
+ * $: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")
+ *
+ * // multiply alpha field
+ * $: s("clip.mp4").alpha(".5 1").mulOn('alpha', ".8 1")
  */
 for (const [name, { op, identity }] of Object.entries(_toOps)) {
   PatternProto[`${name}On`] = function (key: any, amount: any) {
@@ -709,22 +743,81 @@ for (const [name, { op, identity }] of Object.entries(_toOps)) {
  * @param {number | Pattern} amount value or pattern to add
  * @returns {Pattern}
  * @example
- * $: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")   // shift x by .2 or .5 each cycle
- * $: addOn(s("clip.mp4").x("-.1 .1"), 'x', "<.2 .5>")   // function form
- * $: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")    // alternate target field
+ * // shift x by .2 or .5 each cycle
+ * $: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")
+ *
+ * // function form
+ * $: addOn(s("clip.mp4").x("-.1 .1"), 'x', "<.2 .5>")
+ *
+ * // alternate target field
+ * $: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")
  */
 export const addOn = (pat: any, key: any, amount: any) => pat.addOn(key, amount);
-/** Like addOn but subtracts. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".5").subOn('x', ".1 .2") */
+/**
+ * Like `addOn` but subtracts.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name
+ * @param {number | Pattern} amount value or pattern to subtract
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x(".5").subOn('x', ".1 .2")
+ */
 export const subOn = (pat: any, key: any, amount: any) => pat.subOn(key, amount);
-/** Like addOn but multiplies. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha("1").mulOn('alpha', ".5 .8") */
+/**
+ * Like `addOn` but multiplies. Identity for missing keys is 1.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name
+ * @param {number | Pattern} amount value or pattern to multiply by
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").alpha("1").mulOn('alpha', ".5 .8")
+ */
 export const mulOn = (pat: any, key: any, amount: any) => pat.mulOn(key, amount);
-/** Like addOn but divides. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".8").divOn('x', "2 4") */
+/**
+ * Like `addOn` but divides. Identity for missing keys is 1.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name
+ * @param {number | Pattern} amount value or pattern to divide by
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x(".8").divOn('x', "2 4")
+ */
 export const divOn = (pat: any, key: any, amount: any) => pat.divOn(key, amount);
-/** Like addOn but applies modulo. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x("0 .3 .6 .9").modOn('x', ".5") */
+/**
+ * Like `addOn` but applies modulo.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name
+ * @param {number | Pattern} amount divisor value or pattern
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x("0 .3 .6 .9").modOn('x', ".5")
+ */
 export const modOn = (pat: any, key: any, amount: any) => pat.modOn(key, amount);
-/** Like addOn but raises to a power. Identity for missing keys is 1. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").alpha(".5 1").powOn('alpha', "2") */
+/**
+ * Like `addOn` but raises to a power. Identity for missing keys is 1.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name
+ * @param {number | Pattern} amount exponent value or pattern
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").alpha(".5 1").powOn('alpha', "2")
+ */
 export const powOn = (pat: any, key: any, amount: any) => pat.powOn(key, amount);
-/** Replaces a specific named field with the given value pattern. @param {Pattern} pat @param {string | Pattern} key @param {number | Pattern} amount @returns {Pattern} @example $: s("clip.mp4").x(".2").setOn('x', "<.5 .8>") */
+/**
+ * Replaces a specific named field with the given value pattern.
+ *
+ * @param {Pattern} pat source pattern
+ * @param {string | Pattern} key field name
+ * @param {number | Pattern} amount replacement value or pattern
+ * @returns {Pattern}
+ * @example
+ * $: s("clip.mp4").x(".2").setOn('x', "<.5 .8>")
+ */
 export const setOn = (pat: any, key: any, amount: any) => pat.setOn(key, amount);
 
 /**
@@ -740,7 +833,8 @@ export const setOn = (pat: any, key: any, amount: any) => pat.setOn(key, amount)
  * @param {(pat: Pattern) => Pattern} fn transform function receiving the field as a Pattern
  * @returns {Pattern}
  * @example
- * $: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())   // smooth the x field
+ * // smooth the x field
+ * $: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())
  * $: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline())
  */
 PatternProto.mapOn = function (key: any, fn: (p: any) => any) {

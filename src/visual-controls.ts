@@ -23,8 +23,11 @@ const PatternProto = Pattern.prototype as any;
  * @param {number | string | Pattern} value rotation in turns (0.25 = 90°, 0.5 = 180°)
  * @returns {Pattern} pattern with Z rotation applied
  * @example
- * $: video("clip.mp4").rotateZ(0.25)          // 90° clockwise
- * $: video("clip.mp4").rotateZ(sine)          // continuous rotation
+ * // 90° clockwise
+ * $: video("clip.mp4").rotateZ(0.25)
+ *
+ * // continuous rotation
+ * $: video("clip.mp4").rotateZ(sine)
  *
  */
 export const rotateZ = createMixParam("rotateZ");
@@ -36,8 +39,11 @@ export const rotateZ = createMixParam("rotateZ");
  * @param {number | string | Pattern} value rotation in turns
  * @returns {Pattern} pattern with X rotation applied
  * @example
- * $: video("clip.mp4").rotateX(0.25)          // flipped vertically
- * $: color("red").rotateX(sine)               // pulsing tilt
+ * // flipped vertically
+ * $: video("clip.mp4").rotateX(0.25)
+ *
+ * // pulsing tilt
+ * $: color("red").rotateX(sine)
  *
  */
 export const rotateX = createMixParam("rotateX");
@@ -49,7 +55,8 @@ export const rotateX = createMixParam("rotateX");
  * @param {number | string | Pattern} value rotation in turns
  * @returns {Pattern} pattern with Y rotation applied
  * @example
- * $: video("clip.mp4").rotateY(0.25)          // flipped horizontally
+ * // flipped horizontally
+ * $: video("clip.mp4").rotateY(0.25)
  *
  */
 export const rotateY = createMixParam("rotateY");
@@ -66,9 +73,14 @@ const rotateAxisParam = createMixParam("rotateAxis");
  * @param {number | string | Pattern} [axis] axis angle in turns (omit for Z rotation)
  * @returns {Pattern} pattern with rotation applied
  * @example
- * $: video("clip.mp4").rotate(0.25)           // 90° 2D rotation
- * $: video("clip.mp4").rotate(0.25, 0)        // rotate around horizontal axis
- * $: video("clip.mp4").rotate(sine, 0.25)     // rotate around vertical axis
+ * // 90° 2D rotation
+ * $: video("clip.mp4").rotate(0.25)
+ *
+ * // rotate around horizontal axis
+ * $: video("clip.mp4").rotate(0.25, 0)
+ *
+ * // rotate around vertical axis
+ * $: video("clip.mp4").rotate(sine, 0.25)
  *
  */
 PatternProto.rotate = function (turns: any, axis?: any) {
@@ -84,8 +96,11 @@ PatternProto.rotate = function (turns: any, axis?: any) {
  * @param {number | string | Pattern} value horizontal scale factor
  * @returns {Pattern} pattern with horizontal scale applied
  * @example
- * $: video("clip.mp4").scaleX(2)           // stretched horizontally
- * $: video("clip.mp4").scaleX("1 0.5")     // alternating scale
+ * // stretched horizontally
+ * $: video("clip.mp4").scaleX(2)
+ *
+ * // alternating scale
+ * $: video("clip.mp4").scaleX("1 0.5")
  *
  */
 export const scaleX = createMixParam("scaleX");
@@ -96,7 +111,8 @@ export const scaleX = createMixParam("scaleX");
  * @param {number | string | Pattern} value vertical scale factor
  * @returns {Pattern} pattern with vertical scale applied
  * @example
- * $: video("clip.mp4").scaleY(0.5)         // squashed vertically
+ * // squashed vertically
+ * $: video("clip.mp4").scaleY(0.5)
  *
  */
 export const scaleY = createMixParam("scaleY");
@@ -114,10 +130,18 @@ export const scaleY = createMixParam("scaleY");
  * @returns {Pattern} pattern with fit mode applied
  * @example
  * $: video("clip.mp4").objectfit("contain")
- * $: video("clip.mp4").objectfit("none")            // native pixel size, centered
- * $: video("clip.mp4").objectfit("tile")            // native res, top-left, tiled
- * $: video("clip.mp4").objectfit("tilecenter")      // native res, centred, tiled
- * $: video("clip.mp4").objectfit("cover contain")   // alternates per cycle
+ *
+ * // native pixel size, centered
+ * $: video("clip.mp4").objectfit("none")
+ *
+ * // native res, top-left, tiled
+ * $: video("clip.mp4").objectfit("tile")
+ *
+ * // native res, centred, tiled
+ * $: video("clip.mp4").objectfit("tilecenter")
+ *
+ * // alternates per cycle
+ * $: video("clip.mp4").objectfit("cover contain")
  *
  */
 export const objectfit = createMixParam("objectfit");
@@ -129,8 +153,11 @@ export const objectfit = createMixParam("objectfit");
  * @param {number | string | Pattern} value horizontal crop centre (0–1, default 0.5)
  * @returns {Pattern} pattern with cropx applied
  * @example
- * $: video("clip.mp4").cropx(0.25).cropw(0.5)   // left-of-centre crop window
- * $: video("clip.mp4").cropx(sine.range(0.25, 0.75)).cropw(0.5)  // sliding window
+ * // left-of-centre crop window
+ * $: video("clip.mp4").cropx(0.25).cropw(0.5)
+ *
+ * // sliding window
+ * $: video("clip.mp4").cropx(sine.range(0.25, 0.75)).cropw(0.5)
  *
  */
 export const cropx = createMixParam("cropx");
@@ -142,7 +169,8 @@ export const cropx = createMixParam("cropx");
  * @param {number | string | Pattern} value vertical crop centre (0–1, default 0.5)
  * @returns {Pattern} pattern with cropy applied
  * @example
- * $: video("clip.mp4").cropy(0.25).croph(0.5)   // top-of-source crop window
+ * // top-of-source crop window
+ * $: video("clip.mp4").cropy(0.25).croph(0.5)
  *
  */
 export const cropy = createMixParam("cropy");
@@ -155,9 +183,14 @@ export const cropy = createMixParam("cropy");
  * @param {number | string | Pattern} value crop width fraction (default 1)
  * @returns {Pattern} pattern with cropw applied
  * @example
- * $: video("clip.mp4").cropw(0.5)        // centre half of source width
- * $: video("clip.mp4").cropw(-1)         // full width, mirrored horizontally
- * $: video("clip.mp4").cropw(1.5)        // wider than source — tiles
+ * // centre half of source width
+ * $: video("clip.mp4").cropw(0.5)
+ *
+ * // full width, mirrored horizontally
+ * $: video("clip.mp4").cropw(-1)
+ *
+ * // wider than source — tiles
+ * $: video("clip.mp4").cropw(1.5)
  *
  */
 export const cropw = createMixParam("cropw");
@@ -169,8 +202,11 @@ export const cropw = createMixParam("cropw");
  * @param {number | string | Pattern} value crop height fraction (default 1)
  * @returns {Pattern} pattern with croph applied
  * @example
- * $: video("clip.mp4").croph(0.5)        // centre half of source height
- * $: video("clip.mp4").croph(-1)         // full height, mirrored vertically
+ * // centre half of source height
+ * $: video("clip.mp4").croph(0.5)
+ *
+ * // full height, mirrored vertically
+ * $: video("clip.mp4").croph(-1)
  *
  */
 export const croph = createMixParam("croph");
@@ -183,10 +219,17 @@ export const croph = createMixParam("croph");
  * @param {number | string | Pattern} value crop size fraction (default 1)
  * @returns {Pattern} pattern with cropw and croph applied
  * @example
- * $: video("clip.mp4").cropwh(0.5)                  // 2× zoom into centre
- * $: video("clip.mp4").cropwh(0)                    // fill with centre pixel colour
- * $: video("clip.mp4").cropwh(-1)                   // flip both axes
- * $: video("clip.mp4").cropwh(sine.range(0.1, 1))   // pulsing zoom
+ * // 2× zoom into centre
+ * $: video("clip.mp4").cropwh(0.5)
+ *
+ * // fill with centre pixel colour
+ * $: video("clip.mp4").cropwh(0)
+ *
+ * // flip both axes
+ * $: video("clip.mp4").cropwh(-1)
+ *
+ * // pulsing zoom
+ * $: video("clip.mp4").cropwh(sine.range(0.1, 1))
  *
  */
 PatternProto.cropwh = function (value: any) {
@@ -206,10 +249,17 @@ PatternProto.cropwh = function (value: any) {
  * @param {number | string | Pattern} [h=1] height of crop (fraction of source height)
  * @returns {Pattern} pattern with crop applied
  * @example
- * $: video("clip.mp4").crop(0.5, 0.5, 0.5, 0.5)   // centre quarter
- * $: video("clip.mp4").crop(0.25, 0.5, 0.5, 1)     // left half
- * $: video("clip.mp4").crop(0.25, 0.5, 0.5, 1).objectfit("contain")  // left half, letterboxed
- * $: video("clip.mp4").crop(0.5, 0.5, 1.2, 1)      // slightly wider than source, tiles edges
+ * // centre quarter
+ * $: video("clip.mp4").crop(0.5, 0.5, 0.5, 0.5)
+ *
+ * // left half
+ * $: video("clip.mp4").crop(0.25, 0.5, 0.5, 1)
+ *
+ * // left half, letterboxed
+ * $: video("clip.mp4").crop(0.25, 0.5, 0.5, 1).objectfit("contain")
+ *
+ * // slightly wider than source, tiles edges
+ * $: video("clip.mp4").crop(0.5, 0.5, 1.2, 1)
  *
  */
 PatternProto.crop = function (x: any = 0.5, y: any = 0.5, w: any = 1, h: any = 1) {
@@ -223,8 +273,11 @@ PatternProto.crop = function (x: any = 0.5, y: any = 0.5, w: any = 1, h: any = 1
  * @param {number | string | Pattern} value scroll amount (0 = no scroll)
  * @returns {Pattern} pattern with scrollx applied
  * @example
- * $: video("clip.mp4").scrollx(0.25)                    // shift right by quarter
- * $: video("clip.mp4").scrollx(sine.range(-0.5, 0.5))   // oscillating scroll
+ * // shift right by quarter
+ * $: video("clip.mp4").scrollx(0.25)
+ *
+ * // oscillating scroll
+ * $: video("clip.mp4").scrollx(sine.range(-0.5, 0.5))
  */
 PatternProto.scrollx = function (value: any) {
   return this.cropx(reify(value).fmap((v: number) => v + 0.5));
@@ -237,8 +290,11 @@ PatternProto.scrollx = function (value: any) {
  * @param {number | string | Pattern} value scroll amount (0 = no scroll)
  * @returns {Pattern} pattern with scrolly applied
  * @example
- * $: video("clip.mp4").scrolly(0.25)                    // shift down by quarter
- * $: video("clip.mp4").scrolly(saw.range(-0.5, 0.5))    // continuous vertical scroll
+ * // shift down by quarter
+ * $: video("clip.mp4").scrolly(0.25)
+ *
+ * // continuous vertical scroll
+ * $: video("clip.mp4").scrolly(saw.range(-0.5, 0.5))
  */
 PatternProto.scrolly = function (value: any) {
   return this.cropy(reify(value).fmap((v: number) => v + 0.5));
@@ -276,8 +332,12 @@ PatternProto.scroll = function (x: any = 0, y: any = 0) {
  * @returns {Pattern} pattern with blend mode applied
  * @example
  * $: video("clip.mp4").blend("multiply")
- * $: color("red").blend("screen lighter")  // alternates per cycle
- * $: video("fire.mp4").blend("lighter")    // additive glow
+ *
+ * // alternates per cycle
+ * $: color("red").blend("screen lighter")
+ *
+ * // additive glow
+ * $: video("fire.mp4").blend("lighter")
  */
 export const blend = createMixParam("blend");
 
@@ -287,8 +347,11 @@ export const blend = createMixParam("blend");
  * @param {number | string | Pattern} value scale factor for both axes
  * @returns {Pattern} pattern with uniform scale applied
  * @example
- * $: video("clip.mp4").scale(0.5)          // half size
- * $: video("clip.mp4").scale("0.5 1 1.5")  // patterned scale
+ * // half size
+ * $: video("clip.mp4").scale(0.5)
+ *
+ * // patterned scale
+ * $: video("clip.mp4").scale("0.5 1 1.5")
  *
  */
 PatternProto.scale = function (value: any) {
@@ -302,9 +365,14 @@ PatternProto.scale = function (value: any) {
  * @param {number | string | Pattern} value playback rate
  * @returns {Pattern} pattern with speed applied
  * @example
- * $: video("clip.mp4").speed(2)            // double speed
- * $: video("clip.mp4").speed(-1)           // reverse playback
- * $: video("clip.mp4").speed("1 2 -1")    // patterned speed
+ * // double speed
+ * $: video("clip.mp4").speed(2)
+ *
+ * // reverse playback
+ * $: video("clip.mp4").speed(-1)
+ *
+ * // patterned speed
+ * $: video("clip.mp4").speed("1 2 -1")
  *
  */
 export const speed = createMixParam("speed");
@@ -319,9 +387,14 @@ export const speed = createMixParam("speed");
  * @param {number | string | Pattern} [value] phase offset as fraction of video duration (default: true = no offset)
  * @returns {Pattern} pattern with sync enabled
  * @example
- * $: video("clip.mp4").sync()              // plays freely from cycle 0
- * $: video("clip.mp4").sync(0.5)           // plays from 50% into the video
- * $: video("clip.mp4").sync(0.3).begin(0.5) // phase-shifted, looping in 50-100% range
+ * // plays freely from cycle 0
+ * $: video("clip.mp4").sync()
+ *
+ * // plays from 50% into the video
+ * $: video("clip.mp4").sync(0.5)
+ *
+ * // phase-shifted, looping in 50-100% range
+ * $: video("clip.mp4").sync(0.3).begin(0.5)
  *
  */
 export const sync = createMixParam("sync");
@@ -341,10 +414,18 @@ export const rolling = createMixParam("rolling");
  *
  * @returns {Pattern} pattern with rolling enabled
  * @example
- * $: video("clip.mp4").rolling()              // plays continuously, position preserved across re-evals
- * $: video("clip.mp4").speed("0 1").rolling() // freeze half-cycle, advance half-cycle, repeat
- * $: video("clip.mp4").speed("-1 0").rolling() // reverse then freeze in place
- * $: video("clip.mp4").speed(sine).rolling()  // smooth speed modulation, never resets
+ * // plays continuously, position preserved across
+ * // re-evals
+ * $: video("clip.mp4").rolling()
+ *
+ * // freeze half-cycle, advance half-cycle, repeat
+ * $: video("clip.mp4").speed("0 1").rolling()
+ *
+ * // reverse then freeze in place
+ * $: video("clip.mp4").speed("-1 0").rolling()
+ *
+ * // smooth speed modulation, never resets
+ * $: video("clip.mp4").speed(sine).rolling()
  */
 PatternProto.rolling = function (value?: any) {
   if (value === undefined) value = true;
@@ -358,8 +439,11 @@ PatternProto.rolling = function (value?: any) {
  * @param {number | string | Pattern} value start position (0–1)
  * @returns {Pattern} pattern with begin position applied
  * @example
- * $: video("clip.mp4").begin(0.5)          // start halfway through
- * $: video("clip.mp4").begin(0.2).end(0.8).chop(4)  // chop middle 60% into 4 slices
+ * // start halfway through
+ * $: video("clip.mp4").begin(0.5)
+ *
+ * // chop middle 60% into 4 slices
+ * $: video("clip.mp4").begin(0.2).end(0.8).chop(4)
  *
  */
 export const begin = createMixParam("begin");
@@ -371,7 +455,8 @@ export const begin = createMixParam("begin");
  * @param {number | string | Pattern} value end position (0–1)
  * @returns {Pattern} pattern with end position applied
  * @example
- * $: video("clip.mp4").begin(0.25).end(0.75) // play middle 50%
+ * // play middle 50%
+ * $: video("clip.mp4").begin(0.25).end(0.75)
  *
  */
 export const end = createMixParam("end");
@@ -383,8 +468,11 @@ export const end = createMixParam("end");
  * @param {number | string | Pattern} value duration as fraction of video length
  * @returns {Pattern} pattern with end computed from begin + duration
  * @example
- * $: video("clip.mp4").begin(0).duration(0.25)  // play first quarter
- * $: video("clip.mp4").dur(0.1)                 // short snippet
+ * // play first quarter
+ * $: video("clip.mp4").begin(0).duration(0.25)
+ *
+ * // short snippet
+ * $: video("clip.mp4").dur(0.1)
  *
  */
 const _durMix = createMixParam("_dur");
@@ -410,10 +498,17 @@ PatternProto.dur = PatternProto.duration;
  * @param {number | string | Pattern} value position within current range (0–1)
  * @returns {Pattern} pattern frozen at the interpolated position
  * @example
- * $: video("clip.mp4").scrub(0.5)                    // freeze at halfway
- * $: video("clip.mp4").scrub(sine)                   // slowly scan through
- * $: video("clip.mp4").begin(0.2).end(0.8).scrub(0.5) // freeze at 0.5 (midpoint of region)
- * $: video("clip.mp4").chop(8).scrub(sine)           // scan within each slice
+ * // freeze at halfway
+ * $: video("clip.mp4").scrub(0.5)
+ *
+ * // slowly scan through
+ * $: video("clip.mp4").scrub(sine)
+ *
+ * // freeze at 0.5 (midpoint of region)
+ * $: video("clip.mp4").begin(0.2).end(0.8).scrub(0.5)
+ *
+ * // scan within each slice
+ * $: video("clip.mp4").chop(8).scrub(sine)
  *
  */
 const _scrubMix = createMixParam("_scrub");
@@ -442,9 +537,14 @@ PatternProto.scrub = function (value: any) {
  *
  * @returns {Pattern} pattern with speed adjusted to fill event duration
  * @example
- * $: s("clip.mp4").fit()                         // video fills one cycle
- * $: s("clip.mp4").slow(4).fit()                 // video fills 4 cycles
- * $: s("clip.mp4").begin(0.25).end(0.75).fit()   // middle 50% fills the event
+ * // video fills one cycle
+ * $: s("clip.mp4").fit()
+ *
+ * // video fills 4 cycles
+ * $: s("clip.mp4").slow(4).fit()
+ *
+ * // middle 50% fills the event
+ * $: s("clip.mp4").begin(0.25).end(0.75).fit()
  *
  */
 PatternProto.fit = function (...args: any[]) {
@@ -486,9 +586,14 @@ PatternProto.fit = function (...args: any[]) {
  * @param {number | string | Pattern} n number of cycles the video should span
  * @returns {Pattern} pattern slowed by n with speed adjusted
  * @example
- * $: s("clip.mp4").loopAt(4)                     // video spans 4 cycles
- * $: s("clip.mp4 clip2.mp4").loopAt(2)           // each video spans 2 cycles
- * $: s("clip.mp4").begin(0.5).end(1).loopAt(4)   // second half spans 4 cycles
+ * // video spans 4 cycles
+ * $: s("clip.mp4").loopAt(4)
+ *
+ * // each video spans 2 cycles
+ * $: s("clip.mp4 clip2.mp4").loopAt(2)
+ *
+ * // second half spans 4 cycles
+ * $: s("clip.mp4").begin(0.5).end(1).loopAt(4)
  *
  */
 PatternProto.loopAt = function (n: any) {
@@ -530,10 +635,15 @@ export const urlBase = createMixParam("urlBase");
  * @param {number | string | Pattern} value x position
  * @returns {Pattern} pattern with x position set
  * @example
- * $: color("red").x(0.5).width(0.5)       // right half of screen
- * $: video("clip.mp4").x(sine).width(0.5)  // slides left to right
+ * // right half of screen
+ * $: color("red").x(0.5).width(0.5)
+ *
+ * // slides left to right
+ * $: video("clip.mp4").x(sine).width(0.5)
  * $: stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod().addOn('x', 0.1)
- *    // shift inner group 0.1 units right within its outer cell
+ *
+ * // shift inner group 0.1 units right within its
+ * // outer cell
  *
  */
 export const x = createMixParam("x");
@@ -546,7 +656,8 @@ PatternProto.left = PatternProto.x;
  * @param {number | string | Pattern} value y position
  * @returns {Pattern} pattern with y position set
  * @example
- * $: color("red").y(0.5).height(0.5)       // bottom half of screen
+ * // bottom half of screen
+ * $: color("red").y(0.5).height(0.5)
  *
  */
 export const y = createMixParam("y");
@@ -558,8 +669,11 @@ PatternProto.top = PatternProto.y;
  * @param {number | string | Pattern} value width
  * @returns {Pattern} pattern with width applied
  * @example
- * $: video("clip.mp4").width(0.5)          // half width
- * $: video("clip.mp4").width("0.5 1")      // alternates half/full
+ * // half width
+ * $: video("clip.mp4").width(0.5)
+ *
+ * // alternates half/full
+ * $: video("clip.mp4").width("0.5 1")
  *
  */
 export const width = createMixParam("width");
@@ -571,7 +685,8 @@ PatternProto.w = PatternProto.width;
  * @param {number | string | Pattern} value height
  * @returns {Pattern} pattern with height applied
  * @example
- * $: video("clip.mp4").height(0.5)         // half height
+ * // half height
+ * $: video("clip.mp4").height(0.5)
  *
  */
 export const height = createMixParam("height");
@@ -585,9 +700,14 @@ PatternProto.h = PatternProto.height;
  * @param {number | string | Pattern} [h] height (0–1); if omitted, uses w for both
  * @returns {Pattern} pattern with size applied
  * @example
- * $: video("clip.mp4").size(0.5)         // half width and half height
- * $: video("clip.mp4").size(0.5, 0.25)   // half width, quarter height
- * $: video("clip.mp4").size("0.5 1")     // alternates between half and full size
+ * // half width and half height
+ * $: video("clip.mp4").size(0.5)
+ *
+ * // half width, quarter height
+ * $: video("clip.mp4").size(0.5, 0.25)
+ *
+ * // alternates between half and full size
+ * $: video("clip.mp4").size("0.5 1")
  *
  */
 PatternProto.size = function (w: any, h?: any) {
@@ -768,11 +888,20 @@ function composePos(value: any, outer: { x: number; y: number; width: number; he
  * @param {number | Pattern} iArg cell index (optional, reads from .i() value if omitted)
  * @returns {Pattern} pattern positioned in the grid cell(s)
  * @example
- * $: video("clip.mp4").grid(0, 2, 2)           // top-left of 2×2
- * $: video("clip.mp4").grid(3, 2, 2)           // bottom-right of 2×2
- * $: video("clip.mp4").grid("0 1 2 3", 2, 2)   // cycles through cells
- * $: video("clip.mp4").grid("0,1,2,3", 2, 2)   // all 4 cells at once
- * $: color("red").grid(0, 2, 1).grid(0, 1, 2)  // nested grids
+ * // top-left of 2×2
+ * $: video("clip.mp4").grid(0, 2, 2)
+ *
+ * // bottom-right of 2×2
+ * $: video("clip.mp4").grid(3, 2, 2)
+ *
+ * // cycles through cells
+ * $: video("clip.mp4").grid("0 1 2 3", 2, 2)
+ *
+ * // all 4 cells at once
+ * $: video("clip.mp4").grid("0,1,2,3", 2, 2)
+ *
+ * // nested grids
+ * $: color("red").grid(0, 2, 1).grid(0, 1, 2)
  *
  */
 PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
@@ -819,7 +948,8 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
  * @param {number | Pattern} rows number of rows
  * @returns {Pattern} pattern positioned in its assigned grid cells
  * @example
- * // In a 2×2 grid with 2 children, child 0 gets cells 0,2 and child 1 gets cells 1,3
+ * // In a 2×2 grid with 2 children, child 0 gets
+ * // cells 0,2 and child 1 gets cells 1,3
  * index(video("a.mp4"), video("b.mp4")).rowscols(2).gridMod()
  *
  */
@@ -837,7 +967,9 @@ PatternProto.grid = function (rowsArg?: any, colsArg?: any, iArg?: any) {
  * $: stack(
  *      stack(color("cyan"), color("magenta")).index().rowscols(2).gridMod(),
  *      color("red")
- *    ).index().rowscols(2).gridMod()   // nested 2×2 inside outer 2×2
+ *
+ * // nested 2×2 inside outer 2×2
+ *    ).index().rowscols(2).gridMod()
  */
 PatternProto.gridMod = function (rowsArg?: any, colsArg?: any) {
   const self = this;
@@ -1022,7 +1154,9 @@ PatternProto.mapWithVal = function (fn: (pat: any, value: any) => any) {
  * @example
  * $: text('hello').font('IBM Plex Mono')
  * $: text('hello').font('bold italic monospace')
- * $: text('hello').font('bold 24px IBM Plex Mono')  // size from shorthand
+ *
+ * // size from shorthand
+ * $: text('hello').font('bold 24px IBM Plex Mono')
  */
 export const font = createMixParam("font");
 
@@ -1034,7 +1168,9 @@ export const font = createMixParam("font");
  * @returns {Pattern} pattern with font size applied
  * @example
  * $: text('hello').fontSize(48)
- * $: text('A B C').fontSize("24 48")   // alternates sizes per cycle
+ *
+ * // alternates sizes per cycle
+ * $: text('A B C').fontSize("24 48")
  */
 export const fontSize = createMixParam("fontSize");
 PatternProto.textSize = PatternProto.fontSize;
@@ -1063,7 +1199,9 @@ PatternProto.fontColour = PatternProto.fontColor;
  * @returns {Pattern} pattern with background colour applied
  * @example
  * $: text('hello').fontBGColor('black').fontColor('white')
- * $: text('hello').fontBGColor("black navy")   // alternating backgrounds
+ *
+ * // alternating backgrounds
+ * $: text('hello').fontBGColor("black navy")
  */
 export const fontBGColor = createMixParam("fontBGColor");
 PatternProto.textBGColor  = PatternProto.fontBGColor;

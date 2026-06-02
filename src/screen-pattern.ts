@@ -37,17 +37,36 @@ function classifyToken(v: string): object {
  * `s("all")` captures the canvas composite at that point in the frame for mid-frame effects.
  * `s("prev")` references the previous frame's full composited output (feedback effects).
  * @example
- * $: s("myclip")                     // registry-named video or image
- * $: s("myclip red blue")            // mix video and colors
- * $: s("clip.mp4 photo.jpg")         // extension fallback
- * $: s("red blue green")             // solid colors
- * $: s("clip.mp4:.2:.7")             // inline begin/end: play 20%–70% of clip
- * $: s("clip.mp4:.3")                // inline begin only: play from 30% to end
- * $: s("a.mp4:.0:.5 b.mp4:.5:1")    // different ranges per token
+ * // registry-named video or image
+ * $: s("myclip")
+ *
+ * // mix video and colors
+ * $: s("myclip red blue")
+ *
+ * // extension fallback
+ * $: s("clip.mp4 photo.jpg")
+ *
+ * // solid colors
+ * $: s("red blue green")
+ *
+ * // inline begin/end: play 20%–70% of clip
+ * $: s("clip.mp4:.2:.7")
+ *
+ * // inline begin only: play from 30% to end
+ * $: s("clip.mp4:.3")
+ *
+ * // different ranges per token
+ * $: s("a.mp4:.0:.5 b.mp4:.5:1")
  * mycomp: stack(color("red"), color("blue").alpha(0.5).blend("screen"))
- * $: s("mycomp")                     // named pattern FBO as source
- * $: s("prev").alpha(0.95)           // feedback from previous frame
- * $: color("red"); $: s("all").huerot(0.5)  // hue-rotate everything drawn before this
+ *
+ * // named pattern FBO as source
+ * $: s("mycomp")
+ *
+ * // feedback from previous frame
+ * $: s("prev").alpha(0.95)
+ *
+ * // hue-rotate everything drawn before this
+ * $: color("red"); $: s("all").huerot(0.5)
  *
  */
 export function screen(pat: string | Pattern): Pattern {

@@ -22,6 +22,17 @@ describe("renderReferenceMarkdown", () => {
     expect(renderReferenceMarkdown("Use `blend` mode.")).toBe("<p>Use <code>blend</code> mode.</p>");
   });
 
+  it("renders **bold** spans", () => {
+    expect(renderReferenceMarkdown("**Config** (survives re-eval):")).toBe(
+      "<p><strong>Config</strong> (survives re-eval):</p>"
+    );
+  });
+
+  it("keeps ** literal inside a code span, and allows code inside bold", () => {
+    expect(renderReferenceMarkdown("`a ** b`")).toBe("<p><code>a ** b</code></p>");
+    expect(renderReferenceMarkdown("**use `x`**")).toBe("<p><strong>use <code>x</code></strong></p>");
+  });
+
   it("renders bullet lists, with code inside items", () => {
     const input = '- `"add"` — additive\n- `"multiply"` — darkens';
     expect(renderReferenceMarkdown(input)).toBe(
