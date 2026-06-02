@@ -171,6 +171,57 @@ describe("matchSources", () => {
     });
   });
 
+  describe("in-flight elements (desiredTime)", () => {
+    // Regression: begin().syncStack() seek storm. Same-src elements driven to deterministic
+    // slots are permanently mid-seek (their decoded currentTime is stranded between where they
+    // were and where they were last commanded). Matching on the stranded currentTime reshuffles
+    // the element→slot binding every frame, which poisons velocity tracking and produces a
+    // nonnative seek storm. Matching on desiredTime (the committed target) keeps the binding
+    // stable so each element settles on its slot and plays natively.
+    it("keeps each element on the slot it was committed to, ignoring stranded currentTime", () => {
+      // 3 slots at 2/4/6s. Each element was last commanded to one slot (desiredTime) but its
+      // decoded currentTime is stranded elsewhere (mid-seek). currentTime-based matching would
+      // scramble them; desiredTime-based matching must keep el_i on its own slot.
+      const el0 = makeVideoEl(5.5, "http://test/a.mp4"); el0._state.desiredTime = 2;
+      const el1 = makeVideoEl(1.5, "http://test/a.mp4"); el1._state.desiredTime = 4;
+      const el2 = makeVideoEl(3.5, "http://test/a.mp4"); el2._state.desiredTime = 6;
+      const free: FreePool = new Map([["http://test/a.mp4", [el0, el1, el2]]]);
+      const durations = new Map([["http://test/a.mp4", 10]]);
+      const needed = [
+        makeNeededVideo("http://test/a.mp4", 2),
+        makeNeededVideo("http://test/a.mp4", 4),
+        makeNeededVideo("http://test/a.mp4", 6),
+      ];
+      const result = matchSources(needed, free, durations, FRAME_DT);
+      // Each needed slot should get the element whose desiredTime matches it.
+      expect((result[0].el as VideoEl)._state.desiredTime).toBe(2);
+      expect((result[1].el as VideoEl)._state.desiredTime).toBe(4);
+      expect((result[2].el as VideoEl)._state.desiredTime).toBe(6);
+    });
+
+    it("falls back to currentTime when desiredTime is unset (cold pool element)", () => {
+      // No desiredTime → behaves exactly like before: nearest predicted currentTime wins.
+      const elFar = makeVideoEl(1.0, "http://test/a.mp4");
+      const elClose = makeVideoEl(7.9, "http://test/a.mp4");
+      const free: FreePool = new Map([["http://test/a.mp4", [elFar, elClose]]]);
+      const durations = new Map([["http://test/a.mp4", 10]]);
+      const needed = [makeNeededVideo("http://test/a.mp4", 8)];
+      const result = matchSources(needed, free, durations, FRAME_DT);
+      expect(result[0].el).toBe(elClose);
+    });
+
+    it("falls back to currentTime when a seek has landed (desiredTime ≈ currentTime)", () => {
+      // desiredTime set but the element has reached it → settled → match on actual position.
+      const elA = makeVideoEl(2.0, "http://test/a.mp4"); elA._state.desiredTime = 2.0;
+      const elB = makeVideoEl(8.0, "http://test/a.mp4"); elB._state.desiredTime = 8.0;
+      const free: FreePool = new Map([["http://test/a.mp4", [elA, elB]]]);
+      const durations = new Map([["http://test/a.mp4", 10]]);
+      const needed = [makeNeededVideo("http://test/a.mp4", 8)];
+      const result = matchSources(needed, free, durations, FRAME_DT);
+      expect(result[0].el).toBe(elB);
+    });
+  });
+
   describe("forward prediction", () => {
     it("uses predicted time (currentTime + speed * frameDt) for scoring", () => {
       // Element at 4.9s, speed 1, frameDt=1s → predicted=5.9; target=6 → forward seek 0.1

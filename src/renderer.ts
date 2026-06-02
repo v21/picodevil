@@ -58,6 +58,14 @@ export class FrameRenderer {
   /** Wall-clock time of last frame, for forward prediction in matchSources. */
   private lastFrameWall = performance.now();
 
+  /** Debug instrumentation (gated behind window.pdDebug). */
+  private dbgSeekReasons: Record<string, number> = {};
+  private dbgSeekedIds = new Map<number, string>(); // element id -> seek reason, this frame
+  private dbgLastSlot = new Map<number, number>();   // element id -> slot it served last logged frame
+  private dbgLastLogWall = 0;
+  private dbgPrevN = -1;
+  private dbgNFlaps = 0;
+
   constructor(renderer: Renderer, pool: VideoPool, metrics: FrameMetrics) {
     this.renderer = renderer;
     this.pool = pool;
@@ -90,6 +98,8 @@ export class FrameRenderer {
 
     this.metrics.seeksThisFrame = 0;
     this.metrics.driftSeeksThisFrame = 0;
+    this.dbgSeekReasons = {};
+    this.dbgSeekedIds.clear();
 
     // Phase 1: pattern query
     performance.mark('pd-phase-start');
@@ -149,6 +159,57 @@ export class FrameRenderer {
     performance.mark('pd-phase-start');
     if (cps > 0) this.prewarmSources(screens, cycle, cps);
     this._endPhase('pd prewarm', this.metrics.phasePrewarm);
+
+    if ((globalThis as any).pdDebug) this.dbgLog(needed, t, nowWall);
+  }
+
+  /**
+   * Debug instrumentation: throttled per-frame summary of the video pool state.
+   * Enable in the browser console with `pdDebug = true` (disable with `pdDebug = false`).
+   * Reveals seek storms / pool churn: which element id serves each needed source,
+   * how many are active vs idle, and why seeks fired this frame.
+   */
+  private dbgLog(needed: NeededSource[], t: number, nowWall: number): void {
+    const vids = needed.filter(ns => ns.kind === 'video');
+
+    // Count per-frame changes in the needed-video count (dedup flapping detector).
+    // Runs every frame, not just throttled lines.
+    if (vids.length !== this.dbgPrevN) { this.dbgNFlaps++; this.dbgPrevN = vids.length; }
+
+    // Build the per-slot mapping, and detect this frame's interesting events:
+    //  - any seek (a flicker candidate), tagged per-element with its reason
+    //  - any element whose slot jumped (swap / wrap) since the last logged frame
+    let jumped = false;
+    const parts: string[] = [];
+    const nextSlot = new Map<number, number>();
+    for (const ns of vids) {
+      const el = this.neededToEl.get(ns) as VideoEl | undefined;
+      const id = el ? el._state.id : -1;
+      const slot = ns.expectedTime;
+      const slotStr = slot != null ? slot.toFixed(2) : 'roll';
+      const cur = el && isFinite(el.currentTime) ? el.currentTime.toFixed(2) : '?';
+      const reason = this.dbgSeekedIds.get(id);
+      // Did this element's slot move (vs where the SAME element sat last logged frame)?
+      const prev = this.dbgLastSlot.get(id);
+      const moved = prev != null && slot != null && Math.abs(prev - slot) > 0.5;
+      if (moved) jumped = true;
+      if (slot != null && id >= 0) nextSlot.set(id, slot);
+      parts.push(`#${id}@${slotStr}(cur${cur})${moved ? `<${prev!.toFixed(2)}` : ''}${reason ? `!${reason}` : ''}`);
+    }
+
+    const seeks = this.metrics.seeksThisFrame;
+    // Always log a frame that seeked or where an element jumped slots; otherwise throttle.
+    const interesting = seeks > 0 || jumped;
+    if (!interesting && nowWall - this.dbgLastLogWall < 150) return;
+    this.dbgLastLogWall = nowWall;
+    this.dbgLastSlot = nextSlot;
+
+    const reasons = Object.entries(this.dbgSeekReasons).map(([r, n]) => `${r}:${n}`).join(',');
+    const flaps = this.dbgNFlaps;
+    this.dbgNFlaps = 0;
+
+    // eslint-disable-next-line no-console
+    console.log(`[pd] cyc=${t.toFixed(2)} n=${vids.length} act=${this.activeVideoEls.length} nFlaps=${flaps} seeks=${seeks}${reasons ? `{${reasons}}` : ''} | ${parts.join(' ')}`);
   }
 
   /** Measure from the last 'pd-phase-start' mark, push duration to arr, clear entries. */
@@ -354,6 +415,12 @@ export class FrameRenderer {
         const el = a.el as VideoEl;
         this.activeVideoEls.push(el);
 
+        // Record the slot this element is committed to, in the matcher's own reference frame
+        // (ns.expectedTime — pure, no per-element distOffset). Next frame the matcher prefers
+        // this over the element's stranded mid-seek currentTime, keeping the slot binding stable.
+        // Rolling sources (expectedTime=null) bypass scored matching and play freely → no commit.
+        el._state.desiredTime = a.needed.expectedTime ?? undefined;
+
         if (a.isNew) {
           // New element from matchSources: set src and start playing
           const srcUrl = a.needed.srcUrl;
@@ -441,7 +508,7 @@ export class FrameRenderer {
       if (!el) return null;
       const eventBegin = eventBeginFromHap(ev, hap, t);
       if (isFinite(el.duration) && el.duration > 0 && !videoFrameProcessed?.has(el)) {
-        renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps, frameWallTime, onSeek: () => { this.metrics.seeksThisFrame++; }, onDriftSeek: () => { this.metrics.driftSeeksThisFrame++; } });
+        renderVideoFrame({ ev, el, currentCycle: t, eventBegin, cps, frameWallTime, onSeek: (reason?: string) => { this.metrics.seeksThisFrame++; if (reason) { this.dbgSeekReasons[reason] = (this.dbgSeekReasons[reason] ?? 0) + 1; this.dbgSeekedIds.set(el._state.id, reason); } }, onDriftSeek: () => { this.metrics.driftSeeksThisFrame++; } });
         videoFrameProcessed?.add(el);
       }
       if (el.videoWidth === 0) return null;

@@ -10,8 +10,8 @@ export interface VideoFrameContext {
   currentCycle: number;
   eventBegin: number;
   cps: number;
-  /** Called each time a seek (el.currentTime assignment) is triggered. */
-  onSeek?: () => void;
+  /** Called each time a seek (el.currentTime assignment) is triggered. Receives the seek reason. */
+  onSeek?: (reason?: string) => void;
   /** Called specifically when a drift-correction seek is triggered. */
   onDriftSeek?: () => void;
   /**
@@ -340,16 +340,20 @@ function updateVideoPlayback(
       });
       const rollingDriftSeek = !isNewEvent && !loopWrapped && !needsReseek && rollingDrift > ROLLING_DRIFT_THRESHOLD;
       if (isNewEvent || loopWrapped || needsReseek || rollingDriftSeek) {
+        const reason = isNewEvent ? "new" : loopWrapped ? "wrap" : needsReseek ? "reseek" : "rolldrift";
+        st.lastSeekReason = reason;
         el.currentTime = expected;
-        if (onSeek) onSeek();
+        if (onSeek) onSeek(reason);
       }
     } else {
       const drift = computeDrift({
         currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
       });
       if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
+        const reason = isNewEvent ? "new" : loopWrapped ? "wrap" : "drift";
+        st.lastSeekReason = reason;
         el.currentTime = expected;
-        if (onSeek) onSeek();
+        if (onSeek) onSeek(reason);
         if (drift > DRIFT_THRESHOLD && !isNewEvent && !loopWrapped && onDriftSeek) onDriftSeek();
       }
     }
@@ -357,8 +361,9 @@ function updateVideoPlayback(
     // Non-native rate: pause and seek to computed position
     if (!el.paused) el.pause();
     if (Math.abs(el.currentTime - expected) > 0.01) {
+      st.lastSeekReason = "nonnative";
       el.currentTime = expected;
-      if (onSeek) onSeek();
+      if (onSeek) onSeek("nonnative");
     }
   }
 }

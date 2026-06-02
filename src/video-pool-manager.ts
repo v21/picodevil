@@ -72,6 +72,9 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
 
   function freeVideoEl(el: VideoEl) {
     el.pause();
+    // Released to the pool: it's no longer committed to a slot, so the matcher should score
+    // it on its real currentTime, not a stale target. (See VideoElementState.desiredTime.)
+    el._state.desiredTime = undefined;
     const srcUrl = el._state.srcUrl ?? el.src;
     const freeList = freeVideoPool.get(srcUrl) ?? [];
     freeList.push(el);

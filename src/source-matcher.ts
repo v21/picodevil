@@ -72,8 +72,16 @@ export function matchSources(
 
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i] as VideoEl;
+      // A committed element (desiredTime set = the slot it was assigned last frame) is matched on
+      // that slot, NOT its decoded currentTime: while seeking toward the slot, currentTime is
+      // stranded mid-seek, and scoring on it reshuffles the element→slot binding every frame
+      // (the seek storm). desiredTime is in the same reference frame as ns.expectedTime, so a
+      // committed element scores ~0 against its own slot and stays put. Uncommitted pool elements
+      // (desiredTime undefined) fall back to currentTime for normal seek-cost reuse.
+      const desired = c._state?.desiredTime;
+      const basePos = desired != null ? desired : c.currentTime;
       // Predict where the element will be at render time
-      const predictedTime = c.currentTime + (c._state?.lastSyncSpeed ?? 1) * frameDt;
+      const predictedTime = basePos + (c._state?.lastSyncSpeed ?? 1) * frameDt;
       const score = dur > 0
         ? scoreFreeElement(predictedTime, ns.expectedTime, dur)
         : Math.abs(predictedTime - ns.expectedTime);
