@@ -1,4 +1,6 @@
 import data from "virtual:reference-data";
+import { renderReferenceMarkdown } from "./reference-markdown";
+import { highlightJsToHtml, injectHighlightCss } from "./highlight-code";
 
 interface RefEntry {
   name: string;
@@ -15,6 +17,7 @@ interface RefCategory {
 }
 
 export function setupReference(container: HTMLElement) {
+  injectHighlightCss();
   const categories = data as RefCategory[];
 
   const wrap = document.createElement("div");
@@ -86,15 +89,10 @@ export function setupReference(container: HTMLElement) {
 
       const descEl = document.createElement("div");
       descEl.className = "ref-entry-desc";
-      const paragraphs = entry.description.split("\n\n");
-      for (let pi = 0; pi < paragraphs.length; pi++) {
-        const p = paragraphs[pi].trim();
-        if (!p) continue;
-        if (pi > 0) descEl.appendChild(document.createElement("br"));
-        const span = document.createElement("span");
-        span.textContent = p;
-        descEl.appendChild(span);
-      }
+      // Descriptions use a small markdown subset (paragraphs, bullet lists,
+      // inline `code`). renderReferenceMarkdown escapes HTML and the input is
+      // our own build-time JSDoc, so assigning innerHTML is safe here.
+      descEl.innerHTML = renderReferenceMarkdown(entry.description);
       entryEl.appendChild(descEl);
 
       if (entry.params.length) {
@@ -107,7 +105,9 @@ export function setupReference(container: HTMLElement) {
       for (const ex of entry.examples) {
         const exEl = document.createElement("pre");
         exEl.className = "ref-entry-example";
-        exEl.textContent = ex;
+        // Reuse the editor's JS syntax highlighting. highlightJsToHtml escapes
+        // HTML and the input is our own build-time examples, so innerHTML is safe.
+        exEl.innerHTML = highlightJsToHtml(ex);
         entryEl.appendChild(exEl);
       }
 

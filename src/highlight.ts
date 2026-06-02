@@ -1,7 +1,7 @@
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 
-const highlightStyle = HighlightStyle.define([
+export const highlightStyle = HighlightStyle.define([
   { tag: tags.meta,                                    color: "#404740" },
   { tag: tags.link,                                    textDecoration: "underline" },
   { tag: tags.heading,                                 textDecoration: "underline", fontWeight: "bold" },

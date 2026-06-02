@@ -23,7 +23,10 @@ interface RefCategory {
 // Parse a JSDoc block into description, @param, @example
 function parseJSDoc(block: string): { description: string; params: string[]; examples: string[] } {
   const lines = block.split("\n").map((l) => l.replace(/^\s*\/\*\*\s*/, "").replace(/\s*\*\/\s*$/, "").replace(/^\s*\*\s?/, ""));
-  let description = "";
+  // Collect description lines verbatim (preserving blank lines and leading
+  // indentation) so the renderer can apply markdown — paragraphs, bullet
+  // lists, and hard breaks on indented lines. See src/reference-markdown.ts.
+  const descLines: string[] = [];
   const params: string[] = [];
   const examples: string[] = [];
   let inExample = false;
@@ -49,16 +52,13 @@ function parseJSDoc(block: string): { description: string; params: string[]; exa
     } else if (inExample) {
       currentExample += line + "\n";
     } else {
-      if (line.trim()) {
-        description += (description ? " " : "") + line.trim();
-      } else if (description) {
-        // Blank line = paragraph break
-        description += "\n\n";
-      }
+      descLines.push(line);
     }
   }
   if (inExample && currentExample.trim()) examples.push(currentExample.trim());
-  return { description: description.trim(), params, examples };
+  // Trim leading/trailing blank lines but keep internal structure.
+  const description = descLines.join("\n").replace(/^\n+/, "").replace(/\n+$/, "");
+  return { description, params, examples };
 }
 
 // Extract all JSDoc + export pairs from a file

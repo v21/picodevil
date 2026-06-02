@@ -474,6 +474,35 @@ body {
   margin: 4px 0;
 }
 
+.ref-entry-desc p {
+  margin: 4px 0;
+}
+
+.ref-entry-desc p:first-child {
+  margin-top: 0;
+}
+
+.ref-entry-desc p:last-child {
+  margin-bottom: 0;
+}
+
+.ref-entry-desc ul {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.ref-entry-desc li {
+  margin: 1px 0;
+}
+
+.ref-entry-desc code {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ddd;
+  padding: 0 3px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
 .ref-entry-params {
   color: #888;
   font-size: 0.85em;
