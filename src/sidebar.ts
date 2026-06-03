@@ -18,18 +18,40 @@ function saveState(updates: Partial<{ open: boolean; tab: string; width: number 
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+/**
+ * Whether the sidebar should start open.
+ *
+ * Open by default; only an explicit toggle-close (which stores `open: false`)
+ * keeps it closed on reload. We key off the stored `open` field, NOT off whether
+ * *anything* is stored — otherwise persisting some other field (e.g. switching a
+ * tab writes `{tab}`, resizing writes `{width}`) would demote a never-closed
+ * sidebar to closed on the next load.
+ *
+ * The default active tab (About) lives in index.html, overridden by a stored
+ * `tab` in setupSidebar.
+ */
+export function resolveSidebarOpen(raw: string | null): boolean {
+  if (raw === null) return true;
+  try { return JSON.parse(raw).open ?? true; } catch { return true; }
+}
+
 export function setupSidebar() {
   const toggle = document.getElementById("sidebar-toggle")!;
   const panel = document.getElementById("sidebar-panel")!;
   const handle = panel.querySelector<HTMLElement>(".resize-handle")!;
   const saved = loadState();
 
-  // Restore open state
-  if (saved.open) {
-    panel.classList.add("open");
-    toggle.classList.add("open");
-    toggle.textContent = "›";
-  }
+  // Apply open state. index.html renders the panel closed (so nothing half-open
+  // flashes before JS runs); open it here for a first visit / untouched reload.
+  // Suppress the transition for this initial set so it snaps to its resting state
+  // instead of sliding on load — re-enabled below so later user toggles animate.
+  const open = resolveSidebarOpen(localStorage.getItem(STORAGE_KEY));
+  panel.style.transition = "none";
+  panel.classList.toggle("open", open);
+  toggle.classList.toggle("open", open);
+  toggle.textContent = open ? "›" : "‹";
+  void panel.offsetWidth; // force reflow so "none" applies before restoring
+  panel.style.transition = "";
 
   // Restore width
   if (saved.width) {
@@ -79,7 +101,7 @@ export function setupSidebar() {
   // Tabs
   const tabs = panel.querySelectorAll<HTMLButtonElement>(".tabs button");
 
-  // Restore active tab
+  // Restore active tab, overriding the About default (index.html) when stored
   if (saved.tab) {
     tabs.forEach((t) => t.classList.remove("active"));
     panel.querySelectorAll<HTMLElement>(".tab-content").forEach((el) => el.classList.remove("active"));
