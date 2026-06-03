@@ -13,7 +13,7 @@ import {
 let container: HTMLElement;
 
 /** Curated starter media, hosted on the static CDN (sources.json import/export shape). */
-const DEFAULTS_URL = "https://picodevil-static.b-cdn.net/sources.json";
+const DEFAULTS_URL = "https://videoclip.picodevil.com/sources.json";
 /** The fetched defaults list, or null until the one-shot fetch resolves (or fails). */
 let defaultSources: SourceItem[] | null = null;
 
