@@ -870,6 +870,38 @@ $: video(choose("a.mp4", "b.mp4", "c.mp4"))
 $: color("red").alpha(run(4).div(4))  // 0, 0.25, 0.5, 0.75
 ```
 
+## Randomness
+
+### Per-event random values
+
+`rand`, `rand2`, `irand(n)`, `brand`, `brandBy(p)`, `choose(...xs)`, `chooseWith(pat, xs)`, `wchoose(...pairs)` produce a random value that is **stable for the whole duration of each event** (it doesn't flicker every frame), and is **decorrelated per tile** when used as a control on a stacked source:
+
+```js
+$: s("a,b,c").shuffleIndex(rand.segment(1)).speed(choose(1, -1)) // each tile rolls its own speed
+$: s("clip.mp4").alpha(rand)                                     // one stable alpha per event
+```
+
+### Probabilistic transforms
+
+`sometimes(fn)`, `sometimesBy(p, fn)`, `often(fn)`, `rarely(fn)`, `almostAlways(fn)`, `almostNever(fn)`, `always(fn)`, `never(fn)` apply a transform to a *random subset* of events. `degradeBy(p)` / `degrade` / `undegradeBy(p)` / `undegrade` randomly drop events. `someCyclesBy(p, fn)` / `someCycles(fn)` decide once per cycle.
+
+The coin flip is **decorrelated per tile**: after a stacking op that tags tiles with a random seed (`shuffleIndex`, `index`, `chopStack`, `grid`/`gridMod`, …), the transform applies **independently to each stacked video** rather than all-or-none across the whole stack.
+
+```js
+// Each of the 7 tiles independently decides whether to play in reverse:
+$: s("a,b,c,d,e,f,g")
+  .shuffleIndex(rand.segment(1))
+  .sometimes(speed(-1))
+  .rows(3).cols(4).gridMod()
+
+$: s("a,b,c,d").shuffleIndex(rand.segment(1)).rarely(croph(-1))  // ~25% of tiles get flipped
+$: s("a,b,c,d").index().degradeBy(0.5).rowscols(2).gridMod()     // ~half the tiles drop out
+```
+
+The transform argument can be written either as a control directly (`speed(-1)`) or as a function (`x => x.speed(-1)`) — both work in the editor.
+
+> Without a stacking op upstream there's no per-tile seed, so co-active events share one time-based coin flip — i.e. plain Strudel behaviour, all-or-none across the stack.
+
 ## Pattern methods from Strudel
 
 Since picodevil patterns are Strudel patterns, all standard Strudel methods work:

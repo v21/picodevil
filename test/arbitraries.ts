@@ -1013,6 +1013,36 @@ export const topExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
     })
   },
 
+  // shuffleIndex + per-tile-decorrelated probabilistic transform + gridMod —
+  // exercises the seeded degrade/sometimes family (event-random.ts): the random
+  // transform should apply independently per stacked tile via each hap's _randSeed.
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.option(cpsValue, { nil: undefined }),
+      fc.array(screenExpr, { minLength: 2, maxLength: 4 }),
+      shuffleSeed,
+      fc.oneof(
+        simpleTransformFn.map(fn => `.sometimes(${fn})`),
+        fc.tuple(fc.double({ min: 0.1, max: 0.9, noNaN: true }), simpleTransformFn)
+          .map(([p, fn]) => `.sometimesBy(${p.toFixed(2)}, ${fn})`),
+        simpleTransformFn.map(fn => `.often(${fn})`),
+        simpleTransformFn.map(fn => `.rarely(${fn})`),
+        simpleTransformFn.map(fn => `.someCycles(${fn})`),
+        fc.double({ min: 0.1, max: 0.9, noNaN: true }).map(p => `.degradeBy(${p.toFixed(2)})`),
+      ),
+      fc.integer({ min: 2, max: 4 }),
+      gridChain,
+      labelPrefix,
+    ).map(([cps, children, seed, randTransform, cols, chain, label]) => {
+      const cpsCode = cps !== undefined ? `${cps}\n` : "";
+      const childrenCode = children.map((c: any) => c.code).join(", ");
+      const seedArg = seed ? `(${seed})` : "()";
+      return {
+        code: `${cpsCode}${label}: stack(${childrenCode}).shuffleIndex${seedArg}${randTransform}.rowscols(${cols}).gridMod()${chain}`,
+      };
+    })
+  },
+
   // chopStack + gridMod
   {
     weight: 2, arbitrary: fc.tuple(

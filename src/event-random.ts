@@ -11,7 +11,7 @@
  * to evaluate per-frame for smooth animation.
  */
 
-import { Pattern, Fraction } from "@strudel/core";
+import { Pattern, Fraction, Hap, reify, stack, register } from "@strudel/core";
 import {
   rand as _rand,
   rand2 as _rand2,
@@ -22,20 +22,6 @@ import {
   chooseWith as _chooseWith,
   wchoose as _wchoose,
   randrun,
-  degradeBy as _degradeBy,
-  degrade as _degrade,
-  undegradeBy as _undegradeBy,
-  undegrade as _undegrade,
-  sometimesBy as _sometimesBy,
-  sometimes as _sometimes,
-  someCyclesBy as _someCyclesBy,
-  someCycles as _someCycles,
-  often as _often,
-  rarely as _rarely,
-  almostNever as _almostNever,
-  almostAlways as _almostAlways,
-  always as _always,
-  never as _never,
 } from "@strudel/core";
 
 // Structural Strudel combinators that reshape patterns rather than transforming
@@ -158,55 +144,175 @@ export const scramble = (n: number, pat?: any): any => {
   return scramble(n, this);
 };
 
-// ─── Re-exports with JSDoc (already work correctly per-hap via appLeft) ──────
+// ─── Seeded structural randomness (honour per-tile _randSeed) ────────────────
+//
+// Strudel's degradeBy/sometimes/… decide per event using `rand`, which is keyed
+// only on (time, controls.randSeed). Co-active (stacked) events share an onset
+// time and seed, so they all get the SAME coin flip — the transform applies
+// all-or-none across the stack. picodevil's stacking ops (shuffleIndex, index,
+// chopStack, grid…) stamp a unique `_randSeed` on each tile's value to
+// decorrelate per-event controls (see create-mix-param.ts). The functions below
+// re-implement Strudel's degrade/sometimes family so the decision is queried
+// per source hap with that hap's `_randSeed` injected — decorrelating the
+// transform per tile. Events without a `_randSeed` fall back to the outer state
+// seed, i.e. exactly vanilla Strudel behaviour (one shared time-based flip for
+// co-active events).
+//
+// These call register(), which (re)installs the method on Pattern.prototype AND
+// returns the curried/patternified standalone — so the chained form
+// (`.sometimes(...)`), the standalone form, and the sandbox global all share the
+// seeded implementation.
+
+const SeededPattern = Pattern as any;
 
 /**
- * Randomly remove events each cycle with probability `p` (0–1).
+ * Like Strudel's `degradeByWith`, but the decision pattern is queried per source
+ * hap with that hap's `_randSeed` pushed into the controls. Faithful to vanilla
+ * `appLeft` semantics otherwise: sample the decision over the hap's whole-or-part
+ * span, keep the hap when the decision value is > x, and preserve its whole.
+ */
+function degradeByWithSeeded(decisionPat: any, x: number, pat: any): any {
+  const gate = decisionPat.filterValues((v: number) => v > x);
+  return new SeededPattern((state: any) => {
+    const out: any[] = [];
+    for (const hap of pat.query(state)) {
+      const hapSeed = (hap.value as any)?._randSeed;
+      const seeded = hapSeed !== undefined ? state.setControls({ randSeed: hapSeed }) : state;
+      const decHaps = gate.query(seeded.setSpan(hap.wholeOrPart()));
+      for (const dh of decHaps) {
+        const part = hap.part.intersection(dh.part);
+        if (part) out.push(new Hap(hap.whole, part, hap.value, hap.context));
+      }
+    }
+    return out;
+  });
+}
+
+// Decision sources. `*Cyc` variants quantise to one draw per cycle (segment(1))
+// for the someCycles family; the others sample per event onset.
+const _decDegrade = _rand;
+const _decUndegrade = _rand.fmap((r: number) => 1 - r);
+const _decDegradeCyc = _rand.segment(1);
+const _decUndegradeCyc = _rand.segment(1).fmap((r: number) => 1 - r);
+
+const _degradeBySeeded = (x: number, pat: any) => degradeByWithSeeded(_decDegrade, x, pat);
+const _undegradeBySeeded = (x: number, pat: any) => degradeByWithSeeded(_decUndegrade, x, pat);
+
+// ── Stack (draw) order preservation ──
+//
+// Stack order matters: picodevil paints co-active events in query order, so the
+// LAST event in a stack is drawn on top (e.g. a `multiply` scanline overlay
+// stacked over content). sometimes/someCyclesBy are stack(unchanged, transformed)
+// under the hood, which concatenates the two partitions and therefore *reorders*
+// co-active events whenever some are transformed and others aren't — silently
+// changing who's on top. We want to preserve stack order wherever we can: so we
+// tag each source hap with its original query-order index before the split, then
+// re-sort by that tag afterwards. (degradeBy and the other filtering ops already
+// preserve order; only the partition family needs this.)
+//
+// Note: the tag is stamped on the value, so it survives `func` (controls merge
+// into the value) and is stripped again on the way out.
+function _withStackOrder(pat: any): any {
+  return new SeededPattern((state: any) =>
+    pat.query(state).map((hap: any, i: number) =>
+      hap.withValue((v: any) => ({ ...(Object(v) === v ? v : {}), _stackOrder: i })),
+    ),
+  );
+}
+function _restoreStackOrder(pat: any): any {
+  return new SeededPattern((state: any) => {
+    const haps = pat.query(state).slice();
+    // Array.sort is stable, so ties (e.g. one hap that func split into several)
+    // keep their generated order within the original layer's slot.
+    haps.sort((a: any, b: any) => (a.value?._stackOrder ?? 0) - (b.value?._stackOrder ?? 0));
+    return haps.map((hap: any) =>
+      hap.withValue((v: any) => {
+        if (Object(v) !== v) return v;
+        const { _stackOrder, ...rest } = v;
+        return rest;
+      }),
+    );
+  });
+}
+
+// sometimesBy(p) = stack(keep-when-rand>p, apply-fn-when-rand<p). Both halves use
+// the same per-hap seed, so each tile lands in exactly one half — a consistent,
+// non-overlapping partition. reify(prob)…innerJoin lets prob itself be a pattern.
+// Wrapped in _withStackOrder/_restoreStackOrder so the partition can't reorder
+// co-active layers (see note above).
+function _someBy(prob: any, func: any, pat: any): any {
+  const tagged = _withStackOrder(pat);
+  return _restoreStackOrder(
+    reify(prob)
+      .fmap((x: number) => stack(_degradeBySeeded(x, tagged), func(_undegradeBySeeded(1 - x, tagged))))
+      .innerJoin(),
+  );
+}
+function _someCyclesBy(prob: any, func: any, pat: any): any {
+  const tagged = _withStackOrder(pat);
+  return _restoreStackOrder(
+    reify(prob)
+      .fmap((x: number) =>
+        stack(
+          degradeByWithSeeded(_decDegradeCyc, x, tagged),
+          func(degradeByWithSeeded(_decUndegradeCyc, 1 - x, tagged)),
+        ),
+      )
+      .innerJoin(),
+  );
+}
+
+/**
+ * Randomly remove events each cycle with probability `p` (0–1). Decorrelated
+ * per tile when the source carries a `_randSeed` (shuffleIndex/index/grid/…).
  * @param p: probability of removal per event (0 = keep all, 1 = remove all)
  * @example
  * $: s("clip.mp4").degradeBy(0.3)
  */
-export const degradeBy = _degradeBy;
+export const degradeBy = register("degradeBy", (x: number, pat: any) => _degradeBySeeded(x, pat));
 
 /**
  * Randomly remove ~50% of events each cycle.
  * @example
  * $: s("clip.mp4 other.mp4").degrade()
  */
-export const degrade = _degrade;
+export const degrade = register("degrade", (pat: any) => _degradeBySeeded(0.5, pat));
 
 /**
  * Keep events with probability `p` (inverse of degradeBy).
  * @param p: probability of keeping an event
  */
-export const undegradeBy = _undegradeBy;
+export const undegradeBy = register("undegradeBy", (x: number, pat: any) => _undegradeBySeeded(x, pat));
 
 /** Keep ~50% of events (inverse of degrade). */
-export const undegrade = _undegrade;
+export const undegrade = register("undegrade", (pat: any) => _undegradeBySeeded(0.5, pat));
 
 /**
- * Apply `fn` to the pattern with probability `p` each event.
+ * Apply `fn` to the pattern with probability `p` each event. Decorrelated per
+ * tile when the source carries a `_randSeed` (shuffleIndex/index/grid/…), so a
+ * stack of videos each gets an independent coin flip.
  * @param p: probability 0–1
  * @param fn: transform to apply
  * @example
- * $: s("clip.mp4").sometimesBy(0.3, p => p.speed(2))
+ * $: s("a,b,c").shuffleIndex(rand.segment(1)).sometimesBy(0.3, p => p.speed(-1))
  */
-export const sometimesBy = _sometimesBy;
+export const sometimesBy = register("sometimesBy", (patx: any, func: any, pat: any) => _someBy(patx, func, pat));
 
 /**
- * Apply `fn` to ~50% of events.
+ * Apply `fn` to ~50% of events (decorrelated per tile, see sometimesBy).
  * @param fn: transform to apply
  * @example
- * $: s("clip.mp4").sometimes(p => p.speed(2))
+ * $: s("a,b,c").shuffleIndex(rand.segment(1)).sometimes(p => p.speed(-1))
  */
-export const sometimes = _sometimes;
+export const sometimes = register("sometimes", (func: any, pat: any) => _someBy(0.5, func, pat));
 
 /**
- * Apply `fn` to some whole cycles with probability `p`.
+ * Apply `fn` to some whole cycles with probability `p` (per-tile decorrelated;
+ * one draw per cycle).
  * @param p: probability 0–1
  * @param fn: transform to apply
  */
-export const someCyclesBy = _someCyclesBy;
+export const someCyclesBy = register("someCyclesBy", (patx: any, func: any, pat: any) => _someCyclesBy(patx, func, pat));
 
 /**
  * Apply `fn` to ~50% of whole cycles.
@@ -214,7 +320,7 @@ export const someCyclesBy = _someCyclesBy;
  * @example
  * $: s("clip.mp4").someCycles(p => p.speed(2))
  */
-export const someCycles = _someCycles;
+export const someCycles = register("someCycles", (func: any, pat: any) => _someCyclesBy(0.5, func, pat));
 
 /**
  * Apply `fn` to ~75% of events.
@@ -222,7 +328,7 @@ export const someCycles = _someCycles;
  * @example
  * $: s("clip.mp4").often(p => p.alpha(0.5))
  */
-export const often = _often;
+export const often = register("often", (func: any, pat: any) => _someBy(0.75, func, pat));
 
 /**
  * Apply `fn` to ~25% of events.
@@ -230,28 +336,28 @@ export const often = _often;
  * @example
  * $: s("clip.mp4").rarely(p => p.speed(2))
  */
-export const rarely = _rarely;
+export const rarely = register("rarely", (func: any, pat: any) => _someBy(0.25, func, pat));
 
 /**
  * Apply `fn` to ~10% of events.
  * @param fn: transform to apply
  */
-export const almostNever = _almostNever;
+export const almostNever = register("almostNever", (func: any, pat: any) => _someBy(0.1, func, pat));
 
 /**
  * Apply `fn` to ~90% of events.
  * @param fn: transform to apply
  */
-export const almostAlways = _almostAlways;
+export const almostAlways = register("almostAlways", (func: any, pat: any) => _someBy(0.9, func, pat));
 
 /**
  * Apply `fn` to every event (identity — useful for uniform API).
  * @param fn: transform to apply
  */
-export const always = _always;
+export const always = register("always", (func: any, pat: any) => _someBy(1, func, pat));
 
 /**
  * Apply `fn` to no events (identity — useful for uniform API).
  * @param fn: transform to apply
  */
-export const never = _never;
+export const never = register("never", (func: any, pat: any) => _someBy(0, func, pat));

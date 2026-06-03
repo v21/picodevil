@@ -129,7 +129,7 @@ All function and method names are **case-insensitive** — `VIDEO`, `Video`, `Vi
 
 **Audio reactive:** `fft[n]`, `fft.bass/mid/treble`, `fft.vol`, `fft.centroid`, `fft.flatness`, `fft.chroma['C'|n]`, `fft.chroma(str)`, `fft.bin(n|str)` — live signals driven by mic/system audio; `fft.setSource('mic'|'system'|'screen:name'|deviceId)`, `fft.setBins(n)`, `fft.setSmooth(v)`, `fft.setCutoff(v)`, `fft.setScale(v)`; see `src/fft-audio.ts`
 
-**Strudel pattern transforms (re-exported):** `degradeBy(p)`, `degrade`, `undegradeBy(p)`, `undegrade`, `sometimesBy(p, fn)`, `sometimes(fn)`, `someCyclesBy(p, fn)`, `someCycles(fn)`, `often(fn)`, `rarely(fn)`, `almostNever(fn)`, `almostAlways(fn)`, `always(fn)`, `never(fn)`
+**Strudel pattern transforms (seeded reimplementations in `src/event-random.ts`):** `degradeBy(p)`, `degrade`, `undegradeBy(p)`, `undegrade`, `sometimesBy(p, fn)`, `sometimes(fn)`, `someCyclesBy(p, fn)`, `someCycles(fn)`, `often(fn)`, `rarely(fn)`, `almostNever(fn)`, `almostAlways(fn)`, `always(fn)`, `never(fn)` — these re-`register()` the Strudel originals so the per-event coin flip honours each tile's `_randSeed`. That means after a stacking op that stamps seeds (`shuffleIndex`/`index`/`chopStack`/`grid…`), a probabilistic transform applies **independently per stacked tile** instead of all-or-none. Sources with no `_randSeed` keep vanilla (shared, time-based) behaviour. See `degradeByWithSeeded` for the mechanism (decision pattern queried per source hap with that hap's seed injected into `controls.randSeed`).
 
 **Media loading (imperative, idempotent):** `loadVideo(name, url)`, `loadImage(name, url)`, `loadCamera(name)`, `loadScreen(name)`
 
@@ -238,6 +238,13 @@ When `SERVER_ENABLED=true`, dropping a video file onto the sidebar video tab:
 - `error?: string` — set on failure (retry `↻` button appears)
 
 **Blob URLs are never persisted to localStorage** — they're session-scoped and dead after reload. Entries mid-upload that don't complete before the page is closed are simply lost.
+
+### YouTube download progress
+
+`downloadYouTube()` in [src/media-registry.ts](src/media-registry.ts) hits `GET /download` which is **non-blocking**: it returns `{ url, ready: false }` immediately (or `ready: true` when the server already has the file). On `ready: false` it polls `GET /ready/<id>` via the shared `pollTranscodeReady()` (same helper uploads use, parameterised by `flag`). The server reports two phases with a 0–1 `percent`, surfaced on the entry as:
+- `phase?: "download" | "transcode"` and `phasePercent?: number`
+
+The Videos sidebar row renders these as a labelled percentage — `downloading: 45%` then `transcoding: 13%` (transcoding is usually the longer phase) — falling back to `⏳` before the first poll. Download/transcode failures come back through `/ready` as `error` (no separate HTTP error status, since `/download` already returned 200).
 
 ## Running & testing
 
