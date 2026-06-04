@@ -4,6 +4,7 @@ import { eventBeginFromHap } from './event-begin';
 import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
 import { warn } from './warnings';
+import { recoverFromDrawError } from './taint-recovery';
 import { getStreamVideoEl } from './stream-manager';
 import { queryNeeded, type FrameEvent, type NeededSource } from './source-query';
 import { matchSources, type FreePool } from './source-matcher';
@@ -570,7 +571,11 @@ export class FrameRenderer {
         }
         this.renderer.drawTile(params);
       } catch (e) {
-        warn(`screen ${fe.screenIndex} event ${fe.eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
+        // Cross-origin texture taint: capture diagnostics + auto-cure (blob / cache-bust).
+        // recoverFromDrawError no-ops for any other error, falling through to the generic warn.
+        if (!recoverFromDrawError(e, params, fe, this.pool)) {
+          warn(`screen ${fe.screenIndex} event ${fe.eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
+        }
       }
     }
   }
