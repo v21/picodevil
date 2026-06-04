@@ -1,21 +1,21 @@
 import { signal, Pattern } from "@strudel/core";
 
-/** In-memory value store: maps sequential widget index → current numeric value. */
+/** @internal In-memory value store: maps sequential widget index → current numeric value. */
 const widgetValues = new Map<number, number>();
 
-/** In-memory value store: maps sequential widget index → current font family string. */
+/** @internal In-memory value store: maps sequential widget index → current font family string. */
 const fontPickerValues = new Map<number, string>();
 
 /** Counter assigned sequentially during eval; reset each eval cycle. Shared by all widget types. */
 let widgetCounter = 0;
 
-/** Reset widget counter at the start of each eval. */
+/** @internal Reset widget counter at the start of each eval. */
 export function resetWidgetCounter(): void {
   widgetCounter = 0;
 }
 
 /**
- * Set a slider widget's value (called by the editor widget on drag).
+ * @internal Set a slider widget's value (called by the editor widget on drag).
  * Updates the in-memory store so the pattern sees the new value next frame.
  */
 export function setWidgetValue(index: number, value: number): void {
@@ -23,7 +23,7 @@ export function setWidgetValue(index: number, value: number): void {
 }
 
 /**
- * Set a fontPicker widget's value (called by the editor widget on selection change).
+ * @internal Set a fontPicker widget's value (called by the editor widget on selection change).
  * Updates the in-memory store so the pattern sees the new font next frame.
  */
 export function setFontPickerValue(index: number, value: string): void {
@@ -58,7 +58,7 @@ export function fontPicker(initialFont: string = 'sans-serif'): Pattern {
 const PatternProto = Pattern.prototype as any;
 
 /**
- * Shorthand for `.font(fontPicker(initialFont))`.
+ * This is the method form, which is shorthand for `.font(fontPicker(initialFont))`.
  * Renders an inline font-picker widget in the editor.
  * @param initialFont CSS font-family name (default: 'sans-serif')
  * @example
