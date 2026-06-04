@@ -13,6 +13,10 @@ export type MediaEntry = {
   duration?: number;
   /** Set while a YouTube download is in progress */
   downloading?: boolean;
+  /** Which phase a YouTube download is in, while downloading (from /ready) */
+  phase?: "download" | "transcode";
+  /** Progress 0–1 within the current `phase` (from /ready), if known */
+  phasePercent?: number;
   /** Set while a local file upload+transcode is in progress */
   uploading?: boolean;
   /** Upload phase progress 0–1 (undefined during transcode phase) */
@@ -301,18 +305,46 @@ export function addOnChange(cb: () => void) {
   return () => extraListeners.delete(cb); // returns an unsubscribe fn
 }
 
-function pollTranscodeReady(entryId: string, stem: string, serverBase: string, interval = 2000) {
+type ReadyResponse = {
+  ready: boolean;
+  error?: string;
+  phase?: "download" | "transcode";
+  percent?: number;
+};
+
+/**
+ * Poll /ready/<stem> until the server reports done or errored.
+ * `flag` is the in-progress entry field to clear on completion ("uploading" for
+ * uploads, "downloading" for YouTube). YouTube downloads also carry live
+ * { phase, percent } which we surface on the entry for the progress UI; uploads
+ * omit those. `rawError` uses the server's error string verbatim (download) vs
+ * prefixing "Transcode failed:" (upload).
+ */
+function pollTranscodeReady(
+  entryId: string,
+  stem: string,
+  serverBase: string,
+  { flag = "uploading", rawError = false, interval = 2000 }:
+    { flag?: "uploading" | "downloading"; rawError?: boolean; interval?: number } = {},
+) {
   const timer = setInterval(async () => {
     try {
       const res = await fetch(`${serverBase}/ready/${encodeURIComponent(stem)}`);
-      const data = await res.json() as { ready: boolean; error?: string };
+      const data = await res.json() as ReadyResponse;
       const current = getEntryById(entryId);
       if (!current) { clearInterval(timer); return; }
       if (data.ready || data.error) {
         clearInterval(timer);
-        current.uploading = false;
-        if (data.error) current.error = `Transcode failed: ${data.error}`;
+        current[flag] = false;
+        current.phase = undefined;
+        current.phasePercent = undefined;
+        if (data.error) current.error = rawError ? data.error : `Transcode failed: ${data.error}`;
         else generateThumbnail(current);
+        save();
+      } else if (data.phase) {
+        // Still in progress — surface phase/percent so the row can show a bar.
+        current.phase = data.phase;
+        current.phasePercent = data.percent;
         save();
       }
     } catch {
@@ -367,7 +399,7 @@ export function uploadToServer(name: string, file: File, serverBase?: string): P
           save();
           if (oldUrl.startsWith('blob:')) URL.revokeObjectURL(oldUrl);
           const stem = data.url.split('/').pop()?.replace(/\.mp4$/, '') ?? '';
-          pollTranscodeReady(id, stem, serverBase);
+          pollTranscodeReady(id, stem, serverBase, { flag: "uploading" });
         }
         resolve();
       } else {
@@ -408,25 +440,39 @@ export async function downloadYouTube(name: string, serverBase?: string) {
   console.log(`[downloadYouTube] starting: name="${name}", id=${id}`);
   entry.downloading = true;
   entry.error = undefined;
+  entry.phase = "download";
+  entry.phasePercent = 0;
   save();
   try {
     const res = await fetch(`${serverBase}/download?v=${encodeURIComponent(ytUrl)}`);
     if (!res.ok) throw new Error(`Server returned ${res.status}`);
-    const data = await res.json();
+    const data = await res.json() as { url: string; ready: boolean };
     // Re-lookup by stable ID — entry may have been renamed or registry reloaded since the await
     const current = getEntryById(id);
     console.log(`[downloadYouTube] fetch complete: current entry name="${current?.name ?? "NOT FOUND"}"`);
     if (!current) return; // entry was deleted while downloading
     current.url = data.url;
     current.type = "video";
-    current.downloading = false;
-    save();
-    generateThumbnail(current);
+    if (data.ready) {
+      // Cache hit — server already had the transcoded file.
+      current.downloading = false;
+      current.phase = undefined;
+      current.phasePercent = undefined;
+      save();
+      generateThumbnail(current);
+    } else {
+      // Download+transcode runs on the server; poll /ready for { phase, percent }.
+      save();
+      const stem = data.url.split('/').pop()?.replace(/\.mp4$/, '') ?? '';
+      pollTranscodeReady(id, stem, serverBase, { flag: "downloading", rawError: true, interval: 800 });
+    }
   } catch (e: any) {
     const current = getEntryById(id);
     console.error(`[downloadYouTube] error for id=${id}:`, e);
     if (!current) return;
     current.downloading = false;
+    current.phase = undefined;
+    current.phasePercent = undefined;
     current.error = e.message ?? "Download failed";
     save();
   }

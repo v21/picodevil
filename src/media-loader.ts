@@ -354,10 +354,19 @@ function makeRow(entry: MediaEntry): HTMLElement {
       indicator.style.cssText = "flex-shrink:0;font-size:13px;color:#aaa;";
       row.appendChild(indicator);
     } else if (entry.downloading) {
-      const spinner = document.createElement("span");
-      spinner.textContent = "⏳";
-      spinner.style.cssText = "flex-shrink:0;font-size:16px;";
-      row.appendChild(spinner);
+      // Two-phase YouTube progress: "downloading: 45%" then "transcoding: 13%".
+      // Falls back to ⏳ before the first /ready poll reports a phase.
+      const indicator = document.createElement("span");
+      indicator.style.cssText = "flex-shrink:0;font-size:12px;color:#aaa;white-space:nowrap;";
+      if (entry.phase && entry.phasePercent != null) {
+        const label = entry.phase === "transcode" ? "transcoding" : "downloading";
+        indicator.textContent = `${label}: ${Math.round(entry.phasePercent * 100)}%`;
+        indicator.title = `${label} in progress`;
+      } else {
+        indicator.textContent = "⏳";
+        indicator.style.fontSize = "16px";
+      }
+      row.appendChild(indicator);
     } else if (entry.error) {
       const retryBtn = document.createElement("button");
       retryBtn.textContent = "↻";

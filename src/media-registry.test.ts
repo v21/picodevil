@@ -10,6 +10,19 @@ beforeEach(() => {
   clearAll();
 });
 
+/** Poll a predicate until true or timeout — for asserting on /ready poll-driven state. */
+function waitFor(cond: () => boolean | undefined, timeout = 3000): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tick = () => {
+      if (cond()) return resolve();
+      if (Date.now() - start > timeout) return reject(new Error("waitFor timeout"));
+      setTimeout(tick, 20);
+    };
+    tick();
+  });
+}
+
 describe("media registry", () => {
   it("adds and resolves media", () => {
     addMedia("http://localhost:3456/videos/clip.mp4", "clip");
@@ -146,6 +159,44 @@ describe("media registry", () => {
       expect(renamed!.downloading, "downloading should be false after fetch completes").toBe(false);
       expect(renamed!.url).toBe("http://localhost:3456/videos/renametest1.mp4");
       expect(resolveMedia(originalName)).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("polls /ready for phase/percent when the download isn't ready immediately", async () => {
+    let readyCalls = 0;
+    vi.stubGlobal("fetch", (url: string) => {
+      if (String(url).includes("/download")) {
+        return Promise.resolve(new Response(
+          JSON.stringify({ url: "http://localhost:3456/videos/progresstest.mp4", ready: false }),
+          { status: 200 },
+        ));
+      }
+      // /ready/<stem>: first report transcode @ 50%, then done.
+      readyCalls++;
+      const body = readyCalls === 1
+        ? { ready: false, phase: "transcode", percent: 0.5 }
+        : { ready: true };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
+
+    try {
+      const entry = addMedia("https://youtube.com/watch?v=progresstest");
+      await downloadYouTube(entry.name);
+
+      // downloadYouTube returns after scheduling the poll — still in progress.
+      expect(resolveMedia(entry.name)!.downloading).toBe(true);
+
+      // First poll surfaces the transcode phase + percent.
+      await waitFor(() => resolveMedia(entry.name)?.phase === "transcode");
+      expect(resolveMedia(entry.name)!.phasePercent).toBe(0.5);
+
+      // Next poll reports ready → flags cleared, URL kept.
+      await waitFor(() => resolveMedia(entry.name)?.downloading === false);
+      expect(resolveMedia(entry.name)!.phase).toBeUndefined();
+      expect(resolveMedia(entry.name)!.phasePercent).toBeUndefined();
+      expect(resolveMedia(entry.name)!.url).toBe("http://localhost:3456/videos/progresstest.mp4");
     } finally {
       vi.unstubAllGlobals();
     }
