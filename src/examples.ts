@@ -1,8 +1,98 @@
 const examples: { name: string; code: string }[] = [
   {
-    name: "hello",
-    code: `$: color("red blue green").rowscols(3).gridMod()`,
+    name: "rgb",
+    code: `// by v21
+
+$: S("<rgb1 rgb2 rgb3>")
+  .alpha(slider(1.00))
+  .objectfit("tilecenter")
+  .scrollX(rand.segment(1))
+  .scrollY(sine.slow("5"))
+  .rotate(saw.slow(10))
+  .scale("<1.5 2.5>/4".lerp())
+
+// \`prev\` grabs the previous rendered frame 
+$: s("prev").scale(.95).barrel(.01).alpha(.9)
+
+`,
   },
+  {
+    name: "space_tv",
+    code: `// by v21
+
+$: s("#222")
+
+// H prefix means it doesn't render directly
+Hscan: s("scanlines").objectfit("tile").scale(10)
+
+$: s("issexercise1, issexercise2, issexercise3, issdock, issmodule, tvsnow, testcard")
+.sync()
+.shuffleindex(rand.segment(1))
+.stack(s("scan").blend("multiply").alpha(.4))
+.often(speed(-1))
+.rows(3)
+.cols(4)
+.gridMod()
+.scale(.9)
+.barrel(.7)
+.sometimes(croph(-1))
+.sometimes(cropw(-1))
+`
+  }
+  ,
+  {
+    name: "canalslices",
+    code: `// by v21
+ $: s("canalboat")
+.syncStack(5)
+.shuffleIndex()
+.cols(5)
+.rows(1)
+.gridMod()`
+  },
+  {
+    name: "ducks",
+    code: `// by v21
+
+setCps(0.125)
+
+ $: s("ducks")
+.speed("<1 .5*2 -1 -.5*2>")
+.chop(8)
+.rev()
+`
+  },
+  {
+    name:"picodevil",
+    code:`// by v21
+
+
+$: s("text:_picodevil_")
+.objectfit("tile")
+.fontpicker('BIZ UDPMincho')
+.rotate(saw.slow(100))
+.fontsize(48)
+.scale(2)
+
+
+$: s("prev")
+  .alpha(.9975)
+  .pixelate(8)
+  .huerot("-.01 .01".fast(10))
+
+
+$: s("text:picodevil")
+.fontpicker('Shantell Sans')
+.fontaxis('INFM', "0 100 50".lerp())
+.fontaxis('BNCE', sine.range(-100,100).fast(2))
+.fontaxis('wght', sine.range(300,800).fast(1.5))
+.fontaxis('ital', sine.range(0,1).slow(10))
+.fontsize(500)
+.fontcolor("red")
+.x(sine.range(.4,.6).slow(5))
+.y(cosine.range(.4,.6).slow(2))
+`
+  }
 ];
 
 export function setupExamples(container: HTMLElement) {
@@ -14,7 +104,7 @@ export function setupExamples(container: HTMLElement) {
     const btn = document.createElement("button");
     btn.textContent = ex.name;
     btn.addEventListener("click", () => {
-      window.pdSetCode(ex.code);
+      window.pdSetCode(ex.code, true); // load the example and evaluate it
     });
     li.appendChild(btn);
     list.appendChild(li);

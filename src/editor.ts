@@ -10,7 +10,7 @@ import type { WidgetCallInfo, FontPickerCallInfo } from "./transpiler";
 declare global {
   interface Window {
     pdEval: (code: string) => { error: string | null; widgets: WidgetCallInfo[] };
-    pdSetCode: (code: string) => void;
+    pdSetCode: (code: string, evaluate?: boolean) => void;
   }
 }
 
@@ -166,10 +166,14 @@ export function setupEditor(
     }),
   });
 
-  window.pdSetCode = (code: string) => {
+  window.pdSetCode = (code: string, evaluate = false) => {
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: code },
     });
+    if (evaluate) {
+      onCodeChange?.(code);
+      evalAndDecorate(view, code);
+    }
   };
 
   // evaluate initial code at startup
