@@ -844,12 +844,12 @@ PatternProto.mapOn = function (key: any, fn: (p: any) => any) {
   // field value over its part span. Using part (not whole) as the timing anchor
   // ensures distinct time steps for collectEvents when haps share a whole span.
   const fieldPat = new CorePattern((state: any) => {
-    const t0 = Number(state.span.begin);
-    const t1 = Number(state.span.end);
-    const rawKey = keyPat.queryArc(t0, t0)[0]?.value;
+    const begin = state.span.begin;
+    const end = state.span.end;
+    const rawKey = keyPat.queryArc(begin, begin)[0]?.value;
     const resolvedKey = _fieldAliases[rawKey] ?? rawKey;
     if (typeof resolvedKey !== 'string') return [];
-    const srcHaps = src.queryArc(t0, t1);
+    const srcHaps = src.queryArc(begin, end);
     return srcHaps.flatMap((hap: any) => {
       const fieldVal = hap.value?.[resolvedKey];
       if (fieldVal === undefined) return [];
@@ -861,13 +861,13 @@ PatternProto.mapOn = function (key: any, fn: (p: any) => any) {
   // Use queryArc (not query) for both src and transformed so that patterns built
   // from mini() correctly cycle-split across absolute cycle times.
   return new CorePattern((state: any) => {
-    const t0 = Number(state.span.begin);
-    const t1 = Number(state.span.end);
-    const rawKey2 = keyPat.queryArc(t0, t0)[0]?.value;
+    const begin = state.span.begin;
+    const end = state.span.end;
+    const rawKey2 = keyPat.queryArc(begin, begin)[0]?.value;
     const resolvedKey = _fieldAliases[rawKey2] ?? rawKey2;
-    if (typeof resolvedKey !== 'string') return src.queryArc(t0, t1);
-    const srcHaps = src.queryArc(t0, t1);
-    const outHaps = transformed.queryArc(t0, t1);
+    if (typeof resolvedKey !== 'string') return src.queryArc(begin, end);
+    const srcHaps = src.queryArc(begin, end);
+    const outHaps = transformed.queryArc(begin, end);
     return srcHaps.flatMap((hap: any) => {
       if (hap.value?.[resolvedKey] === undefined) return [hap];
       const matching = outHaps.filter((oh: any) => oh.part.intersection(hap.part));

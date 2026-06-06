@@ -68,6 +68,11 @@ export function createMixParam(name: string) {
 
         const results: any[] = [];
         for (const ch of ctrlHaps) {
+          // Both parts are zero-width instants at the same query time; they must
+          // be the EXACT same Fraction for intersection to succeed. Any Number()
+          // round-trip through float inside a structural op (stackN, shuffleIndex,
+          // mapOn, …) skews the source hap's instant and causes a silent miss here.
+          // See fraction-time-preservation.test.ts for the guard.
           const newPart = hap.part.intersection(ch.part);
           if (!newPart) continue;
           results.push(new Hap(

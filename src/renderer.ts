@@ -106,6 +106,7 @@ export class FrameRenderer {
     performance.mark('pd-phase-start');
     const { needed, eventMap, allEvents } = queryNeeded(screens, t, cps, this.pool.videoDurations, this.pool.resolveMediaUrl);
     this.lastEventCount = allEvents.length;
+    if ((globalThis as any).pdLogScreens) this.dumpFrameScreens(allEvents, t);
     this._endPhase('pd query', this.metrics.phaseQuery);
 
     // Phase 2: element assignment (pool matching)
@@ -211,6 +212,26 @@ export class FrameRenderer {
 
     // eslint-disable-next-line no-console
     console.log(`[pd] cyc=${t.toFixed(2)} n=${vids.length} act=${this.activeVideoEls.length} nFlaps=${flaps} seeks=${seeks}${reasons ? `{${reasons}}` : ''} | ${parts.join(' ')}`);
+  }
+
+  /**
+   * Per-frame dump of every rendered tile, in draw order (last = on top).
+   * Enable in the browser console with `pdLogScreens = true` (off with `= false`).
+   * Unlike `pdDebug` (videos only) this lists ALL tiles incl. colors/images, so
+   * it's the tool for seeing what actually changes frame-to-frame: tile count,
+   * source identity, per-tile `i`/alpha/position. Each line is one frame.
+   */
+  private dumpFrameScreens(allEvents: FrameEvent[], t: number): void {
+    const parts = allEvents.map((fe) => {
+      const v = fe.ev ?? {};
+      const src = v.color ?? (v.src ? String(v.src).split('/').pop() : v.type ?? '?');
+      const i = v.i ?? '-';
+      const a = v.alpha != null ? Number(v.alpha).toFixed(2) : '-';
+      const pos = v.x != null || v.y != null ? `@${Number(v.x ?? 0).toFixed(2)},${Number(v.y ?? 0).toFixed(2)}` : '';
+      return `s${fe.screenIndex}#${i}:${src}${pos}(a${a})`;
+    });
+    // eslint-disable-next-line no-console
+    console.log(`[pdscreens] cyc=${t.toFixed(3)} n=${allEvents.length} | ${parts.join(' ')}`);
   }
 
   /** Measure from the last 'pd-phase-start' mark, push duration to arr, clear entries. */

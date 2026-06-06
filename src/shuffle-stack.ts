@@ -47,7 +47,7 @@ function shuffledPermutation(count: number, seed: number): number[] {
  * Resolve seed pattern at a query arc to an integer.
  */
 function resolveSeed(seedPat: any, begin: any, end: any, count: number): number {
-  const seedHaps = seedPat.queryArc(Number(begin), Number(end));
+  const seedHaps = seedPat.queryArc(begin, end);
   const seedVal = seedHaps.length > 0 ? Number(seedHaps[0].value) : 0;
   return hashStr(`${seedVal}:${count}`);
 }
@@ -125,7 +125,7 @@ PatternProto.shuffleStackCycle = function (seedPat?: any) {
     // - discrete ("1 2"): frame-time combiner picks the active event
     // - continuous (sine): frame-time combiner samples at query time
     const carrier = _shuffleSeed(seed, pure(0));
-    const seedHaps = carrier.queryArc(Number(begin), Number(end));
+    const seedHaps = carrier.queryArc(begin, end);
     const seedVal = seedHaps.length > 0 ? Number(seedHaps[0].value._shuffleSeed) : 0;
     const intSeed = hashStr(`${seedVal}:${haps.length}`);
 
@@ -179,7 +179,7 @@ PatternProto.shuffleIndex = function (seedPat?: any) {
 
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
-    const haps: any[] = self.queryArc(Number(begin), Number(end));
+    const haps: any[] = self.queryArc(begin, end);
     if (haps.length === 0) return haps;
 
     // Assign group indices with same layoutParent grouping as applyIndex

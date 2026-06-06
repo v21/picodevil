@@ -24,7 +24,7 @@ export function stackN(n: any, ...args: any[]): Pattern {
   const callId = nextLayoutParent();
   return new Pattern((state: any) => {
     const { begin, end } = state.span;
-    const nEvs = reify(n).queryArc(Number(begin), Number(end));
+    const nEvs = reify(n).queryArc(begin, end);
     if (nEvs.length === 0) return [];
     return nEvs.flatMap((nEv: any) => {
       const count = Math.max(1, Math.round(Number(nEv.value)));
