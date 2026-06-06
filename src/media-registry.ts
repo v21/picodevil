@@ -191,7 +191,7 @@ export function importAll(json: string) {
   save();
 }
 
-export type SourceItem = { name?: string; url: string; type?: MediaEntry["type"] };
+export type SourceItem = { name?: string; url: string; type?: MediaEntry["type"]; thumbnail?: string };
 
 /**
  * Of a sources.json-shaped list, return the subset that isn't already present —
@@ -232,8 +232,16 @@ export function addFromServer(items: SourceItem[]): number {
       url: item.url,
       type: item.type ?? guessType(item.url),
     };
+    if (item.thumbnail) {
+      // Server pre-generated thumbnail. Resolve against the server URL now (same
+      // treatment as video URLs) so bare /thumbs/… paths don't resolve to the
+      // Vite dev server origin. CDN absolute URLs pass through unchanged.
+      // No localStorage cache needed — the browser HTTP cache handles URL-based thumbnails.
+      entry.thumbnail = resolveUrl(item.thumbnail);
+    } else {
+      generateThumbnail(entry);
+    }
     registry.push(entry);
-    generateThumbnail(entry);
   }
   if (missing.length) save();
   return missing.length;
@@ -518,7 +526,7 @@ function processThumbQueue() {
     const vid = document.createElement("video");
     if (isCrossOrigin) vid.crossOrigin = "anonymous";
     vid.muted = true;
-    vid.preload = "auto";
+    vid.preload = "metadata";
 
     const cleanup = () => {
       vid.removeAttribute("src");
