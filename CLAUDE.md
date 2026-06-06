@@ -276,6 +276,20 @@ npx tsx test/stress-test.ts --case "rolling" --headless
 
 # Upload integration test — end-to-end file drag-and-drop upload (requires port 3456 free)
 npm run test:upload
+
+# Example perf benchmark — runs the built-in examples (src/examples.ts) as a
+# real-world perf corpus, vs a baseline keyed by a content hash of each
+# example's code. Editing an example marks it STALE (recapture), not a failure;
+# only a same-hash slowdown beyond tolerance is a REGRESSION (exit 1).
+npm run bench:examples:capture   # write test/baselines/example-perf.json (git-ignored, local)
+npm run bench:examples:check     # compare current run vs baseline
+
+# Example warm-determinism golden — warms up each example (videos decode/buffer),
+# then renders at a fixed cycle with a pinned wall-clock and checks whether it
+# settles. Stable examples get a golden PNG; unstable ones (e.g. picodevil's
+# near-unity s("prev") feedback) are recorded as informational, never failing.
+npm run golden:examples:capture  # writes test/golden-examples/ (git-ignored, GPU-specific)
+npm run golden:examples:compare
 ```
 
 ### Test suite overview
@@ -293,7 +307,11 @@ Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest
   - `monkey-test.ts` — grammar-based random pattern generator, checks for crashes/errors
   - `regression-cases.json` — saved monkey failures for conformance replay
 - **Stress testing** (`test/`) — `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
+- **Example perf benchmark** (`test/`) — `example-bench.ts` — runs the built-in examples (`src/examples.ts`) as a real-world perf corpus against a baseline **keyed by a content hash of each example's code**. Editing an example flips its hash → status `STALE` ("recapture"), *not* a failure; a real `REGRESSION` (exit 1) only fires when the code is unchanged but p95 grows past tolerance (default `max(+25%, +3ms)`). `capture`/`check` modes, like golden.
+- **Example warm-determinism golden** (`test/`) — `example-golden.ts` — warms each example until videos are decoded/buffered, then renders at a fixed cycle with a **pinned wall-clock** (`pdRenderAt`'s 3rd arg) and classifies it stable/unstable via the settle loop. Stable examples get a golden PNG; unstable ones (currently just `picodevil`, due to its near-unity `s("prev")` feedback) are reported, never failed. Same code-hash staleness model.
 - **Upload integration test** (`test/`) — `upload-integration-test.ts` — end-to-end Playwright test covering file drag-and-drop upload in both `SERVER_ENABLED=true` and `=false` modes. Catches CORS issues, XHR failures, and URL swap logic. Run with `npm run test:upload`.
+
+The vite+chromium scaffold and golden pixel helpers shared by `stress-test.ts`, `golden-render.ts`, `example-bench.ts`, and `example-golden.ts` live in `test/harness.ts`; the code-hash + baseline-classification logic (browser-free, unit-tested in `src/baseline.test.ts`) lives in `test/baseline.ts`.
 
 ### Performance profiling
 
@@ -368,15 +386,14 @@ The plugin scans source files listed in `buildReferenceData()` in `vite-plugin-r
 
 ## Workflow when making changes
 
-When working through a list of tasks, **stop and check in with the user after completing each one** — don't proceed to the next task without confirmation. For each task:
+ For each task:
 1. **Write a failing test first** (red) — unit test in `src/*.test.ts` and monkey tester coverage in `test/monkey-test.ts`. Skip this only when the change is config-only, or otherwise impractical to test upfront.
 2. **Implement the change** to make the test pass (green)
 3. When adding new user-facing functionality, also add coverage to the monkey tester
 4. Run `npm test` (unit tests)
 5. Run monkey testing: `npm run test:monkey` and `npm run test:monkey:replay`
 5b. For performance-sensitive changes (video playback, pool management, render loop): also run `npm run test:stress:headless`
-6. Report what was done and wait for go-ahead
-7. Don't commit changes unless asked
+6. Don't commit changes unless asked
 
 Don't edit README yourself! This is a human written document. But do prompt the user if it's out of date.
 

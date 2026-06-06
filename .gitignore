@@ -3,3 +3,8 @@ videos
 images
 dist/
 .DS_Store
+
+# Example-benchmark artifacts — machine/GPU-specific, captured locally.
+# (example-media.json IS committed; it's the hand-authored name→url map.)
+test/baselines/example-perf.json
+test/golden-examples/

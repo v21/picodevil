@@ -1,4 +1,6 @@
-const examples: { name: string; code: string }[] = [
+export interface Example { name: string; code: string }
+
+export const examples: Example[] = [
   {
     name: "rgb",
     code: `// by v21
@@ -92,6 +94,22 @@ $: s("text:picodevil")
 .x(sine.range(.4,.6).slow(5))
 .y(cosine.range(.4,.6).slow(2))
 `
+  },{
+    "name":"colour grids",
+    "code":`// by v21
+
+$: s("<red green blue prev> white black <prev ~>")
+.stackN("4 8")
+.someCycles(rev())
+.stackN("2 4 3")
+.someCycles(fast(4))
+.stackN("4 2 8 1")
+.late(choose(0, 0.25, 0.5, 0.75).segment(choose(.25, .5, 1).segment(1)))
+.late(choose(0, 0, 0, 0, 1, 2, 3).segment(choose(.25, .5, 1).segment(1)))
+.index()
+.cols("<1 8 16 64>")
+.rows("<1 8 16 64>/4")
+.gridMod()`
   }
 ];
 

@@ -12,15 +12,10 @@
  * Exit code: 0 if all pass, 1 if any regression detected.
  */
 
-import { chromium } from "playwright";
-import { createServer } from "vite";
+import { startHarness, percentile, phaseStats, collectFrameMetrics, parseFlags } from "./harness";
 
-const args = process.argv.slice(2);
-function flag(name: string, def: string): string {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] ? args[i + 1] : def;
-}
-const HEADLESS = args.includes("--headless");
+const { flag, bool } = parseFlags();
+const HEADLESS = bool("headless");
 const DURATION_MS = parseInt(flag("duration", "5000"), 10);
 const FRAME_THRESHOLD_MS = parseFloat(flag("threshold", "32"));
 /** If set, only run the case whose name contains this substring (case-insensitive). */
@@ -150,11 +145,6 @@ const CASES: StressCase[] = [
   },
 ];
 
-interface PhaseStats {
-  p50: number;
-  p95: number;
-}
-
 interface CaseResult {
   name: string;
   pass: boolean;
@@ -171,31 +161,9 @@ interface CaseResult {
   errors: string[];
 }
 
-function percentile(sorted: number[], p: number): number {
-  if (sorted.length === 0) return 0;
-  const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, idx)];
-}
-
 async function main() {
-  const server = await createServer({
-    server: { port: 0 },
-    logLevel: "warn",
-  });
-  await server.listen();
-  const addr = server.httpServer!.address()!;
-  const port = typeof addr === "string" ? 5173 : addr.port;
-  const url = `http://localhost:${port}`;
-
-  const browser = await chromium.launch({
-    headless: HEADLESS,
-    args: ['--use-gl=angle', '--use-angle=metal', '--enable-unsafe-swiftshader'],
-  });
-  const context = await browser.newContext({ viewport: { width: 800, height: 600 } });
-  const page = await context.newPage();
-
-  await page.goto(url);
-  await page.waitForFunction(() => typeof window.pdEval === "function", null, { timeout: 10000 });
+  const harness = await startHarness({ headless: HEADLESS, viewport: { width: 800, height: 600 } });
+  const { page } = harness;
 
   const activeCases = FILTER ? CASES.filter(tc => tc.name.toLowerCase().includes(FILTER)) : CASES;
   if (FILTER && activeCases.length === 0) {
@@ -239,20 +207,7 @@ async function main() {
     }
 
     // Collect metrics
-    const metrics = await page.evaluate(() => {
-      const m = (window as any).pdMetrics;
-      return {
-        frameTimes: [...m.frameTimes] as number[],
-        seeksHistory: [...m.seeksHistory] as number[],
-        poolSize: m.poolSize as number,
-        freePoolSize: m.freePoolSize as number,
-        maxFrameTime: m.maxFrameTime as number,
-        phaseQuery:   [...m.phaseQuery]   as number[],
-        phaseAssign:  [...m.phaseAssign]  as number[],
-        phaseDraw:    [...m.phaseDraw]    as number[],
-        phasePrewarm: [...m.phasePrewarm] as number[],
-      };
-    });
+    const metrics = await collectFrameMetrics(page);
 
     page.off("pageerror", onPageError);
 
@@ -272,11 +227,6 @@ async function main() {
       seekCheckPass = avgSeeksAfterWarmup <= tc.maxAvgSeeksAfterWarmup;
       if (!seekCheckPass) errors.push(`seeks: avg=${avgSeeksAfterWarmup.toFixed(3)} after warmup, max=${tc.maxAvgSeeksAfterWarmup}`);
     }
-
-    const phaseStats = (arr: number[]): PhaseStats => {
-      const s = [...arr].sort((a, b) => a - b);
-      return { p50: percentile(s, 50), p95: percentile(s, 95) };
-    };
 
     const result: CaseResult = {
       name: tc.name,
@@ -301,12 +251,10 @@ async function main() {
     results.push(result);
 
     // Navigate fresh for next case
-    await page.goto(url);
-    await page.waitForFunction(() => typeof window.pdEval === "function", null, { timeout: 10000 });
+    await harness.reload();
   }
 
-  await browser.close();
-  await server.close();
+  await harness.close();
 
   // Output structured results
   const allPass = results.every(r => r.pass);

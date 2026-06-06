@@ -23,26 +23,27 @@
  *   test/golden/<id>.png        per-case PNG snapshot
  *
  * Exit code: 0 if all pass (compare) / capture succeeded; 1 if any drift.
+ *
+ * The vite+chromium scaffold and pixel capture/compare helpers live in
+ * `test/harness.ts`, shared with the other browser-driven harnesses.
  */
 
-import { chromium, type Page } from "playwright";
-import { createServer } from "vite";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "fs";
 import { resolve } from "path";
 import fc from "fast-check";
 import { topExpr, type GeneratedExpr, REGISTRY_SEED, VIDEO_REGISTRY_NAMES } from "./arbitraries";
+import {
+  startHarness, seedMedia, renderAndSettle, encodePng, decodePng, diffPixels,
+  parseFlags, type Harness, type PixelData,
+} from "./harness";
 
 // ============================================================
 // CLI args
 // ============================================================
 
-const args = process.argv.slice(2);
-const MODE = args[0];
-function flag(name: string, def: string): string {
-  const i = args.indexOf(`--${name}`);
-  return i >= 0 && args[i + 1] ? args[i + 1] : def;
-}
-const HEADLESS = args.includes("--headless");
+const { argv, flag, bool } = parseFlags();
+const MODE = argv[0];
+const HEADLESS = bool("headless");
 const COUNT = parseInt(flag("count", "100"), 10);
 const SEED = parseInt(flag("seed", "42"), 10);
 const VIEWPORT = flag("viewport", "256x256");
@@ -119,32 +120,20 @@ function generateCorpus(n: number, seed: number): { id: string; code: string }[]
 }
 
 // ============================================================
-// Browser harness
+// Per-case render (warm up + settle)
 // ============================================================
 
-interface PixelData { width: number; height: number; data: Uint8Array }
-
-/** Render one case in the page and return the canvas pixels. */
-async function renderCase(page: Page, url: string, code: string): Promise<PixelData> {
+/** Render one case in a fresh page and return the settled canvas pixels. */
+async function renderCase(h: Harness, code: string): Promise<PixelData> {
   // Fresh navigation per case clears renderer / FBO / video element state.
-  // Use 'load' to make sure async resources have started loading before we
-  // poke at window state.
-  await page.goto(url, { waitUntil: "load" });
-  await page.waitForFunction(
-    () => typeof (window as any).pdEval === "function"
-      && typeof (window as any).pdRenderAt === "function"
-      && typeof (window as any).pdPauseRaf === "function",
-    null, { timeout: 10000 },
-  );
+  await h.reload();
 
-  await page.evaluate(() => (window as any).pdPauseRaf());
+  await h.page.evaluate(() => (window as any).pdPauseRaf());
 
-  await page.evaluate((entries: typeof REGISTRY_SEED) => {
-    const addMedia = (window as any).pdAddMedia;
-    if (addMedia) for (const { name, url } of entries) addMedia(url, name);
-  }, REGISTRY_SEED);
+  // Seed the registry media the corpus patterns reference.
+  await seedMedia(h.page, REGISTRY_SEED);
 
-  const evalError = await page.evaluate((c: string) => {
+  const evalError = await h.page.evaluate((c: string) => {
     try { (window as any).pdEval(c); return null; }
     catch (e: any) { return e?.message || String(e); }
   }, code);
@@ -152,54 +141,20 @@ async function renderCase(page: Page, url: string, code: string): Promise<PixelD
 
   // Wait for fonts to finish loading — text() tiles otherwise render with the
   // CSS fallback face for the first few frames after eval.
-  await page.evaluate(() => (document as any).fonts?.ready);
+  await h.page.evaluate(() => (document as any).fonts?.ready);
 
-  // Loop: render → capture → wait → render → capture, until two consecutive
-  // captures match (asset loading complete) or we hit max attempts. This
-  // beats a fixed timeout for patterns with slow-loading images, and avoids
-  // wasting time on patterns that settle immediately.
-  let prev: PixelData | null = null;
-  let last: PixelData | null = null;
-  const MAX_ATTEMPTS = 20;
-  for (let i = 0; i < MAX_ATTEMPTS; i++) {
-    await page.waitForTimeout(i === 0 ? SETTLE_MS : 100);
-    last = await page.evaluate(({ cycle, cps }: { cycle: number; cps: number }) => {
-      (window as any).pdRenderAt(cycle, cps);
-      const c = document.getElementById("c") as HTMLCanvasElement;
-      const w = c.width, h = c.height;
-      // Read via a 2D canvas to get post-composited pixels without depending on
-      // WebGL alpha mode subtleties.
-      const tmp = document.createElement("canvas");
-      tmp.width = w; tmp.height = h;
-      const ctx = tmp.getContext("2d")!;
-      ctx.drawImage(c, 0, 0);
-      const img = ctx.getImageData(0, 0, w, h);
-      return { width: w, height: h, data: Array.from(img.data) };
-    }, { cycle: CYCLE, cps: CPS }).then(r => ({ width: r.width, height: r.height, data: new Uint8Array(r.data) }));
-
-    if (prev) {
-      // Compare prev and last with zero tolerance. If identical, we've settled.
-      let stable = prev.width === last.width && prev.height === last.height;
-      if (stable) {
-        for (let j = 0; j < prev.data.length; j++) {
-          if (prev.data[j] !== last.data[j]) { stable = false; break; }
-        }
-      }
-      if (stable) return last;
-    }
-    prev = last;
-  }
-  // Didn't fully settle — return last anyway. The harness logs this case but
-  // doesn't fail, since some patterns may have genuinely non-zero variation.
-  return last!;
+  // Render → capture → wait, until two consecutive captures match (assets
+  // loaded) or max attempts. Beats a fixed timeout for slow-loading images.
+  const { pixels } = await renderAndSettle(h.page, { cycle: CYCLE, cps: CPS, settleMs: SETTLE_MS });
+  return pixels;
 }
 
 /** Render with retry on transient navigation errors. */
-async function renderCaseWithRetry(page: Page, url: string, code: string): Promise<PixelData> {
+async function renderCaseWithRetry(h: Harness, code: string): Promise<PixelData> {
   let lastErr: Error | undefined;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      return await renderCase(page, url, code);
+      return await renderCase(h, code);
     } catch (e: any) {
       lastErr = e;
       const msg = e.message || String(e);
@@ -213,94 +168,27 @@ async function renderCaseWithRetry(page: Page, url: string, code: string): Promi
   throw lastErr!;
 }
 
-/** Encode pixel data as a PNG via the browser. Avoids adding a Node PNG dep. */
-async function encodePng(page: Page, pixels: PixelData): Promise<Uint8Array> {
-  const dataUrl: string = await page.evaluate(({ width, height, data }) => {
-    const c = document.createElement("canvas");
-    c.width = width; c.height = height;
-    const ctx = c.getContext("2d")!;
-    const img = ctx.createImageData(width, height);
-    img.data.set(new Uint8ClampedArray(data));
-    ctx.putImageData(img, 0, 0);
-    return c.toDataURL("image/png");
-  }, { width: pixels.width, height: pixels.height, data: Array.from(pixels.data) });
-  const base64 = dataUrl.replace(/^data:image\/png;base64,/, "");
-  return Uint8Array.from(Buffer.from(base64, "base64"));
-}
-
-/** Decode a saved PNG back to raw pixels via the browser. */
-async function decodePng(page: Page, pngBytes: Uint8Array, expectedW: number, expectedH: number): Promise<PixelData> {
-  const result = await page.evaluate(async ({ b64, w, h }) => {
-    const img = new Image();
-    const url = `data:image/png;base64,${b64}`;
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = () => rej(new Error("png decode failed"));
-      img.src = url;
-    });
-    const c = document.createElement("canvas");
-    c.width = w; c.height = h;
-    const ctx = c.getContext("2d")!;
-    ctx.drawImage(img, 0, 0);
-    const data = ctx.getImageData(0, 0, w, h);
-    return { width: data.width, height: data.height, data: Array.from(data.data) };
-  }, { b64: Buffer.from(pngBytes).toString("base64"), w: expectedW, h: expectedH });
-  return { width: result.width, height: result.height, data: new Uint8Array(result.data) };
-}
-
-interface DiffResult { drifted: number; maxDelta: number; total: number }
-
-function diffPixels(a: PixelData, b: PixelData, tolerance: number): DiffResult {
-  if (a.width !== b.width || a.height !== b.height) {
-    return { drifted: a.width * a.height, maxDelta: 255, total: a.width * a.height };
-  }
-  let drifted = 0, maxDelta = 0;
-  const total = a.width * a.height;
-  for (let i = 0; i < a.data.length; i += 4) {
-    let pixelDrifted = false;
-    for (let c = 0; c < 4; c++) {
-      const d = Math.abs(a.data[i + c] - b.data[i + c]);
-      if (d > maxDelta) maxDelta = d;
-      if (d > tolerance) pixelDrifted = true;
-    }
-    if (pixelDrifted) drifted++;
-  }
-  return { drifted, maxDelta, total };
-}
-
 // ============================================================
 // Main
 // ============================================================
 
 async function main() {
-  console.log("Starting vite dev server...");
-  const server = await createServer({ server: { port: 0 }, logLevel: "warn" });
-  await server.listen();
-  const addr = server.httpServer!.address()!;
-  const port = typeof addr === "string" ? 5173 : addr.port;
-  const url = `http://localhost:${port}`;
-  console.log(`Vite running at ${url}`);
-
-  const browser = await chromium.launch({
-    headless: HEADLESS,
-    args: ['--use-gl=angle', '--use-angle=metal', '--enable-unsafe-swiftshader'],
-  });
-
-  // In compare mode, use the manifest's viewport so renders match the goldens.
+  // Decide the viewport up front: compare uses the manifest's viewport so
+  // renders match the goldens.
   let vpw = VPW, vph = VPH;
   if (MODE === "compare") {
     if (!existsSync(MANIFEST_PATH)) {
       console.error(`No manifest at ${MANIFEST_PATH}. Run capture first.`);
-      await browser.close();
-      await server.close();
       process.exit(2);
     }
     const m: Manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf-8"));
     vpw = m.viewport[0]; vph = m.viewport[1];
   }
 
-  const context = await browser.newContext({ viewport: { width: vpw, height: vph } });
-  const page = await context.newPage();
+  console.log("Starting vite dev server + browser...");
+  const harness = await startHarness({ headless: HEADLESS, viewport: { width: vpw, height: vph } });
+  const { page } = harness;
+  console.log(`Harness ready at ${harness.url}`);
 
   if (MODE === "capture") {
     if (!existsSync(GOLDEN_DIR)) mkdirSync(GOLDEN_DIR, { recursive: true });
@@ -317,7 +205,7 @@ async function main() {
     const successfulCases: typeof cases = [];
     for (const c of cases) {
       try {
-        const pixels = await renderCaseWithRetry(page, url, c.code);
+        const pixels = await renderCaseWithRetry(harness, c.code);
         const png = await encodePng(page, pixels);
         writeFileSync(resolve(GOLDEN_DIR, `${c.id}.png`), png);
         captured++;
@@ -342,8 +230,7 @@ async function main() {
 
     console.log(`\nCapture complete: ${captured} succeeded, ${failed} failed.`);
     console.log(`Wrote ${manifest.count} entries to ${MANIFEST_PATH}`);
-    await browser.close();
-    await server.close();
+    await harness.close();
     process.exit(failed > 0 ? 1 : 0);
   }
 
@@ -351,7 +238,7 @@ async function main() {
   const manifest: Manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf-8"));
   console.log(`Comparing ${manifest.count} cases at ${vpw}x${vph} (tolerance=±${TOLERANCE}/channel)...`);
   let passed = 0, drifted = 0, errored = 0;
-  const drifts: { id: string; code: string; diff: DiffResult }[] = [];
+  const drifts: { id: string; code: string }[] = [];
 
   for (const c of manifest.cases) {
     const pngPath = resolve(GOLDEN_DIR, `${c.id}.png`);
@@ -361,7 +248,7 @@ async function main() {
       continue;
     }
     try {
-      const newPixels = await renderCase(page, url, c.code);
+      const newPixels = await renderCase(harness, c.code);
       const goldenBytes = readFileSync(pngPath);
       const goldenPixels = await decodePng(page, new Uint8Array(goldenBytes), newPixels.width, newPixels.height);
       const diff = diffPixels(goldenPixels, newPixels, TOLERANCE);
@@ -369,7 +256,7 @@ async function main() {
         passed++;
       } else {
         drifted++;
-        drifts.push({ id: c.id, code: c.code, diff });
+        drifts.push({ id: c.id, code: c.code });
         const pct = (diff.drifted / diff.total * 100).toFixed(2);
         console.log(`  [${c.id}] DRIFT: ${diff.drifted}/${diff.total} px (${pct}%), maxΔ=${diff.maxDelta}`);
         console.log(`    code: ${c.code.slice(0, 120)}${c.code.length > 120 ? "..." : ""}`);
@@ -384,8 +271,7 @@ async function main() {
   console.log(`GOLDEN COMPARE: ${passed} ok, ${drifted} drifted, ${errored} errored / ${manifest.count}`);
   console.log("=".repeat(60));
 
-  await browser.close();
-  await server.close();
+  await harness.close();
   process.exit(drifted > 0 || errored > 0 ? 1 : 0);
 }
 

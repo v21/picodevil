@@ -164,10 +164,15 @@ requestAnimationFrame(frame);
 // so subsequent captures aren't overwritten before being read.
 (window as any).pdPauseRaf = () => { rafPaused = true; };
 (window as any).pdResumeRaf = () => { rafPaused = false; };
-(window as any).pdRenderAt = (cycle: number, cps = 0.5) => {
+// `wallMs`, when supplied, pins the wall-clock time handed to the renderer
+// instead of `performance.now()`. Wall-clock-driven playback (sync()/rolling())
+// otherwise advances between two renders at the same cycle, so a settle loop
+// never stabilizes; pinning it lets warm video renders be reproducible.
+(window as any).pdRenderAt = (cycle: number, cps = 0.5, wallMs?: number) => {
   const t = Math.floor(cycle) + (cycle % 1);
   setRuntimeCps(cps);
-  frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, performance.now());
+  const wall = wallMs ?? performance.now();
+  frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, wall);
 };
 
 // --- URL state ---

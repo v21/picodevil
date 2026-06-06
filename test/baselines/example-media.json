@@ -1,0 +1,20 @@
+{
+  "comment": "Media referenced by the built-in examples (src/examples.ts). 'file' is served locally from the sibling bunnycdn/content/ via the harness's /example-media/ mount (offline, no network). 'cdn' is the fallback used when that directory is absent (bare checkout / CI). Mirrors bunnycdn/content/sources.json. Note: the 'scan' token some examples use has no asset anywhere and falls back to a colour tile.",
+  "entries": [
+    { "name": "carpetshop",   "file": "carpetshop.mp4",   "cdn": "https://videoclip.picodevil.com/carpetshop.mp4" },
+    { "name": "issdock",      "file": "issdock.mp4",      "cdn": "https://videoclip.picodevil.com/issdock.mp4" },
+    { "name": "issexercise1", "file": "issexercise1.mp4", "cdn": "https://videoclip.picodevil.com/issexercise1.mp4" },
+    { "name": "issexercise2", "file": "issexercise2.mp4", "cdn": "https://videoclip.picodevil.com/issexercise2.mp4" },
+    { "name": "issexercise3", "file": "issexercise3.mp4", "cdn": "https://videoclip.picodevil.com/issexercise3.mp4" },
+    { "name": "issmodule",    "file": "issmodule.mp4",    "cdn": "https://videoclip.picodevil.com/issmodule.mp4" },
+    { "name": "tvsnow",       "file": "tvsnow.mp4",       "cdn": "https://videoclip.picodevil.com/tvsnow.mp4" },
+    { "name": "canalboat",    "file": "canalboat.mp4",    "cdn": "https://videoclip.picodevil.com/canalboat.mp4" },
+    { "name": "ducks",        "file": "ducks.mp4",        "cdn": "https://videoclip.picodevil.com/ducks.mp4" },
+    { "name": "canalmoss",    "file": "canalmoss.mp4",    "cdn": "https://videoclip.picodevil.com/canalmoss.mp4" },
+    { "name": "rgb2",         "file": "rgb2.png",         "cdn": "https://videoclip.picodevil.com/rgb2.png" },
+    { "name": "rgb1",         "file": "rgb1.png",         "cdn": "https://videoclip.picodevil.com/rgb1.png" },
+    { "name": "rgb3",         "file": "rgb3.png",         "cdn": "https://videoclip.picodevil.com/rgb3.png" },
+    { "name": "scanlines",    "file": "scanlines.png",    "cdn": "https://videoclip.picodevil.com/scanlines.png" },
+    { "name": "testcard",     "file": "testcard.png",     "cdn": "https://videoclip.picodevil.com/testcard.png" }
+  ]
+}
