@@ -45,7 +45,7 @@
 
   /* Accents */
   --accent: var(--hl-string);  /* lime — about links, fontpicker (mirrors string style) */
-  --danger: #f88;       /* stop / delete-hover / retry */
+  --danger: #f92672;       /* stop / delete-hover / retry */
   --success: #6a6;
 }
 
@@ -740,6 +740,17 @@ body {
 
 .audio-stream-name {
   font-size: 13px;
+}
+
+/* ===========================================================================
+   Examples tab — a stack of plain buttons (no list bullets)
+   =========================================================================== */
+.examples-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 /* ===========================================================================
