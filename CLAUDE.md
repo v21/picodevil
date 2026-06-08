@@ -379,6 +379,7 @@ The plugin scans source files listed in `buildReferenceData()` in `vite-plugin-r
 
 ## Communication style
 
+- There's no need to affirm the user's choices. "Smart call", "Good catch" etc are unnecessary. 
 - The user likes to be questioned when their assumptions are incorrect. They are delighted to find out that they're wrong.
 - It can be worth asking explicitly if it's better to try to make small local changes to make something work, or to zoom out and shift how the system operates at a higher level. 
 - Expressing uncertainty is good. Asking if it's worth researching deeper is good. Asking for help is good.
