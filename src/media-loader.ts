@@ -90,11 +90,42 @@ export function setupMediaLoader(el: HTMLElement) {
 }
 
 function render() {
-  const prevScrollTop = container.querySelector<HTMLElement>("[data-list]")?.scrollTop ?? 0;
-  container.innerHTML = "";
+  // First render: build the persistent structure (add bar + scrollable list).
+  // These are never torn down so the list's scroll position and the add bar's
+  // input value survive subsequent renders.
+  if (!container.querySelector("[data-add-bar]")) {
+    container.appendChild(makeAddBar());
+  }
 
-  // Add bar
+  if (!container.querySelector("[data-list]")) {
+    const list = document.createElement("div");
+    list.dataset.list = "1";
+    // min-height:0 lets this flex child shrink below its content so only the list
+    // scrolls — without it, a taller (wrapped) footer pushes an extra scrollbar
+    // onto the whole videos tab.
+    list.style.cssText = "flex:1;min-height:0;overflow-y:auto;padding:4px 0;";
+    container.appendChild(list);
+  }
+
+  // Reconcile list items in place — no scroll position lost.
+  const list = container.querySelector<HTMLElement>("[data-list]")!;
+  reconcileList(list, getAllEntries());
+
+  // Footer has conditional buttons (Defaults, Load all, server status) and lives
+  // outside the scrollable area, so it's cheap and safe to rebuild each time.
+  const oldFooter = container.querySelector<HTMLElement>("[data-footer]");
+  const newFooter = makeFooter();
+  newFooter.dataset.footer = "1";
+  if (oldFooter) {
+    container.replaceChild(newFooter, oldFooter);
+  } else {
+    container.appendChild(newFooter);
+  }
+}
+
+function makeAddBar(): HTMLElement {
   const addBar = document.createElement("div");
+  addBar.dataset.addBar = "1";
   addBar.style.cssText = "display:flex;gap:4px;padding:8px;border-bottom:1px solid #333;flex-wrap:wrap;";
 
   const input = document.createElement("input");
@@ -147,36 +178,10 @@ function render() {
   addBar.appendChild(addBtn);
   addBar.appendChild(camBtn);
   addBar.appendChild(screenBtn);
-  container.appendChild(addBar);
+  return addBar;
+}
 
-  // List
-  const list = document.createElement("div");
-  list.dataset.list = "1";
-  // min-height:0 lets this flex child shrink below its content so only the list
-  // scrolls — without it, a taller (wrapped) footer pushes an extra scrollbar
-  // onto the whole videos tab.
-  list.style.cssText = "flex:1;min-height:0;overflow-y:auto;padding:4px 0;";
-
-  const entries = getAllEntries();
-  if (entries.length === 0) {
-    const empty = document.createElement("p");
-    empty.textContent = "No media added yet";
-    empty.style.cssText = "color:#555;font-size:16px;padding:12px;text-align:center;";
-    list.appendChild(empty);
-  }
-
-  for (const entry of entries) {
-    list.appendChild(makeRow(entry));
-  }
-
-  container.appendChild(list);
-  list.scrollTop = prevScrollTop;
-
-  // Footer buttons. Two groups: management/add actions on the left, server actions
-  // on the right. The footer wraps as a whole and the right group is a single flex
-  // child pushed over with margin-left:auto — so when the sidebar is too narrow for
-  // one line, the entire right group drops to a second (still right-aligned) line
-  // rather than buttons breaking at arbitrary points.
+function makeFooter(): HTMLElement {
   const footer = document.createElement("div");
   footer.style.cssText = "display:flex;gap:4px;padding:8px;border-top:1px solid #333;flex-wrap:wrap;align-items:center;";
 
@@ -256,7 +261,84 @@ function render() {
   const { el: serverBtn } = createServerSettingsButton();
   rightGroup.appendChild(serverBtn);
 
-  container.appendChild(footer);
+  return footer;
+}
+
+/** Stable key representing all visually-relevant fields of an entry.
+ *  If the key is unchanged, the row DOM node is reused without modification. */
+function entryRenderKey(entry: MediaEntry): string {
+  return [
+    entry.url,
+    entry.type ?? "",
+    entry.thumbnail ?? "",
+    String(!!entry.downloading),
+    entry.phase ?? "",
+    String(entry.phasePercent ?? ""),
+    String(!!entry.uploading),
+    String(entry.uploadProgress ?? ""),
+    entry.error ?? "",
+    entry.streamKind ?? "",
+    entry.deviceId ?? "",
+    String(entry.type === "stream" ? isStreamActive(entry.name) : false),
+  ].join("\0");
+}
+
+function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
+  // Index existing rows by entry name.
+  const byName = new Map<string, HTMLElement>();
+  for (const child of Array.from(list.children) as HTMLElement[]) {
+    const name = child.dataset.entryName;
+    if (name) byName.set(name, child);
+  }
+
+  const seen = new Set<string>();
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    seen.add(entry.name);
+    const key = entryRenderKey(entry);
+    let row = byName.get(entry.name);
+
+    if (row) {
+      // Replace row only when something visual changed.
+      if (row.dataset.entryKey !== key) {
+        const newRow = makeRow(entry);
+        newRow.dataset.entryName = entry.name;
+        newRow.dataset.entryKey = key;
+        list.replaceChild(newRow, row);
+        row = newRow;
+        byName.set(entry.name, row);
+      }
+    } else {
+      row = makeRow(entry);
+      row.dataset.entryName = entry.name;
+      row.dataset.entryKey = key;
+      byName.set(entry.name, row);
+    }
+
+    // Ensure the row sits at position i without moving it unnecessarily.
+    const atI = list.children[i] as HTMLElement | undefined;
+    if (atI !== row) {
+      list.insertBefore(row, atI ?? null);
+    }
+  }
+
+  // Remove rows for entries that no longer exist.
+  for (const [name, el] of byName) {
+    if (!seen.has(name)) el.remove();
+  }
+
+  // Empty-state placeholder.
+  const emptyEl = list.querySelector<HTMLElement>("[data-empty]");
+  if (entries.length === 0 && !emptyEl) {
+    const empty = document.createElement("p");
+    empty.dataset.empty = "1";
+    empty.textContent = "No media added yet";
+    empty.style.cssText = "color:#555;font-size:16px;padding:12px;text-align:center;";
+    list.prepend(empty);
+  } else if (entries.length > 0 && emptyEl) {
+    emptyEl.remove();
+  }
 }
 
 function makeRow(entry: MediaEntry): HTMLElement {
