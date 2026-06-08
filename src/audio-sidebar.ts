@@ -115,7 +115,7 @@ export function setupAudioTab(container: HTMLElement): void {
   configSection.appendChild(label('Configuration'));
   configSection.appendChild(sliderRow('Smooth', 0, 1, 0.01, state.config.smooth, v => fft.setSmooth(v)));
   configSection.appendChild(sliderRow('Cutoff', 0, 0.02, 0.001, state.config.cutoff, v => fft.setCutoff(v)));
-  configSection.appendChild(sliderRow('Scale', 1, 500, 1, state.config.scale, v => fft.setScale(v)));
+  configSection.appendChild(sliderRow('Scale', 0, 2, 0.01, state.config.scale, v => fft.setScale(v)));
   configSection.appendChild(sliderRow('Bins', 1, 16, 1, state.config.bins, v => fft.setBins(v)));
   container.appendChild(configSection);
 
