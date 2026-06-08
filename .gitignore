@@ -8,3 +8,4 @@ dist/
 # (example-media.json IS committed; it's the hand-authored name→url map.)
 test/baselines/example-perf.json
 test/golden-examples/
+test/sidebar-golden/

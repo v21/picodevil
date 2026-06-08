@@ -1,14 +1,10 @@
 import { fft, getFftState } from './fft-audio';
 import { getAllStreamStates } from './stream-manager';
 
-const BTN_STYLE = "background:#333;color:#ccc;border:1px solid #555;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:14px;";
-const LABEL_STYLE = "color:#888;font-size:12px;margin-bottom:4px;display:block;";
-const SECTION_STYLE = "padding:8px;border-bottom:1px solid #333;";
-
 function btn(text: string, onClick: () => void): HTMLButtonElement {
   const b = document.createElement('button');
   b.textContent = text;
-  b.style.cssText = BTN_STYLE;
+  b.className = 'pd-btn';
   b.addEventListener('click', onClick);
   return b;
 }
@@ -16,13 +12,13 @@ function btn(text: string, onClick: () => void): HTMLButtonElement {
 function label(text: string): HTMLSpanElement {
   const s = document.createElement('span');
   s.textContent = text;
-  s.style.cssText = LABEL_STYLE;
+  s.className = 'audio-label';
   return s;
 }
 
 function section(): HTMLDivElement {
   const d = document.createElement('div');
-  d.style.cssText = SECTION_STYLE;
+  d.className = 'audio-section';
   return d;
 }
 
@@ -33,7 +29,7 @@ function slider(min: number, max: number, step: number, value: number, onChange:
   input.max = String(max);
   input.step = String(step);
   input.value = String(value);
-  input.style.cssText = 'width:100%;margin:2px 0 6px;';
+  input.className = 'audio-slider';
   input.addEventListener('input', () => onChange(parseFloat(input.value)));
   return input;
 }
@@ -41,14 +37,14 @@ function slider(min: number, max: number, step: number, value: number, onChange:
 function sliderRow(labelText: string, min: number, max: number, step: number, value: number, onChange: (v: number) => void): HTMLDivElement {
   const wrap = document.createElement('div');
   const lbl = document.createElement('span');
-  lbl.style.cssText = 'color:#888;font-size:11px;';
+  lbl.className = 'audio-slider-val';
   const input = slider(min, max, step, value, (v) => { lbl.textContent = ` ${v.toFixed(2)}`; onChange(v); });
   lbl.textContent = ` ${value.toFixed(2)}`;
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex;align-items:center;gap:4px;';
+  row.className = 'audio-slider-row';
   const labelEl = document.createElement('span');
   labelEl.textContent = labelText;
-  labelEl.style.cssText = 'color:#888;font-size:12px;width:60px;flex-shrink:0;';
+  labelEl.className = 'audio-slider-label';
   row.appendChild(labelEl);
   row.appendChild(lbl);
   wrap.appendChild(row);
@@ -64,7 +60,7 @@ export function setupAudioTab(container: HTMLElement): void {
   srcSection.appendChild(label('Audio source'));
 
   const srcRow = document.createElement('div');
-  srcRow.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;';
+  srcRow.className = 'audio-src-row';
 
   const micBtn = btn('Microphone', async () => {
     try {
@@ -92,7 +88,7 @@ export function setupAudioTab(container: HTMLElement): void {
 
   // Status indicator
   const statusEl = document.createElement('div');
-  statusEl.style.cssText = 'margin-top:6px;font-size:12px;color:#666;';
+  statusEl.className = 'audio-status';
   const state = getFftState();
   statusEl.textContent = state.active ? '● Active' : '○ Inactive — access fft in a pattern to start';
   srcSection.appendChild(statusEl);
@@ -125,7 +121,7 @@ export function setupAudioTab(container: HTMLElement): void {
   const meterCanvas = document.createElement('canvas');
   meterCanvas.width = 200;
   meterCanvas.height = 40;
-  meterCanvas.style.cssText = 'width:100%;height:40px;display:block;background:#111;border-radius:3px;';
+  meterCanvas.className = 'audio-meter';
   meterSection.appendChild(meterCanvas);
   container.appendChild(meterSection);
   startMeterLoop(meterCanvas, statusEl);
@@ -150,14 +146,14 @@ async function renderDevices(section: HTMLElement): Promise<void> {
 
   if (devices.length === 0) {
     const note = document.createElement('div');
-    note.style.cssText = 'color:#555;font-size:12px;';
+    note.className = 'audio-note';
     note.textContent = 'No mic devices found (grant permission first)';
     section.appendChild(note);
     return;
   }
 
   const select = document.createElement('select');
-  select.style.cssText = 'width:100%;background:#1a1a1a;color:#ccc;border:1px solid #444;padding:4px;border-radius:3px;font-size:13px;';
+  select.className = 'audio-select';
   for (const d of devices) {
     const opt = document.createElement('option');
     opt.value = d.deviceId;
@@ -178,7 +174,7 @@ function renderScreenStreams(section: HTMLElement, statusEl: HTMLElement): void 
   const streams = getAllStreamStates().filter(s => s.kind === 'screen' && s.active);
   if (streams.length === 0) {
     const note = document.createElement('div');
-    note.style.cssText = 'color:#555;font-size:12px;';
+    note.className = 'audio-note';
     note.textContent = 'No active screen captures (use loadScreen or Videos tab)';
     section.appendChild(note);
     return;
@@ -187,14 +183,16 @@ function renderScreenStreams(section: HTMLElement, statusEl: HTMLElement): void 
   for (const s of streams) {
     const hasTracks = s.stream.getAudioTracks().length > 0;
     const row = document.createElement('div');
-    row.style.cssText = `display:flex;align-items:center;gap:6px;margin:3px 0;cursor:${hasTracks ? 'pointer' : 'default'};`;
+    row.className = 'audio-stream-row';
+    row.style.cursor = hasTracks ? 'pointer' : 'default';
     const dot = document.createElement('span');
     dot.textContent = hasTracks ? '◎' : '○';
+    dot.className = 'audio-stream-dot';
     dot.style.color = hasTracks ? '#8a8' : '#555';
-    dot.style.fontSize = '12px';
     const name = document.createElement('span');
     name.textContent = s.name + (hasTracks ? '' : ' (no audio)');
-    name.style.cssText = `font-size:13px;color:${hasTracks ? '#ccc' : '#555'};`;
+    name.className = 'audio-stream-name';
+    name.style.color = hasTracks ? '#ccc' : '#555';
     row.appendChild(dot);
     row.appendChild(name);
     if (hasTracks) {

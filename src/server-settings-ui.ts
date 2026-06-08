@@ -25,50 +25,34 @@ const STATUS_COLOURS = {
  */
 export function createServerSettingsButton(): { el: HTMLElement; dispose: () => void } {
   const wrapper = document.createElement("div");
-  wrapper.style.cssText = "position:relative;display:inline-block;";
+  wrapper.className = "server-wrapper";
 
   const button = document.createElement("button");
-  button.style.cssText = "background:#222;color:#aaa;border:1px solid #444;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;gap:6px;";
+  button.className = "pd-btn-flat server-btn";
 
   const dot = document.createElement("span");
-  dot.style.cssText = "display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0;";
+  dot.className = "server-dot";
   button.append(document.createTextNode("Server "), dot);
   wrapper.appendChild(button);
 
   const popover = document.createElement("div");
-  popover.style.cssText = [
-    "position:absolute",
-    "bottom:calc(100% + 4px)",
-    "right:0",
-    "width:280px",
-    "background:#161616",
-    "border:1px solid #444",
-    "border-radius:4px",
-    "padding:10px",
-    "z-index:10",
-    "display:none",
-    "flex-direction:column",
-    "gap:8px",
-    "font-size:13px",
-    "color:#bbb",
-    "box-sizing:border-box",
-  ].join(";");
+  popover.className = "server-popover";
   wrapper.appendChild(popover);
 
   const blurb = document.createElement("div");
-  blurb.style.cssText = "color:#888;font-size:12px;line-height:1.4;";
+  blurb.className = "server-blurb";
   blurb.innerHTML = `Optional companion server for YouTube downloads and local-file uploads.
-    <a href="https://github.com/v21/picodevil-server#readme" target="_blank" rel="noopener" style="color:#88f;">What is this?</a>`;
+    <a href="https://github.com/v21/picodevil-server#readme" target="_blank" rel="noopener" class="server-link">What is this?</a>`;
   popover.appendChild(blurb);
 
   const urlInput = document.createElement("input");
   urlInput.type = "text";
   urlInput.placeholder = "http://localhost:47426";
-  urlInput.style.cssText = "background:#1a1a1a;color:#ccc;border:1px solid #444;padding:4px 8px;border-radius:3px;font-size:14px;width:100%;box-sizing:border-box;";
+  urlInput.className = "pd-input server-url";
   popover.appendChild(urlInput);
 
   const warning = document.createElement("div");
-  warning.style.cssText = "font-size:12px;line-height:1.4;padding:6px 8px;border-radius:3px;display:none;";
+  warning.className = "server-warning";
   popover.appendChild(warning);
 
   /** Tracks the last compatibility verdict so onBlur knows whether to save. */
@@ -142,7 +126,9 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
 
   button.addEventListener("click", (e) => {
     e.stopPropagation();
-    if (popover.style.display === "none") openPopover();
+    // Test against the open value, not "none": the closed state is now the
+    // class default (inline display is "" until first toggled).
+    if (popover.style.display !== "flex") openPopover();
     else closePopover();
   });
 

@@ -1,132 +1,74 @@
-@import url(https://fonts.bunny.net/css);
+/* ===========================================================================
+   Design tokens
+   The mono stack + the small grey palette below were previously re-typed dozens
+   of times here and in the sidebar JS modules' inline styles. Change them here.
+   =========================================================================== */
+:root {
+  /* Type */
+  --font-mono: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
 
-/* ---- Self-hosted fonts for fontPicker() ---- */
+  /* Surfaces */
+  --bg-page: #000;
+  --bg-panel: hsla(50, 23%, 5%, 0.85);
+  --bg-input: #1a1a1a;
+  --bg-btn: #333;       /* add-bar / audio buttons */
+  --bg-btn-alt: #222;   /* footer / server buttons, row thumb */
+  --bg-popover: #161616;
 
-@font-face { font-family: 'Anybody'; src: url('/fonts/Anybody-VF.woff2') format('woff2'); font-weight: 100 900; font-style: oblique 0deg 20deg; font-display: swap; }
+  /* Borders */
+  --border: #333;
+  --border-mid: #444;
+  --border-light: #555;
 
-@font-face { font-family: 'Avara'; src: url('/fonts/Avara-Bold.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+  /* Text */
+  --fg: #ccc;
+  --fg-bright: #fff;
+  --fg-mid: #aaa;
+  --fg-dim: #888;
+  --fg-dimmer: #666;
+  --fg-muted: #555;
 
-@font-face { font-family: 'Barriecito'; src: url('/fonts/barriecito-v17-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+  /* Syntax-highlight palette — the single source of truth for the editor's
+     token colours. src/highlight.ts feeds these same vars to CodeMirror, so the
+     live editor, the reference tab's code blocks, and any UI that wants to echo
+     a token colour all stay in sync. Edit a colour here and everything follows. */
+  --hl-meta: #404740;
+  --hl-keyword: #ffca9c;   /* keywords, atoms, bools, labels */
+  --hl-literal: #fff352;   /* numbers, macro/special names */
+  --hl-string: #d7ffaf;    /* strings (italic in the editor) */
+  --hl-regexp: #c5a3ff;    /* regexp, escapes */
+  --hl-variable: #ff857f;  /* variable definitions */
+  --hl-type: #c2ffdf;      /* type names, namespaces */
+  --hl-class: #5eb58a;     /* class names, property definitions */
+  --hl-comment: #ffc400;
+  --hl-invalid: #f92672;
 
-@font-face { font-family: 'Basteleur'; src: url('/fonts/Basteleur-Moonlight.woff2') format('woff2'); font-weight: 400; font-display: swap; }
+  /* Accents */
+  --accent: var(--hl-string);  /* lime — about links, fontpicker (mirrors string style) */
+  --danger: #f88;       /* stop / delete-hover / retry */
+  --success: #6a6;
+}
 
-@font-face { font-family: 'BIZ UDPMincho'; src: url('/fonts/biz-udpmincho-v9-cyrillic_greek-ext_japanese_latin_latin-ext-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'BIZ UDPMincho'; src: url('/fonts/biz-udpmincho-v9-cyrillic_greek-ext_japanese_latin_latin-ext-700.woff2') format('woff2'); font-weight: 700; font-display: swap; }
-
-@font-face { font-family: 'Bluu Next'; src: url('/fonts/bluunext-bold-webfont.woff2') format('woff2'); font-weight: 700; font-display: swap; }
-
-@font-face { font-family: 'CirrusCumulus'; src: url('/fonts/CirrusCumulus-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'EB Garamond'; src: url('/fonts/EBGaramond-VF.woff2') format('woff2'); font-weight: 400 800; font-display: swap; }
-@font-face { font-family: 'EB Garamond'; src: url('/fonts/EBGaramond-Italic-VF.woff2') format('woff2'); font-weight: 400 800; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Epilogue'; src: url('/fonts/Epilogue-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Epilogue'; src: url('/fonts/Epilogue-Italic-VF.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Generale Station'; src: url('/fonts/GeneraleStation-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Gluten'; src: url('/fonts/GlutenVariable.woff2') format('woff2'); font-weight: 100 900; font-style: oblique -1 1; font-display: swap; }
-
-@font-face { font-family: 'Handjet'; src: url('/fonts/Handjet-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-
-@font-face { font-family: 'Hepta Slab'; src: url('/fonts/HeptaSlab-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-
-@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/ibm-plex-mono-v19-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'IBM Plex Mono'; src: url('/fonts/ibm-plex-mono-v19-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'IBM Plex Sans'; src: url('/fonts/IBMPlexSans-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'IBM Plex Sans'; src: url('/fonts/IBMPlexSans-Italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Instrument Serif'; src: url('/fonts/instrument-serif-v4-latin_latin-ext-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Instrument Serif'; src: url('/fonts/instrument-serif-v4-latin_latin-ext-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Inter Tight'; src: url('/fonts/InterTight-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Inter Tight'; src: url('/fonts/InterTight-Italic-VF.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'JGS'; src: url('/fonts/jgs9.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Kaeru Kaeru'; src: url('/fonts/kaerukaeru-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Lithops'; src: url('/fonts/Lithops-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Lobular'; src: url('/fonts/Lobular-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Nunito'; src: url('/fonts/Nunito-VF.woff2') format('woff2'); font-weight: 200 1000; font-display: swap; }
-@font-face { font-family: 'Nunito'; src: url('/fonts/Nunito-Italic-VF.woff2') format('woff2'); font-weight: 200 1000; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Nyght Serif'; src: url('/fonts/NyghtSerif-Medium.woff2') format('woff2'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'Nyght Serif Italic'; src: url('/fonts/NyghtSerif-MediumItalic.woff2') format('woff2'); font-weight: 500; font-display: swap; }
-
-@font-face { font-family: 'Old Standard TT'; src: url('/fonts/old-standard-tt-v20-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Old Standard TT'; src: url('/fonts/old-standard-tt-v20-cyrillic_cyrillic-ext_latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Oswald'; src: url('/fonts/Oswald-VF.woff2') format('woff2'); font-weight: 200 700; font-display: swap; }
-
-@font-face { font-family: 'Picaflor'; src: url('/fonts/Picaflor-24pt.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'PicNic'; src: url('/fonts/PicNic-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Pilowlava'; src: url('/fonts/Pilowlava-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Piscolabis'; src: url('/fonts/Piscolabis-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Public Sans'; src: url('/fonts/PublicSans-VF.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-@font-face { font-family: 'Public Sans'; src: url('/fonts/PublicSans-Italic-VF.woff2') format('woff2'); font-weight: 100 900; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Recursive'; src: url('/fonts/Recursive_VF_1.085.woff2') format('woff2'); font-weight: 300 1000; font-display: swap; }
-
-@font-face { font-family: 'Roubaix Industrielle'; src: url('/fonts/RoubaixIndustrielle-Regular08-13pt.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Savate'; src: url('/fonts/savate-regular-webfont.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Savate'; src: url('/fonts/savate-italique-webfont.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Select Mono'; src: url('/fonts/SelectMono-Italic.woff') format('woff'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Shantell Sans'; src: url('/fonts/ShantellSans.woff2') format('woff2'); font-weight: 300 800; font-display: swap; }
-
-@font-face { font-family: 'Sligoil'; src: url('/fonts/Sligoil-Micro.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Sono'; src: url('/fonts/Sono-VF.woff2') format('woff2'); font-weight: 200 800; font-display: swap; }
-
-@font-face { font-family: 'Source Serif 4'; src: url('/fonts/SourceSerif4Variable-Roman.woff2') format('woff2'); font-weight: 200 900; font-display: swap; }
-@font-face { font-family: 'Source Serif 4'; src: url('/fonts/SourceSerif4Variable-Italic.woff2') format('woff2'); font-weight: 200 900; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Terminal Grotesque'; src: url('/fonts/terminal-grotesque-webfont.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'TINY'; src: url('/fonts/TINY5x3-100.woff2') format('woff2'); font-weight: 100; font-display: swap; }
-
-@font-face { font-family: 'Trickster'; src: url('/fonts/Trickster-Regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
-@font-face { font-family: 'Xanh Mono'; src: url('/fonts/xanh-mono-v18-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'Xanh Mono'; src: url('/fonts/xanh-mono-v18-latin_latin-ext_vietnamese-italic.woff2') format('woff2'); font-weight: 400; font-style: italic; font-display: swap; }
-
-@font-face { font-family: 'Zen Old Mincho'; src: url('/fonts/zen-old-mincho-v11-cyrillic_greek_japanese_latin_latin-ext-regular.woff2') format('woff2'); font-weight: 400; font-display: swap; }
-
+/* ===========================================================================
+   Reset
+   =========================================================================== */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-#tab-about * {
-  margin: revert;
-  padding: revert;
-
-}
-
-#tab-about a {
-  color: #d7ffaf;
-}
-
-
 html,
 body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #000;
+  background: var(--bg-page);
 }
 
+/* ===========================================================================
+   Stage — canvas + editor overlay
+   =========================================================================== */
 #c {
   position: fixed;
   top: 0;
@@ -145,13 +87,16 @@ body {
   overflow: hidden;
 }
 
+/* ===========================================================================
+   Editor (CodeMirror) + inline widgets
+   =========================================================================== */
 .cm-editor {
   background: transparent !important;
   height: 100%;
 }
 
 .cm-editor .cm-scroller {
-  font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
+  font-family: var(--font-mono);
   font-size: 20px;
   overflow-x: hidden;
   text-shadow: oklch(29.707% 0.00794 223.882 / 0.5) 0 0 20px, oklch(29.707% 0.00794 223.882 / 0.7) 0 0 8px, oklch(29.707% 0.00794 223.882 ) 0 0 2px;
@@ -231,11 +176,14 @@ body {
   font-size: 20px;
   background-color: oklch(29.707% 0.00794 223.882 / 0.5);
   border-color: oklch(29.707% 0.00794 223.882);
-  color: #d7ffaf;
+  color: var(--accent);
   font-family: 'IBM Plex Mono';
   font-style: italic;
 }
 
+/* ===========================================================================
+   Overlays — error + warning toasts (bottom-left)
+   =========================================================================== */
 .pd-error {
   display: none;
   position: fixed;
@@ -243,8 +191,8 @@ body {
   left: 15px;
   z-index: 20;
   background: hsla(0, 80%, 30%, 0.85);
-  color: #fff;
-  font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
+  color: var(--fg-bright);
+  font-family: var(--font-mono);
   font-size: 16px;
   padding: 8px 14px;
   border-radius: 4px;
@@ -253,7 +201,26 @@ body {
   pointer-events: none;
 }
 
-/* Sidebar */
+.pd-warning {
+  display: none;
+  position: fixed;
+  bottom: 50px;
+  left: 15px;
+  z-index: 20;
+  background: hsla(49, 100%, 38%, 0.85);
+  color: var(--fg-bright);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 8px 14px;
+  border-radius: 4px;
+  max-width: 80vw;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
+
+/* ===========================================================================
+   Sidebar — shell (toggle, panel, resize handle, tabs, tab panes)
+   =========================================================================== */
 #sidebar-toggle {
   position: fixed;
   top: 0;
@@ -262,10 +229,10 @@ body {
   width: 24px;
   height: 100%;
   background: hsla(50, 23%, 5%, 0.4);
-  color: #666;
+  color: var(--fg-dimmer);
   border: none;
-  border-left: 1px solid #333;
-  font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
+  border-left: 1px solid var(--border);
+  font-family: var(--font-mono);
   font-size: 16px;
   cursor: pointer;
   display: flex;
@@ -274,7 +241,7 @@ body {
 }
 
 #sidebar-toggle:hover {
-  color: #fff;
+  color: var(--fg-bright);
   background: hsla(50, 23%, 5%, 0.6);
 }
 
@@ -290,15 +257,15 @@ body {
   z-index: 29;
   display: flex;
   flex-direction: column;
-  background: hsla(50, 23%, 5%, 0.85);
-  border-left: 1px solid #333;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
   width: min(600px, 100vw);
   min-width: 200px;
   transform: translateX(100%);
   transition: transform 0.2s ease, padding-left 0.2s ease;
   overflow: hidden;
-  color: #ccc;
-  font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
+  color: var(--fg);
+  font-family: var(--font-mono);
   font-size: 14px;
   padding-left: 24px;
 }
@@ -323,7 +290,7 @@ body {
 
 #sidebar-panel .tabs {
   display: flex;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -331,7 +298,7 @@ body {
   flex: 1;
   background: none;
   border: none;
-  color: #666;
+  color: var(--fg-dimmer);
   padding: 10px 8px;
   font-family: inherit;
   font-size: 13px;
@@ -340,12 +307,12 @@ body {
 }
 
 #sidebar-panel .tabs button:hover {
-  color: #ccc;
+  color: var(--fg);
 }
 
 #sidebar-panel .tabs button.active {
-  color: #fff;
-  border-bottom-color: #fff;
+  color: var(--fg-bright);
+  border-bottom-color: var(--fg-bright);
 }
 
 #sidebar-panel .tab-content {
@@ -359,6 +326,7 @@ body {
   display: block;
 }
 
+/* Per-tab .active overrides (layout differs from the default block pane) */
 #tab-videos.active {
   display: flex !important;
   flex-direction: column;
@@ -390,7 +358,398 @@ body {
   min-height: 0;
 }
 
-/* Reference panel */
+/* ===========================================================================
+   Sidebar — shared UI components
+   (buttons, inputs, toast shared across the videos/audio/server modules)
+   =========================================================================== */
+.pd-btn {
+  background: var(--bg-btn);
+  color: var(--fg);
+  border: 1px solid var(--border-light);
+  padding: 4px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+/* Flatter button (footer / server pill); hover handled here, not in JS. */
+.pd-btn-flat {
+  background: var(--bg-btn-alt);
+  color: var(--fg-mid);
+  border: 1px solid var(--border-mid);
+  padding: 4px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.pd-btn-flat:hover {
+  color: var(--fg-bright);
+}
+
+.pd-input {
+  background: var(--bg-input);
+  color: var(--fg);
+  border: 1px solid var(--border-mid);
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.pd-toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--bg-btn);
+  color: var(--fg);
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  z-index: 100;
+  transition: opacity 0.3s;
+}
+
+/* ===========================================================================
+   Videos tab
+   =========================================================================== */
+.add-bar {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+/* min-width:0 lets the flex:1 input shrink below its intrinsic width so the row
+   doesn't overflow (and show a horizontal scrollbar) on a narrow sidebar. */
+.add-bar .pd-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.add-bar .pd-btn {
+  font-size: 16px;
+}
+
+/* min-height:0 lets this flex child shrink below its content so only the list
+   scrolls — without it, a taller (wrapped) footer pushes an extra scrollbar
+   onto the whole videos tab. */
+.vid-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.vid-empty {
+  color: var(--fg-muted);
+  font-size: 16px;
+  padding: 12px;
+  text-align: center;
+}
+
+.vid-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 16px;
+}
+
+.vid-thumb {
+  width: 40px;
+  height: 30px;
+  flex-shrink: 0;
+  background: var(--bg-btn-alt);
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vid-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Stream status dot; background (active vs disconnected) is set inline in JS. */
+.vid-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.vid-name {
+  width: 140px;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid transparent;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-size: 16px;
+}
+
+.vid-stream-label {
+  flex: 1;
+  color: var(--fg-dim);
+  font-size: 14px;
+}
+
+.vid-url {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid transparent;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-size: 14px;
+}
+
+.vid-name:focus,
+.vid-url:focus {
+  border-color: var(--border-light);
+}
+
+.vid-btn-stop,
+.vid-btn-reconnect {
+  background: none;
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.vid-btn-stop { color: var(--danger); }
+.vid-btn-reconnect { color: #8c8; }
+
+.vid-indicator {
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--fg-mid);
+}
+
+.vid-indicator.dl {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.vid-btn-retry {
+  background: none;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 18px;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
+.vid-btn-delete {
+  background: none;
+  border: none;
+  color: var(--fg-dimmer);
+  cursor: pointer;
+  font-size: 20px;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
+.vid-btn-delete:hover {
+  color: #f66;
+}
+
+.vid-footer {
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.vid-footer-left {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* margin-left:auto drops this whole group to a second line on a narrow sidebar
+   instead of letting buttons break at arbitrary points. */
+.vid-footer-right {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin-left: auto;
+}
+
+/* Server settings pill + popover (lives in the videos footer). The pill reuses
+   .pd-btn-flat; .server-btn only adds the icon-row layout for the status dot. */
+.server-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.server-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* background (connection-status colour) set inline in JS */
+.server-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* display toggled in JS (none <-> flex) */
+.server-popover {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  width: 280px;
+  background: var(--bg-popover);
+  border: 1px solid var(--border-mid);
+  border-radius: 4px;
+  padding: 10px;
+  z-index: 10;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #bbb;
+  box-sizing: border-box;
+}
+
+.server-blurb {
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.server-link {
+  color: #88f;
+}
+
+.server-url {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* display + background + colour set inline in JS (compatibility level) */
+.server-warning {
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  border-radius: 3px;
+  display: none;
+}
+
+/* ===========================================================================
+   Audio tab
+   =========================================================================== */
+.audio-section {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.audio-label {
+  color: var(--fg-dim);
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.audio-src-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.audio-status {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--fg-dimmer);
+}
+
+.audio-slider {
+  width: 100%;
+  margin: 2px 0 6px;
+}
+
+.audio-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.audio-slider-label {
+  color: var(--fg-dim);
+  font-size: 12px;
+  width: 60px;
+  flex-shrink: 0;
+}
+
+.audio-slider-val {
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+
+.audio-select {
+  width: 100%;
+  background: var(--bg-input);
+  color: var(--fg);
+  border: 1px solid var(--border-mid);
+  padding: 4px;
+  border-radius: 3px;
+  font-size: 13px;
+}
+
+.audio-meter {
+  width: 100%;
+  height: 40px;
+  display: block;
+  background: #111;
+  border-radius: 3px;
+}
+
+.audio-note {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+/* cursor / dot colour / name colour set inline in JS (depend on has-audio). */
+.audio-stream-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 0;
+}
+
+.audio-stream-dot {
+  font-size: 12px;
+}
+
+.audio-stream-name {
+  font-size: 13px;
+}
+
+/* ===========================================================================
+   Reference tab
+   =========================================================================== */
+/* Pre-JS fallback shown until setupReference() populates the tab. */
+.ref-placeholder {
+  color: var(--fg-dimmer);
+}
+
 .ref-wrap {
   display: flex;
   height: 100%;
@@ -402,13 +761,13 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #333;
+  border-right: 1px solid var(--border);
 }
 
 .ref-search {
-  background: #1a1a1a;
-  color: #ccc;
-  border: 1px solid #fff;
+  background: var(--bg-input);
+  color: var(--fg);
+  border: 1px solid var(--fg-bright);
   border-radius: 3px;
   padding: 5px 8px;
   margin: 0;
@@ -430,7 +789,7 @@ body {
 }
 
 .ref-nav-head {
-  color: #888;
+  color: var(--fg-dim);
   font-size: 0.7em;
   padding: 6px 8px 2px;
   text-transform: uppercase;
@@ -438,23 +797,23 @@ body {
 
 .ref-nav-link {
   display: block;
-  color: #aaa;
+  color: var(--fg-mid);
   padding: 2px 8px;
   text-decoration: none;
   cursor: pointer;
 }
 
 .ref-nav-link:hover {
-  color: #fff;
+  color: var(--fg-bright);
 }
 
 .ref-detail-head {
-  color: #fff;
+  color: var(--fg-bright);
   font-size: 1.1em;
   font-weight: bold;
   margin: 16px 0 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border);
 }
 
 .ref-entry {
@@ -462,12 +821,12 @@ body {
 }
 
 .ref-entry-name {
-  color: #fff;
+  color: var(--fg-bright);
   font-weight: bold;
 }
 
 .ref-entry-aliases {
-  color: #666;
+  color: var(--fg-dimmer);
   font-weight: normal;
   font-size: 0.75em;
   margin-left: 8px;
@@ -511,14 +870,14 @@ body {
 }
 
 .ref-entry-params {
-  color: #888;
+  color: var(--fg-dim);
   font-size: 0.85em;
   margin: 2px 0;
 }
 
 .ref-entry-example {
   background: rgba(255, 255, 255, 0.05);
-  color: #ccc;
+  color: var(--fg);
   padding: 6px 8px;
   border-radius: 3px;
   font-size: 0.85em;
@@ -528,15 +887,25 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* Perf panel */
-/* .perf-panel {} */
+/* ===========================================================================
+   Perf tab
+   =========================================================================== */
+#perf-graph,
+#perf-heap-graph {
+  width: 100%;
+  display: block;
+  margin-bottom: 4px;
+}
+
+#perf-graph { height: 60px; }
+#perf-heap-graph { height: 48px; }
 
 .perf-section {
   margin-bottom: 20px;
 }
 
 .perf-head {
-  color: #888;
+  color: var(--fg-dim);
   font-size: 0.75em;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -547,31 +916,27 @@ body {
   display: flex;
   justify-content: space-between;
   padding: 3px 0;
-  border-bottom: 1px solid #1a1a1a;
+  border-bottom: 1px solid var(--bg-input);
 }
 
 .perf-label {
-  color: #888;
+  color: var(--fg-dim);
 }
 
 .perf-value {
-  color: #ccc;
+  color: var(--fg);
   font-variant-numeric: tabular-nums;
 }
 
-.pd-warning {
-  display: none;
-  position: fixed;
-  bottom: 50px;
-  left: 15px;
-  z-index: 20;
-  background: hsla(49, 100%, 38%, 0.85);
-  color: #fff;
-  font-family: "IBM Plex Mono", "Berkeley Mono", "Roboto Mono", monospace;
-  font-size: 14px;
-  padding: 8px 14px;
-  border-radius: 4px;
-  max-width: 80vw;
-  white-space: pre-wrap;
-  pointer-events: none;
+/* ===========================================================================
+   About tab — human-authored content (src/about.html); reset reverted so
+   normal document margins/list styling apply.
+   =========================================================================== */
+#tab-about * {
+  margin: revert;
+  padding: revert;
+}
+
+#tab-about a {
+  color: var(--accent);
 }

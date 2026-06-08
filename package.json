@@ -26,7 +26,9 @@
     "bench:examples:capture": "tsx test/example-bench.ts capture --headless",
     "bench:examples:check": "tsx test/example-bench.ts check --headless",
     "golden:examples:capture": "tsx test/example-golden.ts capture --headless",
-    "golden:examples:compare": "tsx test/example-golden.ts compare --headless"
+    "golden:examples:compare": "tsx test/example-golden.ts compare --headless",
+    "sidebar:visual:capture": "tsx test/sidebar-golden.ts capture --headless",
+    "sidebar:visual:compare": "tsx test/sidebar-golden.ts compare --headless"
   },
   "keywords": [],
   "author": "",

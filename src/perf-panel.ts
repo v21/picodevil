@@ -5,7 +5,7 @@ export function setupPerfPanel(container: HTMLElement) {
     <div class="perf-panel">
       <div class="perf-section">
         <div class="perf-head">frame time</div>
-        <canvas id="perf-graph" style="width:100%;height:60px;display:block;margin-bottom:4px;"></canvas>
+        <canvas id="perf-graph"></canvas>
         <div class="perf-row"><span class="perf-label">fps</span><span class="perf-value" id="perf-fps">—</span></div>
         <div class="perf-row"><span class="perf-label">frame gap</span><span class="perf-value" id="perf-framegap-now">—</span></div>
         <div class="perf-row"><span class="perf-label">frame gap p50</span><span class="perf-value" id="perf-frametime">—</span></div>
@@ -16,7 +16,7 @@ export function setupPerfPanel(container: HTMLElement) {
       </div>
       <div class="perf-section">
         <div class="perf-head">js heap</div>
-        <canvas id="perf-heap-graph" style="width:100%;height:48px;display:block;margin-bottom:4px;"></canvas>
+        <canvas id="perf-heap-graph"></canvas>
         <div class="perf-row"><span class="perf-label">js heap used</span><span class="perf-value" id="perf-heap">—</span></div>
         <div class="perf-row"><span class="perf-label">js heap total</span><span class="perf-value" id="perf-heap-total">—</span></div>
       </div>

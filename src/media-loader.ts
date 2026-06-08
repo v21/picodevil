@@ -100,10 +100,7 @@ function render() {
   if (!container.querySelector("[data-list]")) {
     const list = document.createElement("div");
     list.dataset.list = "1";
-    // min-height:0 lets this flex child shrink below its content so only the list
-    // scrolls — without it, a taller (wrapped) footer pushes an extra scrollbar
-    // onto the whole videos tab.
-    list.style.cssText = "flex:1;min-height:0;overflow-y:auto;padding:4px 0;";
+    list.className = "vid-list";
     container.appendChild(list);
   }
 
@@ -126,18 +123,16 @@ function render() {
 function makeAddBar(): HTMLElement {
   const addBar = document.createElement("div");
   addBar.dataset.addBar = "1";
-  addBar.style.cssText = "display:flex;gap:4px;padding:8px;border-bottom:1px solid #333;flex-wrap:wrap;";
+  addBar.className = "add-bar";
 
   const input = document.createElement("input");
   input.type = "text";
   input.placeholder = "paste URL to add...";
-  // min-width:0 lets the flex:1 input shrink below its intrinsic width so the
-  // row doesn't overflow (and force a horizontal scrollbar) on a narrow sidebar.
-  input.style.cssText = "flex:1;min-width:0;background:#1a1a1a;color:#ccc;border:1px solid #444;padding:4px 8px;border-radius:3px;font-size:16px;";
+  input.className = "pd-input";
 
   const addBtn = document.createElement("button");
   addBtn.textContent = "Add";
-  addBtn.style.cssText = "background:#333;color:#ccc;border:1px solid #555;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:16px;";
+  addBtn.className = "pd-btn";
   addBtn.addEventListener("click", () => {
     const url = input.value.trim();
     if (!url) return;
@@ -152,7 +147,7 @@ function makeAddBar(): HTMLElement {
 
   const camBtn = document.createElement("button");
   camBtn.textContent = "Webcam";
-  camBtn.style.cssText = "background:#333;color:#ccc;border:1px solid #555;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:16px;";
+  camBtn.className = "pd-btn";
   camBtn.addEventListener("click", async () => {
     try {
       await startWebcam();
@@ -164,7 +159,7 @@ function makeAddBar(): HTMLElement {
 
   const screenBtn = document.createElement("button");
   screenBtn.textContent = "Screen";
-  screenBtn.style.cssText = "background:#333;color:#ccc;border:1px solid #555;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:16px;";
+  screenBtn.className = "pd-btn";
   screenBtn.addEventListener("click", async () => {
     try {
       await startScreenCapture();
@@ -183,14 +178,14 @@ function makeAddBar(): HTMLElement {
 
 function makeFooter(): HTMLElement {
   const footer = document.createElement("div");
-  footer.style.cssText = "display:flex;gap:4px;padding:8px;border-top:1px solid #333;flex-wrap:wrap;align-items:center;";
+  footer.className = "vid-footer";
 
   const leftGroup = document.createElement("div");
-  leftGroup.style.cssText = "display:flex;gap:4px;flex-wrap:wrap;align-items:center;";
+  leftGroup.className = "vid-footer-left";
   footer.appendChild(leftGroup);
 
   const rightGroup = document.createElement("div");
-  rightGroup.style.cssText = "display:flex;gap:4px;align-items:center;margin-left:auto;";
+  rightGroup.className = "vid-footer-right";
   footer.appendChild(rightGroup);
 
   leftGroup.appendChild(makeFooterBtn("Export", () => {
@@ -216,7 +211,7 @@ function makeFooter(): HTMLElement {
     clearBtn.style.color = "#f88";
     const timeout = setTimeout(() => {
       clearBtn.textContent = "Clear";
-      clearBtn.style.color = "#aaa";
+      clearBtn.style.color = ""; // back to the class colour (+ restores :hover)
     }, 2000);
     clearBtn.addEventListener("click", () => {
       clearTimeout(timeout);
@@ -334,7 +329,7 @@ function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
     const empty = document.createElement("p");
     empty.dataset.empty = "1";
     empty.textContent = "No media added yet";
-    empty.style.cssText = "color:#555;font-size:16px;padding:12px;text-align:center;";
+    empty.className = "vid-empty";
     list.prepend(empty);
   } else if (entries.length > 0 && emptyEl) {
     emptyEl.remove();
@@ -343,23 +338,23 @@ function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
 
 function makeRow(entry: MediaEntry): HTMLElement {
   const row = document.createElement("div");
-  row.style.cssText = "display:flex;align-items:center;gap:6px;padding:4px 8px;font-size:16px;";
+  row.className = "vid-row";
 
   const isStream = entry.type === "stream";
 
   // Thumbnail / stream status dot
   const thumb = document.createElement("div");
-  thumb.style.cssText = "width:40px;height:30px;flex-shrink:0;background:#222;border-radius:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;";
+  thumb.className = "vid-thumb";
   if (isStream) {
     const active = isStreamActive(entry.name);
     const dot = document.createElement("span");
-    dot.style.cssText = `width:10px;height:10px;border-radius:50%;background:${active ? "#4c4" : "#666"};`;
+    dot.className = "vid-status-dot";
+    dot.style.background = active ? "#4c4" : "#666"; // dynamic: active vs disconnected
     dot.title = active ? "Active" : "Disconnected";
     thumb.appendChild(dot);
   } else if (entry.thumbnail) {
     const img = document.createElement("img");
-    img.src = entry.thumbnail;
-    img.style.cssText = "width:100%;height:100%;object-fit:cover;";
+    img.src = entry.thumbnail; // styled via `.vid-thumb img`
     thumb.appendChild(img);
   }
   row.appendChild(thumb);
@@ -367,10 +362,8 @@ function makeRow(entry: MediaEntry): HTMLElement {
   // Name input
   const nameInput = document.createElement("input");
   nameInput.value = entry.name;
-  nameInput.style.cssText = "width:140px;background:transparent;color:#ccc;border:1px solid transparent;padding:2px 4px;border-radius:2px;font-size:16px;";
-  nameInput.addEventListener("focus", () => { nameInput.style.borderColor = "#555"; });
+  nameInput.className = "vid-name";
   nameInput.addEventListener("blur", () => {
-    nameInput.style.borderColor = "transparent";
     const newName = nameInput.value.trim();
     if (newName && newName !== entry.name) {
       const finalName = renameMedia(entry.name, newName);
@@ -383,20 +376,20 @@ function makeRow(entry: MediaEntry): HTMLElement {
     // Stream type label + reconnect/stop
     const label = document.createElement("span");
     label.textContent = entry.streamKind ?? "stream";
-    label.style.cssText = "flex:1;color:#888;font-size:14px;";
+    label.className = "vid-stream-label";
     row.appendChild(label);
 
     const active = isStreamActive(entry.name);
     if (active) {
       const stopBtn = document.createElement("button");
       stopBtn.textContent = "Stop";
-      stopBtn.style.cssText = "background:none;border:1px solid #555;color:#f88;cursor:pointer;font-size:14px;padding:2px 8px;border-radius:3px;flex-shrink:0;";
+      stopBtn.className = "vid-btn-stop";
       stopBtn.addEventListener("click", () => { stopStream(entry.name); render(); });
       row.appendChild(stopBtn);
     } else {
       const reconnBtn = document.createElement("button");
       reconnBtn.textContent = "Reconnect";
-      reconnBtn.style.cssText = "background:none;border:1px solid #555;color:#8c8;cursor:pointer;font-size:14px;padding:2px 8px;border-radius:3px;flex-shrink:0;";
+      reconnBtn.className = "vid-btn-reconnect";
       reconnBtn.addEventListener("click", async () => {
         try {
           if (entry.streamKind === "webcam") {
@@ -415,10 +408,8 @@ function makeRow(entry: MediaEntry): HTMLElement {
     // URL input
     const urlInput = document.createElement("input");
     urlInput.value = entry.url;
-    urlInput.style.cssText = "flex:1;min-width:0;background:transparent;color:#888;border:1px solid transparent;padding:2px 4px;border-radius:2px;font-size:14px;";
-    urlInput.addEventListener("focus", () => { urlInput.style.borderColor = "#555"; });
+    urlInput.className = "vid-url";
     urlInput.addEventListener("blur", () => {
-      urlInput.style.borderColor = "transparent";
       const newUrl = urlInput.value.trim();
       if (newUrl && newUrl !== entry.url) {
         updateUrl(entry.name, newUrl);
@@ -433,13 +424,13 @@ function makeRow(entry: MediaEntry): HTMLElement {
       const pct = entry.uploadProgress != null ? Math.round(entry.uploadProgress * 100) : null;
       indicator.textContent = pct != null && pct < 100 ? `↑${pct}%` : "⚙";
       indicator.title = pct != null && pct < 100 ? "Uploading…" : "Transcoding…";
-      indicator.style.cssText = "flex-shrink:0;font-size:13px;color:#aaa;";
+      indicator.className = "vid-indicator";
       row.appendChild(indicator);
     } else if (entry.downloading) {
       // Two-phase YouTube progress: "downloading: 45%" then "transcoding: 13%".
       // Falls back to ⏳ before the first /ready poll reports a phase.
       const indicator = document.createElement("span");
-      indicator.style.cssText = "flex-shrink:0;font-size:12px;color:#aaa;white-space:nowrap;";
+      indicator.className = "vid-indicator dl";
       if (entry.phase && entry.phasePercent != null) {
         const label = entry.phase === "transcode" ? "transcoding" : "downloading";
         indicator.textContent = `${label}: ${Math.round(entry.phasePercent * 100)}%`;
@@ -453,7 +444,7 @@ function makeRow(entry: MediaEntry): HTMLElement {
       const retryBtn = document.createElement("button");
       retryBtn.textContent = "↻";
       retryBtn.title = entry.error;
-      retryBtn.style.cssText = "background:none;border:none;color:#f88;cursor:pointer;font-size:18px;flex-shrink:0;padding:0 2px;";
+      retryBtn.className = "vid-btn-retry";
       retryBtn.addEventListener("click", () => {
         updateEntry(entry.name, { error: undefined });
         if (entry.pendingFile) {
@@ -469,9 +460,7 @@ function makeRow(entry: MediaEntry): HTMLElement {
   // Delete button
   const delBtn = document.createElement("button");
   delBtn.textContent = "×";
-  delBtn.style.cssText = "background:none;border:none;color:#666;cursor:pointer;font-size:20px;flex-shrink:0;padding:0 2px;";
-  delBtn.addEventListener("mouseenter", () => { delBtn.style.color = "#f66"; });
-  delBtn.addEventListener("mouseleave", () => { delBtn.style.color = "#666"; });
+  delBtn.className = "vid-btn-delete";
   delBtn.addEventListener("click", () => {
     if (isStream) removeStream(entry.name);
     else removeMedia(entry.name);
@@ -484,9 +473,7 @@ function makeRow(entry: MediaEntry): HTMLElement {
 function makeFooterBtn(label: string, onClick: () => void): HTMLButtonElement {
   const btn = document.createElement("button");
   btn.textContent = label;
-  btn.style.cssText = "background:#222;color:#aaa;border:1px solid #444;padding:4px 12px;border-radius:3px;cursor:pointer;font-size:14px;";
-  btn.addEventListener("mouseenter", () => { btn.style.color = "#fff"; });
-  btn.addEventListener("mouseleave", () => { btn.style.color = "#aaa"; });
+  btn.className = "pd-btn-flat";
   btn.addEventListener("click", onClick);
   return btn;
 }
@@ -494,7 +481,7 @@ function makeFooterBtn(label: string, onClick: () => void): HTMLButtonElement {
 function showToast(msg: string) {
   const el = document.createElement("div");
   el.textContent = msg;
-  el.style.cssText = "position:fixed;bottom:20px;right:20px;background:#333;color:#ccc;padding:8px 16px;border-radius:4px;font-size:12px;z-index:100;transition:opacity 0.3s;";
+  el.className = "pd-toast";
   document.body.appendChild(el);
   setTimeout(() => { el.style.opacity = "0"; }, 1500);
   setTimeout(() => el.remove(), 1800);
