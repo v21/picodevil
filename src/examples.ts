@@ -95,20 +95,20 @@ $: s("text:picodevil")
 .y(cosine.range(.4,.6).slow(2))
 `
   },{
-    "name":"colour grids",
+    "name":"colour grids (flashing)",
     "code":`// by v21
 
-$: s("<red green blue prev> white black <prev ~>")
-.stackN("4 8")
-.someCycles(rev())
-.stackN("2 4 3")
-.someCycles(fast(4))
+$: s("prev")
+$: s("<#f00 #0f0 #00f prev>,<white black ~>")
+.rowscols("<1 3 4 11 32>")
 .stackN("4 2 8 1")
-.late(choose(0, 0.25, 0.5, 0.75).segment(choose(.25, .5, 1).segment(1)))
-.late(choose(0, 0, 0, 0, 1, 2, 3).segment(choose(.25, .5, 1).segment(1)))
+.late(choose(0, 1/3, .5, 2/3).segment(choose(.25, .5, 1).segment(1)))
+.late(choose(0, 0, 0, 0, 1, -1, 2, 3).segment(choose(.25, .5, 1).segment(1)))
+.stackN("2 4 3")
+.rarely(fast(2))
+.stackN("<1 4>")
+.someCycles(rev())
 .index()
-.cols("<1 8 16 64>")
-.rows("<1 8 16 64>/4")
 .gridMod()`
   }
 ];
