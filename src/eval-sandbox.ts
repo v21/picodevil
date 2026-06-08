@@ -94,6 +94,9 @@ export function buildNormMap(): Map<string, string> {
   for (const name of Object.getOwnPropertyNames((Pattern as any).prototype)) {
     if (name !== "constructor") add(name);
   }
+  // JS literals — so a random-cased `tRue`/`FALSE`/`Null` normalizes back to the
+  // keyword instead of surviving as an undefined identifier reference.
+  for (const lit of ["true", "false", "null", "undefined", "NaN", "Infinity"]) add(lit);
   return (_normMapBase = map);
 }
 
