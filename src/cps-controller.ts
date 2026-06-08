@@ -14,15 +14,31 @@ export class CpsController {
   private _accumulatedCycle: number = 0;
   private _startMs: number;
   private _lastTickMs: number;
+  private readonly _defaultCps: number;
 
   constructor(initialCps: number, nowMs: number) {
     this._cyclesPerSecond = initialCps;
+    this._defaultCps = initialCps;
     this._startMs = nowMs;
     this._lastTickMs = nowMs;
   }
 
   get cyclesPerSecond(): number { return this._cyclesPerSecond; }
   get cpsPattern(): Pattern | null { return this._cpsPattern; }
+
+  /**
+   * Fully reset to a clean start: tempo returns to the default cps the
+   * controller was constructed with, any dynamic cps pattern is cleared, and
+   * the cycle clock restarts from 0. Unlike a setCps() tempo change, this does
+   * NOT preserve cycle position — the timeline jumps back to the start.
+   */
+  reset(nowMs: number): void {
+    this._cyclesPerSecond = this._defaultCps;
+    this._cpsPattern = null;
+    this._accumulatedCycle = 0;
+    this._startMs = nowMs;
+    this._lastTickMs = nowMs;
+  }
 
   setCps(cps: number | Pattern, nowMs: number): void {
     if (typeof cps === "number") {

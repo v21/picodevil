@@ -125,6 +125,10 @@ if (getServerUrl()) {
 // called from editor on ctrl+enter
 window.pdEval = (code) => evalController.eval(code);
 
+// Reset tempo to the default cps. Called when loading an example so a previous
+// example's setCps()/setCpm() doesn't carry over into one that doesn't set it.
+(window as any).pdResetCps = () => cpsController.reset(performance.now());
+
 // --- render loop ---
 let lastRafAbsTime = performance.now();
 let rafPaused = false;

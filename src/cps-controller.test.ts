@@ -65,6 +65,52 @@ describe("CpsController", () => {
     });
   });
 
+  describe("reset()", () => {
+    it("returns tempo to the constructor default", () => {
+      const ctrl = new CpsController(0.5, T0);
+      ctrl.setCps(4, T0);
+      expect(ctrl.cyclesPerSecond).toBe(4);
+      ctrl.reset(T0 + 1000);
+      expect(ctrl.cyclesPerSecond).toBe(0.5);
+    });
+
+    it("clears an active cps pattern", () => {
+      const ctrl = new CpsController(0.5, T0);
+      ctrl.setCps(pure(2), T0);
+      expect(ctrl.cpsPattern).not.toBeNull();
+      ctrl.reset(T0 + 100);
+      expect(ctrl.cpsPattern).toBeNull();
+      expect(ctrl.cyclesPerSecond).toBe(0.5);
+    });
+
+    it("restarts the cycle clock from 0", () => {
+      const ctrl = new CpsController(0.5, T0);
+      ctrl.tick(T0 + 4000);   // advance to cycle 2
+      ctrl.reset(T0 + 4000);  // clean restart
+      const after = ctrl.tick(T0 + 4000); // same instant: no time elapsed yet
+      expect(after.cycle).toBeCloseTo(0);
+      expect(after.cps).toBe(0.5);
+    });
+
+    it("advances from 0 after reset", () => {
+      const ctrl = new CpsController(0.5, T0);
+      ctrl.tick(T0 + 4000);
+      ctrl.reset(T0 + 4000);
+      const after = ctrl.tick(T0 + 5000); // 1s later at cps=0.5
+      expect(after.cycle).toBeCloseTo(0.5);
+    });
+
+    it("restarts even when previously frozen", () => {
+      const ctrl = new CpsController(0.5, T0);
+      ctrl.tick(T0 + 2000);   // cycle = 1
+      ctrl.setCps(0, T0 + 2000); // freeze
+      ctrl.reset(T0 + 2000);
+      const after = ctrl.tick(T0 + 4000); // 2s later, default cps=0.5
+      expect(after.cps).toBe(0.5);
+      expect(after.cycle).toBeCloseTo(1.0); // 2s * 0.5, from 0
+    });
+  });
+
   describe("setCpm()", () => {
     it("setCpm(60) is equivalent to setCps(1)", () => {
       const a = new CpsController(1, T0);

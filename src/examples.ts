@@ -120,8 +120,13 @@ export function setupExamples(container: HTMLElement) {
   for (const ex of examples) {
     const li = document.createElement("li");
     const btn = document.createElement("button");
+    btn.className = "pd-btn";
     btn.textContent = ex.name;
     btn.addEventListener("click", () => {
+      // Reset tempo first so an example without setCps() runs at the default,
+      // rather than inheriting the previous example's cps. The example's own
+      // setCps() (if any) runs during eval below and wins.
+      (window as any).pdResetCps?.();
       window.pdSetCode(ex.code, true); // load the example and evaluate it
     });
     li.appendChild(btn);
