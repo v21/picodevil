@@ -1,5 +1,6 @@
 import type { Renderer, TileParams, TileSource } from './renderer-interface';
 import { TextureCache } from './texture-cache';
+import { warn } from './warnings';
 import {
   compileInto, OP_FLOATS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
@@ -440,7 +441,10 @@ interface DrawCommand {
  * one new op-emitter in effect-compiler.ts) without per-instance attribute
  * changes.
  */
-interface FBOEntry { fbo: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; }
+// `back` is the ping-pong partner, allocated only for self-referencing FBOs.
+// While such an FBO renders, `back` is bound as the write target and `tex`
+// (the front) holds the previous frame for self-reads; endOffscreen() swaps them.
+interface FBOEntry { fbo: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; back?: FBOEntry; }
 
 export class WebGLRenderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
@@ -461,6 +465,9 @@ export class WebGLRenderer implements Renderer {
   private readonly pendingDraws: DrawCommand[] = [];
   /** The currently bound offscreen FBO (null = default canvas framebuffer). */
   private currentFBO: WebGLFramebuffer | null = null;
+  /** Name of the offscreen pass in progress, and whether it ping-pongs. Used by endOffscreen() to swap. */
+  private offscreenName: string | null = null;
+  private offscreenDoubleBuffered = false;
 
   private w = 0;
   private h = 0;
@@ -510,11 +517,15 @@ export class WebGLRenderer implements Renderer {
     this.gl.viewport(0, 0, w, h);
     // Resize existing FBOs to match new canvas dimensions
     const { gl } = this;
-    for (const entry of this.fbos.values()) {
+    const resizeEntry = (entry: FBOEntry) => {
       entry.w = w; entry.h = h;
       gl.bindTexture(gl.TEXTURE_2D, entry.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.bindTexture(gl.TEXTURE_2D, null);
+    };
+    for (const entry of this.fbos.values()) {
+      resizeEntry(entry);
+      if (entry.back) resizeEntry(entry.back);
     }
   }
 
@@ -535,6 +546,15 @@ export class WebGLRenderer implements Renderer {
     if (p.source.kind === 'pattern') {
       const entry = this.fbos.get(p.source.name);
       if (!entry) return;
+      // Sampling the FBO that is currently bound as the render target is a
+      // GL feedback loop (undefined behaviour — typically zeroes the whole
+      // batch, blacking out the frame). Skip the tile and warn. This catches
+      // any self-reference, e.g. `Hquack: s("quack")` where the token resolves
+      // back to the layer's own FBO. Deduped by message in warn().
+      if (entry.fbo === this.currentFBO) {
+        warn(`s("${p.source.name}") references the framebuffer it is being rendered into — skipped to avoid a feedback loop. Use s("prev") for previous-frame feedback, or rename the layer.`);
+        return;
+      }
       tex = entry.tex;
       srcW = this.w; srcH = this.h;
       fboSource = true;
@@ -565,7 +585,7 @@ export class WebGLRenderer implements Renderer {
       let uvSzX  = p.cropw >= 0 ? absCropw          : -absCropw;
       let uvOffY = p.croph >= 0 ? cropTop           : cropTop + absCroph;
       let uvSzY  = p.croph >= 0 ? absCroph          : -absCroph;
-      if (fboSource) { uvOffY = uvOffY + uvSzY; uvSzY = -uvSzY; }
+      if (fboSource) { uvOffY = 1 - uvOffY; uvSzY = -uvSzY; }
       this.pendingDraws.push({
         texture: tex, blend: p.blend ?? 'source-over',
         destOffsetX: p.x, destOffsetY: p.y,
@@ -593,8 +613,11 @@ export class WebGLRenderer implements Renderer {
 
     // FBO textures are Y-flipped relative to HTML element textures.
     // WebGL renders with Y=0 at bottom, so the visual top of the FBO is at UV y=1.
-    // Flip the Y axis so the image appears right-side up.
-    if (fboSource) { uvOffsetY = uvOffsetY + uvSizeY; uvSizeY = -uvSizeY; }
+    // Mirror V across 0.5 so the image appears right-side up. Must be a true
+    // mirror (1 - V), not a within-window flip (uvOffsetY + uvSizeY) — the latter
+    // is only correct for a full-frame / V=0.5-centred window and samples the
+    // wrong half for off-centre crops (e.g. cropStack tiles).
+    if (fboSource) { uvOffsetY = 1 - uvOffsetY; uvSizeY = -uvSizeY; }
 
     const isTile = p.fit === 'tile' || p.fit === 'tilecenter';
     const tileAw = Math.abs(p.cropw), tileAh = Math.abs(p.croph);
@@ -799,17 +822,34 @@ export class WebGLRenderer implements Renderer {
     draws.length = 0;
   }
 
-  beginOffscreen(name: string): void {
+  beginOffscreen(name: string, doubleBuffer = false): void {
     const { gl } = this;
     this.flushPending(); // commit any pending draws to the current framebuffer before switching
     const entry = this.getOrCreateFBO(name);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, entry.fbo);
-    gl.viewport(0, 0, entry.w, entry.h);
-    this.currentFBO = entry.fbo;
+    // For a self-referencing FBO, render into the back buffer while the front
+    // (entry.fbo/tex) stays readable as the previous frame. endOffscreen swaps.
+    const target = doubleBuffer ? this.getOrCreateBack(entry) : entry;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+    gl.viewport(0, 0, target.w, target.h);
+    this.currentFBO = target.fbo;
+    this.offscreenName = name;
+    this.offscreenDoubleBuffered = doubleBuffer;
   }
 
   endOffscreen(): void {
     const { gl } = this;
+    // Swap front/back so the just-written buffer becomes the readable one for
+    // the rest of this frame (and the old front becomes next frame's previous).
+    if (this.offscreenDoubleBuffered && this.offscreenName !== null) {
+      const e = this.fbos.get(this.offscreenName);
+      if (e?.back) {
+        const b = e.back;
+        [e.fbo, b.fbo] = [b.fbo, e.fbo];
+        [e.tex, b.tex] = [b.tex, e.tex];
+      }
+    }
+    this.offscreenName = null;
+    this.offscreenDoubleBuffered = false;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.w, this.h);
     this.currentFBO = null;
@@ -843,6 +883,10 @@ export class WebGLRenderer implements Renderer {
     for (const entry of this.fbos.values()) {
       gl.deleteFramebuffer(entry.fbo);
       gl.deleteTexture(entry.tex);
+      if (entry.back) {
+        gl.deleteFramebuffer(entry.back.fbo);
+        gl.deleteTexture(entry.back.tex);
+      }
     }
     this.fbos.clear();
     gl.deleteProgram(this.program);
@@ -851,10 +895,9 @@ export class WebGLRenderer implements Renderer {
     gl.deleteBuffer(this.opsUBO);
   }
 
-  private getOrCreateFBO(name: string): FBOEntry {
+  /** Allocate a fresh RGBA8 texture + framebuffer sized to the canvas. */
+  private createFBOEntry(): FBOEntry {
     const { gl, w, h } = this;
-    let entry = this.fbos.get(name);
-    if (entry) return entry;
     const tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w || 1, h || 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
@@ -867,9 +910,21 @@ export class WebGLRenderer implements Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    entry = { fbo, tex, w: w || 1, h: h || 1 };
+    return { fbo, tex, w: w || 1, h: h || 1 };
+  }
+
+  private getOrCreateFBO(name: string): FBOEntry {
+    let entry = this.fbos.get(name);
+    if (entry) return entry;
+    entry = this.createFBOEntry();
     this.fbos.set(name, entry);
     return entry;
+  }
+
+  /** Lazily allocate the ping-pong back buffer for a self-referencing FBO. */
+  private getOrCreateBack(entry: FBOEntry): FBOEntry {
+    if (!entry.back) entry.back = this.createFBOEntry();
+    return entry.back;
   }
 
   private setBlend(mode: string): void {

@@ -213,6 +213,13 @@ $: text("hello")           // drawn over the hue-rotated canvas
 
 **Forward references** (referencing a pattern declared after the current one) work but show the previous frame's content
 
+**Self-references** — a named pattern that references its *own* name reads the previous frame of its own FBO, giving per-layer feedback (like `s("prev")`, but scoped to that layer rather than the whole canvas). The layer is automatically double-buffered so this doesn't black out:
+
+```js
+Hquack: stack(s("clip.mp4"), s("quack").alpha(0.9).scale(0.98))  // video + a slightly-shrunk echo of itself
+$: s("quack")
+```
+
 ### Camera and screen capture
 
 `loadCamera(name)` and `loadScreen(name)` register a live webcam or screen/window-capture stream under a short name, which you then use as a source with `s(name)`. Both are idempotent (calling again is a no-op) and prompt for browser permission on first use. No server required.

@@ -72,8 +72,14 @@ export interface Renderer {
   drawTile(params: TileParams): void;
   /** Finalise and present the frame. No-op for Canvas 2D; flushes draw list for WebGL. */
   endFrame(): void;
-  /** Bind an offscreen framebuffer for the named pattern. */
-  beginOffscreen(name: string): void;
+  /**
+   * Bind an offscreen framebuffer for the named pattern.
+   * When `doubleBuffer` is true, the FBO ping-pongs between two textures so a
+   * tile that samples this same FBO reads the previous frame's content (a
+   * self-referential feedback effect) instead of triggering a GL feedback loop.
+   * The extra texture is allocated only for FBOs that reference themselves.
+   */
+  beginOffscreen(name: string, doubleBuffer?: boolean): void;
   /** Restore the default (canvas) framebuffer. */
   endOffscreen(): void;
   /** Flush pending draws and blit current canvas state to the "all" FBO for mid-frame compositing. */

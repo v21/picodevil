@@ -19,6 +19,7 @@
 import { describe, it, expect } from "vitest";
 import { makeTile, renderTile, renderTiles, readPixel, W, H } from "./webgl-test-helpers";
 import { WebGLRenderer } from "./webgl-renderer";
+import { flushWarnings, clearWarnings } from "./warnings";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -431,5 +432,147 @@ describe("snapshotSoFar / s('all') mid-frame compositing", () => {
     expect(a).toBe(255);
     // red should be gone (covered by opaque blue)
     expect(r).toBeLessThan(10);
+  });
+});
+
+describe("FBO feedback-loop guard (input == output)", () => {
+  it("warns and skips when a tile samples the FBO it is currently rendering into", () => {
+    clearWarnings();
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+
+    renderer.beginFrame();
+    // Bind the "quack" FBO as the render target, then try to draw the "quack"
+    // FBO into itself — the self-reference that turns the screen black.
+    renderer.beginOffscreen("quack");
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'quack' } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    renderer.endFrame();
+    renderer.dispose();
+
+    const msgs = flushWarnings();
+    expect(msgs.some(m => m.includes("quack"))).toBe(true);
+  });
+
+  it("does not warn when sampling a different FBO than the render target", () => {
+    clearWarnings();
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+
+    renderer.beginFrame();
+    // Populate FBO "a" with red.
+    renderer.beginOffscreen("a");
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    // Render into FBO "b" while sampling FBO "a" — legal, no feedback loop.
+    renderer.beginOffscreen("b");
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'a' } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    renderer.endFrame();
+    renderer.dispose();
+
+    expect(flushWarnings()).toEqual([]);
+  });
+});
+
+describe("FBO double-buffering (self-reference feedback)", () => {
+  it("self-reference reads the previous frame's content instead of blacking out", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+
+    // Frame 1: write opaque red into double-buffered FBO "x".
+    renderer.beginFrame();
+    renderer.beginOffscreen("x", true);
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    renderer.endFrame();
+
+    // Frame 2: the ONLY tile drawn into "x" is the self-reference. If double-
+    // buffering works it samples frame 1's red (previous frame); if it fell back
+    // to the skip-guard the FBO would be transparent black.
+    renderer.beginFrame();
+    renderer.beginOffscreen("x", true);
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'x' } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    // Draw the (post-swap) current "x" to the main canvas to inspect it.
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'x' } }));
+    renderer.endFrame();
+    renderer.dispose();
+
+    const [r, g, b, a] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(g).toBeLessThan(10);
+    expect(b).toBeLessThan(10);
+    expect(a).toBe(255);
+  });
+
+  it("does not warn when a double-buffered FBO references itself", () => {
+    clearWarnings();
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+
+    renderer.beginFrame();
+    renderer.beginOffscreen("x", true);
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'x' } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    renderer.endFrame();
+    renderer.dispose();
+
+    expect(flushWarnings()).toEqual([]);
+  });
+
+  it("a double-buffered FBO stays a valid render target after a resize", () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+
+    // Frame 1: allocate the double-buffered FBO (front + back) for "x".
+    renderer.beginFrame();
+    renderer.beginOffscreen("x", true);
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    renderer.endFrame();
+
+    // Resize must reallocate BOTH front and back textures (a GL error here, or
+    // a stale back framebuffer, would surface as a broken render below).
+    renderer.resize(W, H);
+
+    // Frame 2: render fresh red into the (resized) back buffer, swap, display.
+    renderer.beginFrame();
+    renderer.beginOffscreen("x", true);
+    renderer.beginFrame();
+    renderer.drawTile(makeTile({ source: { kind: 'color', r: 1, g: 0, b: 0 } }));
+    renderer.endFrame();
+    renderer.endOffscreen();
+    renderer.drawTile(makeTile({ source: { kind: 'pattern', name: 'x' } }));
+    renderer.endFrame();
+    renderer.dispose();
+
+    const [r, , , a] = readPixel(canvas, 50, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(a).toBe(255);
   });
 });

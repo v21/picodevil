@@ -119,7 +119,11 @@ export class FrameRenderer {
         // Named pattern: render to its FBO inline at declaration position.
         // beginOffscreen() flushes any pending main-canvas draws before switching.
         const isHOnly = group.some(fe => fe.ev._fboOnly);
-        this.renderer.beginOffscreen(fboName);
+        // A layer that samples its own FBO (e.g. `Hquack: s("quack")`) would be a
+        // GL feedback loop. Detect it here and ask the backend to double-buffer so
+        // the self-read returns the previous frame (per-FBO feedback).
+        const selfRef = group.some(fe => fe.ev._type === 'pattern' && String(fe.ev.src) === fboName);
+        this.renderer.beginOffscreen(fboName, selfRef);
         this.renderer.beginFrame();
         this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, false);
         this.renderer.endFrame();

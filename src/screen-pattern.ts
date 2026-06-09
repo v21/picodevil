@@ -65,6 +65,11 @@ function classifyToken(v: string): object {
  * // feedback from previous frame
  * $: s("prev").alpha(0.95)
  *
+ * // per-layer feedback: a named pattern referencing its own name reads the
+ * // previous frame of its own FBO (auto double-buffered), e.g. a video echo
+ * Hquack: stack(s("clip.mp4"), s("quack").alpha(0.9).scale(0.98))
+ * $: s("quack")
+ *
  * // hue-rotate everything drawn before this
  * $: color("red"); $: s("all").huerot(0.5)
  *
