@@ -1,49 +1,86 @@
 # picodevil
 
-This is a livecoding tool that runs in the browser. It allows you to sample, cut up, and generally fuck about with videos. It's based on Strudel, adapting it's capabilites to make more sense for visuals than for audio.
+This is a livecoding tool that runs in the browser. It allows you to sample, cut up, and generally fuck about with videos. It's based on [Strudel](https://strudel.cc), adapting its capabilities to make more sense for visuals than for audio.
 
 It's built by [V Buckenham](https://vbuckenham.com/) - hello! Let me know if you find bugs or make anything cool with it! 
 
-This is my first time building a tool where I have used LLM assistance in a major way. Sorry if that upsets you! I feel uncertain about it for many reasons! But here we are.
+This is my first time building a tool where I have used an LLM in a major way. Sorry if that upsets you! I feel uncertain about it for many reasons! But here we are.
 
 ## How to use
 
 The easiest way to use Picodevil is to go to the hosted version at [picodevil.com](https://picodevil.com/). You can poke at the examples in the right hand sidebar, load them up, change some stuff, and then press Ctrl-Enter to see the results.
 
-You can also load videos by opening the sidebar - click the little arrow on the right hand side of the window. You can also see the command reference in there!
+You can also load videos by opening the sidebar - click the little arrow on the right hand side of the window. There's also a reference to the functions in one of the tabs.
 
-There's also a optional server, which will let you do things like transcode videos so they can be scrubbed backwards, and allow downloading from YouTube - see [picodevil-server](https://github.com/v21/picodevil-server) for details.
+There's also an optional server, which will let you do things like transcode videos so they can be scrubbed backwards, and allow downloading from YouTube - see [picodevil-server](https://github.com/v21/picodevil-server) for details.
+
+Picodevil has currently only been tested with Chrome, and only on desktop. Yes, I know this isn't great.
 
 ## If you want to run it locally
 
 You can do this by cloning this repository (or downloading it), and then running:
-`npm run start` in the main folder
+`npm install`, then `npm run start` in the main folder
 
-Then opening [http://localhost:5173/](http://localhost:5173/) in your browser (currently only tested with Chrome)
+Then opening [http://localhost:5173/](http://localhost:5173/) in your browser.
 
-## Differences from Strudel
+## Project status
 
-How does it work? Good question.
+This is, I guess, a v1, although I'm not committing to any proper versioning right now. It has not been tested by very many people — mostly just me — although I feel confident enough in it to perform with it. There are areas that I expect to change - for example, the image effects like `grey()`, and the audio reactivity system (`fft[0]`). And I'm sure there's lots of bugs, and also rough areas that look like bugs but actually just haven't been fully thought through. As such, things might change without notice! If this is a worrying prospect for you, I encourage you to clone the repo and run it locally.
 
-As said above, it extends Strudel. So many of the methods and conventions of Strudel apply. But when rendering video rather than audio, you end up wanting to show more things simulatenously. You care about the spatial position of items. And you have a different relationship to events.
+## How this works / Differences from Strudel
 
-### First difference: Structure doesn't just come from the left
+As mentioned, this project is heavily based on Strudel. I would like to have a nice onboarding which explains the basic concepts I've borrowed from there, and how to get going with Picodevil with no prior knowledge — but I haven't written it yet. Probably it'll come after I run a few workshops.
 
-In general, Strudel operates by setting the pattern of notes from the leftmost pattern, and then mapping the properties of subsequent patterns onto those. Uzuvid instead samples all patterns at the current time, and applies all of them to the current sources. This means that doing something like `s("ducks").scrollx(sine)` will smoothly scroll the video from right to left, rather than only sampling the position whenever the video changes. Whereas in Strudel `s("saw").gain(sine)`, a saw wave will be played every cycle, and it will sound the same throughout because the gain will only be set at the beginning of the sample.
+But, for those people who already know a little Strudel - the rest of this doc goes over how it's different. This should hopefully document some of the underlying architectural decisions, and also provide a bit of a tour of the things I've added. 
 
-### Second difference: We render frames rather than events
+### First difference: "s" stands for "screen", not "sound"
 
-Strudel looks ahead and queues up notes with precise timing. Each note is sent as a new event, with it's timing information attached. uzuvid runs at the browser's preferred framerate (using `requestAnimationFrame` - in practice probably something 60FPS, or 120FPS if you're fancy). We sample all the events playing at the current instant, and we render those. If an event falls between frames, it won't be rendered. If two events are identical, and we miss the end of one and the beginning of another - it will be rendered exactly the same as if the event did not end and begin again. 
+Let's first have a tiny recap of some Strudel code:
+```js
+$: s("bd [hh hh]")
+```
 
-### Third difference: uzuvid is more interested in signals & continous events
+Now let's look at some Picodevil code:
+```js
+$: s("canalboat [ducks ducks]")
+```
 
-As we're sampling every frame, it becomes more natural to use continously changing parameters in more places. Varying something by sine makes more sense if you are going to be sampling a new value for sine every frame. 
+It's quite similar! We start with a `$:`, to allow us to stack up multiple lines of code. Then we have an `s()`, which contains a string within which there's some [mininotation](https://strudel.cc/learn/mini-notation/), and which plays some samples. But as the heading of this section says, in Strudel this stands for `sound`, and in Picodevil this stands for `screen`. So, instead of playing a basic drum loop, it plays a little video loop.
 
-As such, we've added a few new functions for creating smooth signals - `lerp` and `spline`. These are inspired by `Hydra`'s `smooth`  method - they allow you to convert a discrete pattern into a continous one : `"0 1".lerp()` smoothly moves from 0 to 1 over the course of a cycle (and then back again).
+In this case, `ducks` and `canalboat` are both videoclips from the default set of clips. You can see a list of clips, and add more in the sidebar - click the arrow on the far right of the screen, then select the "videos" tab. You can add new videos by adding their URL in the top textbox, and you can rename them for referencing in code. Managing videos is easier if you run the server - you can find out more at [picodevil-server](https://github.com/v21/picodevil-server).
 
-### Fourth difference: indexing elements of a stack
+There are also other things you can refer to within `s()`. It can show:
+- images - set via URL in the same way that videos are
+- colours - you can just write `black` or `#FF00FF`
+- screen or camera captures - set those up in the video sidebar
+- previously rendered things — but this is a spoiler for the ninth section
+- text - you can use the syntax `text:hello_world`, with underscores converted to spaces.
 
-In Strudel, you often create "stacks" of patterns - multiple patterns that run in parallel. In uzuvid, you do this even more so! Frequently, you want to say something like "play this video 16 times in parallel, in a 4x4 grid, and change one of those instances to be a little different". Let's build that up: 
+If you're displaying text, you can also do this:
+```js
+$: text('hello world\nthis is picodevil')
+```
+A few things worth noting here - we use single quotes rather than double quotes, so the string isn't interpreted as a pattern. And this also means we can enter a newline with `\n`.
+
+There's a bunch of stuff you can do in terms of text styling — picking fonts and whatnot — but I'll let you look that up in the reference for yourself.
+
+### Second difference: structure doesn't just come from the left
+
+In general, Strudel operates by setting the pattern of notes from the leftmost pattern, and then mapping the properties of subsequent patterns onto those. Picodevil instead samples all patterns at the current time, and applies all of them to the current sources. This means that doing something like `s("ducks").scrollx(sine)` will smoothly scroll the video from right to left, rather than only sampling the position whenever the video changes. Whereas in Strudel `s("saw").gain(sine)`, a saw wave will be played every cycle, and it will sound the same throughout because the gain will only be set at the beginning of the sample.
+
+### Third difference: we render frames rather than events
+
+Strudel looks ahead and queues up notes with precise timing. Each note is sent as a new event, with its timing information attached. Picodevil runs at the browser's preferred framerate (using `requestAnimationFrame` - in practice probably 60FPS, or 120FPS if you're fancy). We sample all the events playing at the current instant, and we render those. If an event falls between frames, it won't be rendered. If two events are identical, and we miss the end of one and the beginning of another - it will be rendered exactly the same as if the event did not end and begin again. 
+
+### Fourth difference: Picodevil is more interested in signals & continuous events
+
+As we're sampling every frame, it becomes more natural to use continuously changing parameters in more places. Varying something by sine makes more sense if you are going to be sampling a new value for sine every frame. 
+
+As such, we've added a few new functions for creating smooth signals - `lerp` and `spline`. These are inspired by [Hydra](https://hydra.ojack.xyz/)'s `smooth` method - they allow you to convert a discrete pattern into a continuous one : `"0 1".lerp()` smoothly moves from 0 to 1 over the course of a cycle (and then back again).
+
+### Fifth difference: we index stacks
+
+In Strudel, you often create "stacks" of patterns - multiple patterns that run in parallel. In Picodevil, you do this even more so! Frequently, you want to say something like "play this video 16 times in parallel, in a 4x4 grid, and change one of those instances to be a little different". Let's build that up: 
 
 *Play a video*: `$: s("ducks")`
 
@@ -51,9 +88,9 @@ In Strudel, you often create "stacks" of patterns - multiple patterns that run i
 
 *Take these 16 elements and then lay them out side by side on the screen, rather than on top of each other*: You index them, to add `i` and `count` values to each one so that patterns can distinguish between them. This looks like `$: s("ducks").stackN(16).index()`, except actually `stackN` already does an `index` for you, to be helpful. But something like `$: s("ducks, canalboat")` needs an index added.
 
-*Actually put them in a grid pattern*: You can now call `tile` on them to do the layout: `$: s("ducks").stackN(16).tile()`. Tile looks at the `count` value and tries to figure out a grid that will accomodate that many items.
+*Actually put them in a grid pattern*: You can now call `tile` on them to do the layout: `$: s("ducks").stackN(16).tile()`. Tile looks at the `count` value and tries to figure out a grid that will accommodate that many items.
 
-*Wait, but what if I have 15 items stacked?*: Yeah, one row (the last one) has 3 columns instead of 16. If you want a fixed number of rows and columns, you can add `rows` & `cols`, then lay it out with `grid`: `$: s("ducks").stackN(15).rows(4).cols(4).grid()`. Or, if you want the items to repeat after they run out, you can use `gridMod`: `$: s("ducks").stackN(15).rows(4).cols(4).gridMod()`
+*Wait, but what if I have 15 items stacked?*: Yeah, one row (the last one) has 3 columns instead of 4. If you want a fixed number of rows and columns, you can add `rows` & `cols`, then lay it out with `grid`: `$: s("ducks").stackN(15).rows(4).cols(4).grid()`. Or, if you want the items to repeat after they run out, you can use `gridMod`: `$: s("ducks").stackN(15).rows(4).cols(4).gridMod()`
 
 *Drawing one element*: We can also use `i` and `count` to manually set the index and count on a single element. This lets us draw to a particular point on a grid... So, we could do: 
 ```js
@@ -63,15 +100,15 @@ $: s("ducks").stackN(15).stack(
 ```
 and now there's a video of a canalboat drawing over each cell of the grid of ducks in turn.
 
-### Fifth difference: seeding randomness
+### Sixth difference: seeding randomness
 
-One thing you might want to do is to put in a grid of videos and then use something like `sometimes()` to apply extra things to a subset of randomly chosen cells. Strudel has an admirable commitment to determinism, and seeds it's randomness from the onset time of events. This means that all the cells in a grid like above would have the same random seed, and would all pick the same outcome. As such, when you use `index()` (or something that calls it, like `stackN()`), it also sets a `_randSeed` value on the item, and we modify random functions to use that as part of the seed. The upshot of this is that
+One thing you might want to do is to put in a grid of videos and then use something like `sometimes()` to apply extra things to a subset of randomly chosen cells. Strudel has an admirable commitment to determinism, and seeds its randomness from the onset time of events. This means that all the cells in a grid like above would have the same random seed, and would all pick the same outcome. As such, when you use `index()` (or something that calls it, like `stackN()`), it also sets a `_randSeed` value on the item, and we modify random functions to use that as part of the seed. The upshot of this is that
 ```js
 $: s("ducks").stackN(16).sometimes(speed(-1)).tile()
 ```
 makes a grid of ducks, some of which are moving backwards.
 
-### Sixth difference: stack ordering
+### Seventh difference: stack ordering
 
 The order of a stack matters. What does that mean? It means if you do:
 ```js
@@ -99,11 +136,11 @@ $: s("canalboat, ducks").stackN(5).shuffleIndex(rand.segment(1)).rows(3).cols(3)
 ```
 (rand gets rerolled every frame, as we don't have the idea of events - so we need to segment it so we get something fixed for each cycle)
 
-### Seventh difference: Playing with playheads
+### Eighth difference: new ways to control playheads
 
-As with Strudel, by default we play a sample from the beginning, at it's natural speed, for as long as the event that triggers it lasts. This means that our default ducks (`$: s("ducks`) play for one cycle, then reset back to the start, and do this repeatedly. 
+As with Strudel, by default we play a sample from the beginning, at its natural speed, for as long as the event that triggers it lasts. This means that our default ducks (`$: s("ducks")`) play for one cycle, then reset back to the start, and do this repeatedly. 
 
-You can of course change the speed (`speed`), and you can use Strudel functions like `fit()` to set the speed such that the clip will fit within a single cycle. And ggain, as with Studel, you can change where a video plays from with `begin()` - this takes a value from 0-1, which represents how far through the clip you want to start. You can also set the end of the loop with `end()`, same deal. You can also set this with `duration()` - these two are just different ways of setting the same thing.
+You can of course change the speed (`speed`), and you can use Strudel functions like `fit()` to set the speed such that the clip will fit within a single cycle. And again, as with Strudel, you can change where a video plays from with `begin()` - this takes a value from 0-1, which represents how far through the clip you want to start. You can also set the end of the loop with `end()`, same deal. You can also set this with `duration()` - these two are just different ways of setting the same thing.
 
 There's also a shorthand for this, useful when you're making patterns out of different bits of the same clip: `$: s("ducks:0:.2 ducks:.8")` - this plays ducks twice within a cycle, the first time from 0 to 0.2, the second time from 0.8 to the end.
 
@@ -117,13 +154,13 @@ To put two clips of ducks next to each other, each offset in playhead position. 
 ```js
 $: s("ducks").syncStack(2).tile() 
 ```
-As well as `sync()`, there's also a `rolling()` mode, which works slightly differently. This means that Picodevil doesn't try to manage the position of the playhead, and lets it just... roll through. You can also apply both of these at the same time.
+As well as `sync()`, there's also a `rolling()` mode, which works slightly differently. This means that Picodevil doesn't try to manage the position of the playhead, and lets it just... roll through. You can also apply both of these at the same time - it'll use the sync offset initially, then keep rolling.
 
-There's also another way to manage the playhead, which isn't actually a new way but really just an inventive way to use `begin()`. If you set `duration(0)` then the video will show a freeze frame. And if you instead drive `begin()`, say with a continuous signal like `sine`, you can scrub through the video - starting slow, rushing through the middle, slowing down at the end, before turning around and going back in reverse. This is neat enough there's a shorthand for it: `scrub()`.
+There's also another way to manage the playhead, which isn't actually a new way but really just an inventive way to use `begin()`. If you set `duration(0)` then the video will show a freeze frame. And if you instead drive `begin()`, say with a continuous signal like `sine`, you can scrub through the video - starting slow, rushing through the middle, slowing down at the end, before turning around and going back in reverse. This is neat enough there's a shorthand for it: `scrub(sine)`.
 
-### Eighth difference: It has layers, not just stacks
+### Ninth difference: stack ordering again
 
-Let's go back to that idea stack:
+Let's go back to that ideal of a stack:
 ```js
 $: s("ducks, canalboat")
 ```
@@ -165,9 +202,13 @@ Makes that 3x3 grid of ducks, and then on top of that draws that grid, but slice
 
 (Why do we need to use the label rather than just using `all`? Because if we use `all`, we'll sample the canvas even as we're laying out these 4 slices. They're each individual events rendering their own chunk, not a single sample that actually gets sliced up)
 
-If you want to *not* render some things directly, but use them later on, then you can also do that - in the same way that Strudel lets you prefix lines with `M` to mute or `S` to solo, you can also prefix things with `H` to hide:
+If you want to *not* render some things directly, but use them later on, then you can also do that - in the same way that Strudel lets you prefix lines with `_` to mute or `S` to solo, you can also prefix things with `H` to hide:
 ```js
 Hquack: s("ducks").stackN(9).tile()
-$: s("quack").cropStack(2,2).tile().scale(.9)`
+$: s("quack").cropStack(2,2).tile().scale(.9)
 ```
 Now you see black between each foreground chunk.
+
+## More resources
+
+Honestly, I need to write more! This hopefully covers a lot of the important concepts, although I admit it only really works if you already know Strudel. There's also an LLM-written [GUIDE](GUIDE.md), which goes over all the major systems one by one. I said this before, but I'd very much recommend playing with the examples - I've tried to demo most of the core things there. 
