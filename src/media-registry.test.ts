@@ -3,6 +3,7 @@ import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
   loadVideo, loadImage, uploadToServer, setOnChange, addFromServer, missingFromServer,
+  guessTypeFromFile,
 } from "./media-registry";
 import { resolveUrl } from "./server-config";
 
@@ -588,5 +589,29 @@ describe("uploadToServer", () => {
     await p;
     const e = getAllEntries().find(x => x.name === "clearvid")!;
     expect((e as any).pendingFile).toBeUndefined();
+  });
+});
+
+describe("dropped-file media typing", () => {
+  it("types a video file by MIME even when the blob URL has no extension", () => {
+    const file = new File([new Uint8Array(4)], "IMG_9688.MOV", { type: "video/quicktime" });
+    expect(guessTypeFromFile(file)).toBe("video");
+  });
+
+  it("types an image file by MIME", () => {
+    const file = new File([new Uint8Array(4)], "photo.HEIC", { type: "image/heic" });
+    expect(guessTypeFromFile(file)).toBe("image");
+  });
+
+  it("falls back to the filename extension when the MIME type is empty", () => {
+    expect(guessTypeFromFile(new File([], "clip.mp4", { type: "" }))).toBe("video");
+    expect(guessTypeFromFile(new File([], "pic.png", { type: "" }))).toBe("image");
+  });
+
+  it("addMedia honours an explicit type over the URL guess (the drop-as-blob case)", () => {
+    // A blob: URL carries no extension, so guessType(url) would mistype it as image.
+    const entry = addMedia("blob:http://localhost/abc-123", "IMG_9688", "video");
+    expect(entry.type).toBe("video");
+    expect(resolveMedia("IMG_9688")!.type).toBe("video");
   });
 });

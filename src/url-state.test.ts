@@ -64,12 +64,16 @@ describe("encodeUrlState / decodeUrlState", () => {
     expect(e.downloading).toBeUndefined();
   });
 
-  it("blob URL entries survive encode/decode (not filtered)", () => {
+  it("strips blob: URL entries from encoded state (session-scoped, dead after reload)", () => {
     const encoded = encodeUrlState(SAMPLE_CODE, [BLOB_ENTRY]);
     const decoded = decodeUrlState(encoded)!;
-    expect(decoded.media).toHaveLength(1);
-    expect(decoded.media[0].url).toBe(BLOB_ENTRY.url);
-    expect(decoded.media[0].name).toBe("local");
+    expect(decoded.media).toHaveLength(0);
+  });
+
+  it("keeps non-blob entries when a blob entry is interleaved", () => {
+    const encoded = encodeUrlState(SAMPLE_CODE, [SAMPLE_MEDIA[0], BLOB_ENTRY, SAMPLE_MEDIA[1]]);
+    const decoded = decodeUrlState(encoded)!;
+    expect(decoded.media.map(e => e.id)).toEqual(["id-1", "id-2"]);
   });
 
   it("handles empty code and empty media", () => {

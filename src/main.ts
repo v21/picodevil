@@ -110,8 +110,8 @@ const evalController = new EvalController({
 
 initFontList(repopulateFontDatalist);
 
-// Probe the optional companion server in the background so SERVER_ENABLED-gated
-// flows know whether to upload/download. No-op if no URL is configured.
+// Probe the optional companion server in the background so server-gated flows
+// (upload/download) know whether it's reachable. No-op if no URL is configured.
 if (getServerUrl()) {
   probeHealth().catch(() => {/* status set internally */});
 }

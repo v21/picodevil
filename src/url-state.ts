@@ -45,7 +45,11 @@ function stripEntry(e: MediaEntry): UrlMediaEntry {
  * Thumbnails, transient state, and blob URLs are stripped.
  */
 export function encodeUrlState(code: string, media: MediaEntry[], fft?: FftConfig): string {
-  const state: UrlState = { v: 1, code, media: media.map(stripEntry), ...(fft ? { fft } : {}) };
+  // Drop blob: entries — they're session-scoped object URLs. The underlying File
+  // is gone after a reload (and a re-created blob wouldn't share the reference),
+  // so persisting them just resurrects dead, unplayable rows. Strip them here.
+  const persistable = media.filter((e) => !e.url.startsWith("blob:"));
+  const state: UrlState = { v: 1, code, media: persistable.map(stripEntry), ...(fft ? { fft } : {}) };
   return PREFIX + toBase64url(JSON.stringify(state, (key, value) => {
     if (typeof value === 'bigint') {
       console.warn(`[uzu] unexpected BigInt in URL state field "${key}":`, value);

@@ -28,6 +28,13 @@ export type MediaEntry = {
   pendingFile?: File;
   /** Error message from last download/upload attempt */
   error?: string;
+  /**
+   * Set when the source itself failed to load/decode — an unsupported codec
+   * (e.g. a dropped 10-bit HEVC clip), a corrupt file, or a dead URL. Detected
+   * when the thumbnail probe can't read a frame. Surfaced as a ⚠ in the media
+   * list instead of a thumbnail, and cleared if the source later loads.
+   */
+  unavailable?: boolean;
   /** For stream entries: "webcam" or "screen" */
   streamKind?: "webcam" | "screen";
   /** For webcam streams: saved device ID for re-acquisition */
@@ -72,6 +79,19 @@ function guessType(url: string): "video" | "image" {
   return VIDEO_EXTS.has(ext) ? "video" : "image";
 }
 
+/**
+ * Classify a dropped/picked File as video or image. Prefers the OS-provided
+ * MIME type, falling back to the filename extension when it's absent. Use this
+ * instead of `guessType(url)` for files turned into blob: URLs — a blob URL
+ * carries no extension, so `guessType` would mistype every dropped file as an
+ * image.
+ */
+export function guessTypeFromFile(file: File): "video" | "image" {
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("image/")) return "image";
+  return guessType(file.name);
+}
+
 const YT_RE = /(?:youtube\.com\/(?:watch\?.*v=|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]+)/;
 
 function deriveNameFromUrl(url: string): string {
@@ -98,10 +118,10 @@ function getEntryById(id: string): MediaEntry | undefined {
   return registry.find(e => e.id === id);
 }
 
-export function addMedia(url: string, name?: string): MediaEntry {
+export function addMedia(url: string, name?: string, type?: "video" | "image"): MediaEntry {
   const baseName = name ?? deriveNameFromUrl(url);
   const finalName = uniqueName(baseName);
-  const entry: MediaEntry = { id: crypto.randomUUID(), name: finalName, url, type: guessType(url) };
+  const entry: MediaEntry = { id: crypto.randomUUID(), name: finalName, url, type: type ?? guessType(url) };
   registry.push(entry);
   save();
   if (!isYouTubeUrl(url)) generateThumbnail(entry);
@@ -498,6 +518,8 @@ function captureThumbnail(source: HTMLVideoElement | HTMLImageElement, entry: Me
     ctx.drawImage(source, 0, 0, THUMB_W, THUMB_H);
     const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
     entry.thumbnail = dataUrl;
+    // Decoded a frame → it's playable; clear any stale unavailable flag.
+    if (entry.unavailable) entry.unavailable = false;
     // Persist thumbnail separately by ID — registry state lives in the URL, not localStorage.
     try { localStorage.setItem(THUMB_STORAGE_PREFIX + entry.id, dataUrl); } catch { /* storage full */ }
     save();
@@ -549,6 +571,9 @@ function processThumbQueue() {
     });
     vid.addEventListener("error", () => {
       clearTimeout(timeout);
+      // The browser couldn't decode a single frame — it won't play either
+      // (unsupported codec like 10-bit HEVC, corrupt file, or dead URL). Flag it.
+      if (!entry.unavailable) { entry.unavailable = true; save(); }
       cleanup();
     });
     vid.src = resolved;
@@ -563,6 +588,7 @@ function processThumbQueue() {
     });
     img.addEventListener("error", () => {
       clearTimeout(timeout);
+      if (!entry.unavailable) { entry.unavailable = true; save(); }
       done();
     });
     img.src = resolved;

@@ -32,7 +32,7 @@ picodevil/
   src/
     main.ts               — core runtime: pattern state, video pool, render loop, eval bridge; wires renderer backend
     editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
-    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND, SERVER_ENABLED
+    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND (server URL is runtime — see server-config.ts)
     transpiler.ts         — $: label transpiler, double-quote mini() wrapping
     visual-controls.ts    — createMixParam, position/grid/speed/alpha controls on Pattern.prototype
     grid-stack.ts         — gridStack() and four() helpers using .gridModulo()
@@ -145,7 +145,7 @@ All function and method names are **case-insensitive** — `VIDEO`, `Video`, `Vi
 
 **Key method controls on Pattern.prototype** (via `createMixParam`):
 - Position/size: `.x()`, `.y()`, `.width()` / `.w()`, `.height()` / `.h()`
-- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`, `.grey()`, `.huerot(n)`, `.contrast(n)`, `.brightness(n)`, `.tint(hue, strength)`, `.barrel(k)` — huerot in [0,1] turns (0.5 = opposite hue); contrast centred at 0.5 (1=normal, 0=flat grey, -1=invert); brightness is additive offset (0=normal); tint attracts all pixels toward a hue (HSL space, shared pass with huerot, unclamped strength for hyper-saturation); `.grey()` outside [0,1] adjusts saturation (negative = boost, >1 = chroma inversion); barrel k>0 = barrel distortion (CRT look, corners go transparent), k<0 = pincushion; applied in UV space before pixelation
+- Visual: `.alpha()`, `.scale()`, `.scaleX()`, `.scaleY()`, `.objectfit()`, `.blend()`, `.grey()`, `.huerot(n)`, `.contrast(n)`, `.brightness(n)`, `.tint(hue, strength)`, `.barrel(k)` — huerot in [0,1] turns (0.5 = opposite hue); contrast centred at 0.5 (1=normal, 0=flat grey, -1=invert); brightness is additive offset (0=normal); tint attracts all pixels toward a hue (OKLab space, shared pass with huerot, unclamped strength for hyper-saturation); `.grey()` outside [0,1] adjusts saturation (negative = boost, >1 = chroma inversion); barrel k>0 = barrel distortion (CRT look, corners go transparent), k<0 = pincushion; applied in UV space before pixelation
 - Video: `.speed()`, `.start()`, `.end()`, `.duration()` / `.dur()`, `.scrub()`, `.sync()`, `.rolling()`, `.fit()`, `.urlBase()`
 - Crop: `.cropx(n)`, `.cropy(n)`, `.cropw(n)`, `.croph(n)`, `.cropwh(n)`, `.crop(x, y, w, h)` — cropx/cropy are the **centre** of the crop window (default 0.5); cropw/croph are width/height fractions (negative = flip axis; 0 = single-pixel colour fill); crop outside [0,1] tiles the source
 - Scroll: `.scrollx(n)`, `.scrolly(n)`, `.scroll(x, y)` — 0-origin aliases for cropx/cropy (0 = no scroll, 0.5 = shift by half); `.scrollx(n)` = `.cropx(n + 0.5)`
@@ -227,7 +227,8 @@ The footer is split into a `leftGroup` (Export/Import/Clear/Defaults, wraps inte
 
 ### Local file drag-and-drop upload
 
-When `SERVER_ENABLED=true`, dropping a video file onto the sidebar video tab:
+When a server is reachable (`getServerUrl()` non-null and the last probe wasn't
+`"error"`), dropping a video file onto the sidebar video tab:
 1. Adds the entry immediately with a blob URL (responsive — playable at once)
 2. Uploads the file to `POST /upload` with XHR (for upload progress events)
 3. Server re-encodes to I-frame-only MP4 via ffmpeg (same as YouTube downloads)
@@ -309,7 +310,7 @@ Unit tests live in `src/*.test.ts` and run in Playwright browser mode via vitest
 - **Stress testing** (`test/`) — `stress-test.ts` — performance regression: runs demanding video patterns, fails if p95 frame time > 32ms
 - **Example perf benchmark** (`test/`) — `example-bench.ts` — runs the built-in examples (`src/examples.ts`) as a real-world perf corpus against a baseline **keyed by a content hash of each example's code**. Editing an example flips its hash → status `STALE` ("recapture"), *not* a failure; a real `REGRESSION` (exit 1) only fires when the code is unchanged but p95 grows past tolerance (default `max(+25%, +3ms)`). `capture`/`check` modes, like golden.
 - **Example warm-determinism golden** (`test/`) — `example-golden.ts` — warms each example until videos are decoded/buffered, then renders at a fixed cycle with a **pinned wall-clock** (`pdRenderAt`'s 3rd arg) and classifies it stable/unstable via the settle loop. Stable examples get a golden PNG; unstable ones (currently just `picodevil`, due to its near-unity `s("prev")` feedback) are reported, never failed. Same code-hash staleness model.
-- **Upload integration test** (`test/`) — `upload-integration-test.ts` — end-to-end Playwright test covering file drag-and-drop upload in both `SERVER_ENABLED=true` and `=false` modes. Catches CORS issues, XHR failures, and URL swap logic. Run with `npm run test:upload`.
+- **Upload integration test** (`test/`) — `upload-integration-test.ts` — end-to-end Playwright test covering file drag-and-drop upload in both server-reachable (uploads, URL swaps blob→server) and server-unreachable (stays blob, no upload) modes, driven by the runtime server config. Catches CORS issues, XHR failures, and URL swap logic. Run with `npm run test:upload`. A companion `blob-playback-test.ts` (`npm run test:blob-playback`) takes the no-server path further: it proves a dropped blob actually decodes and renders a frame.
 
 The vite+chromium scaffold and golden pixel helpers shared by `stress-test.ts`, `golden-render.ts`, `example-bench.ts`, and `example-golden.ts` live in `test/harness.ts`; the code-hash + baseline-classification logic (browser-free, unit-tested in `src/baseline.test.ts`) lives in `test/baseline.ts`.
 

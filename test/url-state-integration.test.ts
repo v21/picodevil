@@ -34,8 +34,12 @@ const DEBOUNCE_WAIT_MS = 800;
 type TestPage = { page: Page; errors: string[] };
 
 function isRelevantError(msg: string): boolean {
-  // Filter noise from unrelated browser internals
-  return !msg.includes("favicon") && !msg.includes("net::ERR_FILE_NOT_FOUND");
+  // Filter noise from unrelated browser internals, plus failed media fetches:
+  // restored entries point at a media server that isn't running in this test, so
+  // their thumbnail/load probes 404 — expected, not a URL-state regression.
+  return !msg.includes("favicon")
+    && !msg.includes("net::ERR_FILE_NOT_FOUND")
+    && !msg.includes("Failed to load resource");
 }
 
 async function openFreshPage(browser: Browser, appUrl: string, hash = ""): Promise<TestPage> {
@@ -131,7 +135,7 @@ async function testRestoreFromHash(browser: Browser, appUrl: string, errors: str
   await page.context().close();
 }
 
-async function testBlobEntryPreservedInHash(tp: TestPage, errors: string[]) {
+async function testBlobEntryStrippedFromHash(tp: TestPage, errors: string[]) {
   const { page } = tp;
 
   // Add a blob entry via the registry
@@ -144,14 +148,14 @@ async function testBlobEntryPreservedInHash(tp: TestPage, errors: string[]) {
 
   const decoded = await decodeCurrentHash(page);
   if (!decoded) {
-    errors.push("blobEntry: hash not set after adding blob entry");
+    errors.push("blobStrip: hash not set after adding blob entry");
     return;
   }
+  // Blob URLs are session-scoped and dead after reload, so they must NOT be
+  // persisted into the shareable URL state.
   const blobEntry = decoded.media.find((e: any) => e.name === "blobclip");
-  if (!blobEntry) {
-    errors.push("blobEntry: blob entry not found in encoded URL state");
-  } else if (!blobEntry.url.startsWith("blob:")) {
-    errors.push(`blobEntry: expected blob URL, got "${blobEntry.url}"`);
+  if (blobEntry) {
+    errors.push(`blobStrip: blob entry should be stripped from URL state, but found url "${blobEntry.url}"`);
   }
 }
 
@@ -185,17 +189,14 @@ async function testWipeHashGivesDefault(browser: Browser, appUrl: string, errors
     errors.push(`wipeHash: "somevid" found in registry after hash wipe — stale state leaked`);
   }
 
-  // Editor code should be the default
+  // Editor should fall back to the default (currently empty) — the key invariant
+  // is that the wiped session's code did NOT survive into the fresh load.
   const editorCode: string = await page.evaluate(() => {
     const editor = document.querySelector(".cm-content");
     return editor?.textContent ?? "";
   });
-  if (!editorCode.includes("video(") && !editorCode.includes("color(")) {
-    errors.push(`wipeHash: editor code after hash wipe looks unexpected: "${editorCode.slice(0, 80)}"`);
-  }
-  // Default code should NOT contain our test code
   if (editorCode.includes(`color("red")`)) {
-    errors.push(`wipeHash: stale code "${`$: color("red")`}" still present after hash wipe`);
+    errors.push(`wipeHash: stale code "$: color("red")" still present after hash wipe: "${editorCode.slice(0, 80)}"`);
   }
 
   await page.context().close();
@@ -204,13 +205,13 @@ async function testWipeHashGivesDefault(browser: Browser, appUrl: string, errors
 async function testLargeStateWarning(tp: TestPage, errors: string[]) {
   const { page } = tp;
 
-  // Add many large entries to exceed the URL_WARN_BYTES limit (8000)
+  // Generate a payload large enough to exceed URL_WARN_BYTES (32000); the
+  // encoded base64 must clear the limit, so make the raw code well past it.
   await page.evaluate(async () => {
     const mod = await import("/src/url-state.ts");
     const { getAllEntries } = await import("/src/media-registry.ts");
     const entries = getAllEntries();
-    // Generate a code string large enough to trigger the warning
-    const bigCode = "// " + "x".repeat(10000);
+    const bigCode = "// " + "x".repeat(40000);
     mod.saveToUrl(bigCode, entries);
   });
 
@@ -238,7 +239,12 @@ async function main() {
   const vitePort = typeof viteAddr === "string" ? 5173 : (viteAddr as any).port;
   const appUrl = `http://localhost:${vitePort}`;
 
-  const browser = await chromium.launch({ headless: HEADLESS });
+  // The app's renderer is WebGL2-only and throws on construction without these
+  // (so pdEval never gets defined and the page wait times out). Same set as test/harness.ts.
+  const browser = await chromium.launch({
+    headless: HEADLESS,
+    args: ["--use-gl=angle", "--use-angle=metal", "--enable-unsafe-swiftshader"],
+  });
   const results: { name: string; errors: string[] }[] = [];
 
   try {
@@ -258,13 +264,13 @@ async function main() {
       results.push({ name: "Code and media restored from URL hash on load", errors });
     }
 
-    // Test 3: Blob entries encoded in hash
+    // Test 3: Blob entries stripped from hash (dead after reload)
     {
       const { page, errors: pageErrors } = await openFreshPage(browser, appUrl);
       const errors = [...pageErrors.filter(isRelevantError)];
-      await testBlobEntryPreservedInHash({ page, errors }, errors);
+      await testBlobEntryStrippedFromHash({ page, errors }, errors);
       await page.context().close();
-      results.push({ name: "Blob URL entries are preserved in URL hash", errors });
+      results.push({ name: "Blob URL entries are stripped from URL hash", errors });
     }
 
     // Test 4: Wipe hash → default state (no stale localStorage bleed)

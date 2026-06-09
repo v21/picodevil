@@ -1,7 +1,8 @@
 import {
   getAllEntries, addMedia, removeMedia, renameMedia, updateUrl, updateEntry,
   isYouTubeUrl, downloadYouTube, exportAll, importAll, clearAll, setOnChange,
-  uploadToServer, addFromServer, missingFromServer, type MediaEntry, type SourceItem,
+  uploadToServer, addFromServer, missingFromServer, guessTypeFromFile,
+  type MediaEntry, type SourceItem,
 } from "./media-registry";
 import { getServerUrl, getServerStatus, subscribe as subscribeServer } from "./server-config";
 import { createServerSettingsButton } from "./server-settings-ui";
@@ -66,7 +67,10 @@ export function setupMediaLoader(el: HTMLElement) {
       for (const file of Array.from(e.dataTransfer.files)) {
         const blobUrl = URL.createObjectURL(file);
         const name = file.name.replace(/\.[^.]+$/, "");
-        const entry = addMedia(blobUrl, name);
+        // A blob: URL has no extension, so classify from the File's MIME/name
+        // up front — otherwise the entry defaults to "image" and s("name")
+        // would try to render a video as a still image.
+        const entry = addMedia(blobUrl, name, guessTypeFromFile(file));
         if (getServerUrl() && getServerStatus() !== "error") {
           uploadToServer(entry.name, file).catch(() => {/* error stored in entry */});
         }
@@ -272,6 +276,7 @@ function entryRenderKey(entry: MediaEntry): string {
     String(!!entry.uploading),
     String(entry.uploadProgress ?? ""),
     entry.error ?? "",
+    String(!!entry.unavailable),
     entry.streamKind ?? "",
     entry.deviceId ?? "",
     String(entry.type === "stream" ? isStreamActive(entry.name) : false),
@@ -352,6 +357,15 @@ function makeRow(entry: MediaEntry): HTMLElement {
     dot.style.background = active ? "#4c4" : "#666"; // dynamic: active vs disconnected
     dot.title = active ? "Active" : "Disconnected";
     thumb.appendChild(dot);
+  } else if (entry.unavailable) {
+    // Source failed to load/decode — show a warning glyph instead of a thumbnail.
+    const warn = document.createElement("span");
+    warn.className = "vid-thumb-warn";
+    warn.textContent = "⚠";
+    warn.style.color = "#e8a13a"; // dynamic state — kept inline like the stream dot
+    warn.style.fontSize = "18px";
+    warn.title = "Won't play — couldn't decode this source. It may be an unsupported format (e.g. 10-bit HEVC from an iPhone), corrupt, or offline.";
+    thumb.appendChild(warn);
   } else if (entry.thumbnail) {
     const img = document.createElement("img");
     img.src = entry.thumbnail; // styled via `.vid-thumb img`

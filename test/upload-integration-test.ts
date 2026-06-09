@@ -1,13 +1,19 @@
 /**
  * End-to-end upload integration test.
  *
- * Runs two scenarios in a real Chromium browser:
+ * Whether the drag-and-drop upload flow runs is no longer a build-time flag —
+ * it's derived at runtime from the server config: an upload is attempted iff
+ * `getServerUrl()` is non-null AND the last health probe wasn't `"error"`
+ * (see src/media-loader.ts). These two scenarios cover both sides of that gate
+ * in a real Chromium browser:
  *
- * 1. SERVER_ENABLED=true  — drop a file, expect the entry URL to flip from
- *    blob: to a server URL after upload + transcode. Catches CORS bugs.
+ * 1. Server reachable — point the config at a live (inline) server, drop a
+ *    file, expect the entry URL to flip from blob: to a server URL after
+ *    upload. Catches CORS bugs and XHR/URL-swap regressions.
  *
- * 2. SERVER_ENABLED=false — drop a file, expect the entry URL to remain a
- *    blob: URL (no upload attempted). Verifies the fallback path.
+ * 2. Server unreachable — point the config at a dead port (probe → "error"),
+ *    drop a file, expect the entry URL to stay a blob: URL and NO /upload XHR
+ *    to fire. Verifies the no-server fallback path.
  *
  * Usage:
  *   npx tsx test/upload-integration-test.ts [--headless] [--timeout 60000]
@@ -31,6 +37,15 @@ function flag(name: string, def: string): string {
 const HEADLESS = args.includes("--headless") || !args.includes("--headed");
 const TIMEOUT_MS = parseInt(flag("timeout", "30000"), 10);
 
+// GL flags that make WebGL2 work in headless Chromium (the app's renderer is
+// WebGL2-only and throws on construction without them). Same set as test/harness.ts.
+const GL_ARGS = ["--use-gl=angle", "--use-angle=metal", "--enable-unsafe-swiftshader"];
+
+const MEDIA_PORT = 3456;
+const MEDIA_URL = `http://localhost:${MEDIA_PORT}`;
+/** A closed port — config pointed here probes to "error" (connection refused). */
+const DEAD_URL = "http://127.0.0.1:59999";
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -49,6 +64,15 @@ function startMediaServer(port: number): Promise<{ server: http.Server; download
       if (req.method === "OPTIONS") {
         res.writeHead(204);
         return res.end();
+      }
+
+      // Health endpoint so the frontend's probeHealth() recognises us as a
+      // real picodevil-server and flips the connection status to "ok".
+      if (req.method === "GET" && url.pathname === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({
+          name: "picodevil-server", version: "0.0.0-test", apiVersion: 1, port, ok: true,
+        }));
       }
 
       if (req.method === "POST" && url.pathname === "/upload") {
@@ -95,6 +119,16 @@ function isRelevantError(msg: string) {
   return !IGNORED.some(p => msg.includes(p));
 }
 
+/** Point the runtime server config at `url` and probe it; returns the status. */
+async function configureServer(page: Page, url: string): Promise<string> {
+  return page.evaluate(async (u) => {
+    const sc = await import("/src/server-config.ts");
+    sc.setServerUrl(u);
+    await sc.probeHealth();
+    return sc.getServerStatus();
+  }, url);
+}
+
 async function dropFile(page: Page, filename: string) {
   await page.evaluate((name) => {
     const tab = document.getElementById("tab-videos")!;
@@ -105,6 +139,15 @@ async function dropFile(page: Page, filename: string) {
     tab.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
     tab.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
   }, filename);
+}
+
+/** Read the in-memory registry entry for `name` (blob entries never hit localStorage). */
+async function getEntry(page: Page, name: string): Promise<{ url: string; type: string } | null> {
+  return page.evaluate(async (n) => {
+    const reg = await import("/src/media-registry.ts");
+    const e = reg.getAllEntries().find((x: any) => x.name === n);
+    return e ? { url: e.url, type: e.type } : null;
+  }, name);
 }
 
 async function openFreshPage(browser: Browser, appUrl: string): Promise<{ page: Page; errors: string[] }> {
@@ -126,95 +169,67 @@ async function openFreshPage(browser: Browser, appUrl: string): Promise<{ page: 
 // Test cases
 // ---------------------------------------------------------------------------
 
-async function testServerEnabled(page: Page, errors: string[]) {
-  await dropFile(page, "server-clip.mp4");
-
-  const serverUrlAppeared = await page.waitForFunction(() => {
-    const raw = localStorage.getItem("picodevil-media-registry");
-    if (!raw) return false;
-    return (JSON.parse(raw) as any[]).some(
-      (e) => e.name === "server-clip" && e.url?.startsWith("http://localhost:3456/videos/")
-    );
-  }, { timeout: TIMEOUT_MS }).then(() => true).catch(() => false);
-
-  if (!serverUrlAppeared) {
-    errors.push("SERVER_ENABLED=true: entry URL never updated to server URL — upload did not complete");
+async function testServerReachable(page: Page, errors: string[]) {
+  const status = await configureServer(page, MEDIA_URL);
+  if (status !== "ok") {
+    errors.push(`server reachable: expected status "ok" after probing ${MEDIA_URL}, got "${status}"`);
+    return;
   }
 
-  const corsErrors = errors.filter(e => isRelevantError(e) && (e.includes("cors") || e.includes("blocked") || e.includes("CORS")));
+  await dropFile(page, "server-clip.mp4");
+
+  // Poll the in-memory registry for the blob→server URL swap (the upload is
+  // async; blob entries aren't persisted to localStorage so we read live state).
+  const serverUrlAppeared = await page.waitForFunction(async () => {
+    const reg = await import("/src/media-registry.ts");
+    return reg.getAllEntries().some(
+      (e: any) => e.name === "server-clip" && e.url?.startsWith("http://localhost:3456/videos/")
+    );
+  }, null, { timeout: TIMEOUT_MS }).then(() => true).catch(() => false);
+
+  if (!serverUrlAppeared) {
+    errors.push("server reachable: entry URL never updated to server URL — upload did not complete");
+  }
+
+  const corsErrors = errors.filter(e => isRelevantError(e) && /cors|blocked/i.test(e));
   if (corsErrors.length > 0) {
-    errors.push(...corsErrors.map(e => `SERVER_ENABLED=true: CORS error: ${e}`));
+    errors.push(...corsErrors.map(e => `server reachable: CORS error: ${e}`));
   }
 }
 
-async function testServerDisabled(page: Page, errors: string[]) {
-  // Override SERVER_ENABLED at runtime by patching the module's exported value.
-  // We do this by intercepting the drop and calling the underlying addMedia directly
-  // with SERVER_ENABLED forced false — simulating what happens when the flag is off.
-  // We check that after the drop the entry URL remains a blob: URL (no upload).
+async function testServerUnreachable(page: Page, errors: string[]) {
+  // Track whether any XHR to /upload is opened, so we can prove no upload fired.
   await page.evaluate(() => {
-    // Monkey-patch: intercept the drop handler on #tab-videos to force SERVER_ENABLED=false path
-    const tab = document.getElementById("tab-videos")!;
-    tab.addEventListener("drop", async (e: DragEvent) => {
-      if (!e.dataTransfer?.files.length) return;
-      // Confirm no XHR to /upload is made — we check this via a flag
-      (window as any).__uploadAttempted = false;
-      const origXHR = window.XMLHttpRequest;
-      (window as any).XMLHttpRequest = class extends origXHR {
-        open(method: string, url: string, ...rest: any[]) {
-          if (url.includes("/upload")) (window as any).__uploadAttempted = true;
-          return super.open(method, url, ...rest);
-        }
-      };
-    }, { capture: true }); // capture so it runs before the real handler
+    (window as any).__uploadAttempted = false;
+    const origXHR = window.XMLHttpRequest;
+    (window as any).XMLHttpRequest = class extends origXHR {
+      open(method: string, url: string | URL, ...rest: any[]) {
+        if (String(url).includes("/upload")) (window as any).__uploadAttempted = true;
+        // @ts-expect-error — forwarding to the native signature
+        return super.open(method, url, ...rest);
+      }
+    };
   });
 
-  // Now patch config.SERVER_ENABLED to false via the module graph
-  // The cleanest way in-browser: re-evaluate the code with loadVideo which uses addMedia,
-  // and check localStorage directly. Instead, we test the observable contract:
-  // after a drop with SERVER_ENABLED=false, the entry stays as a blob: URL.
-  // We simulate this by checking the current value of SERVER_ENABLED first.
-  const serverEnabled = await page.evaluate(async () => {
-    const mod = await import("/src/config.ts");
-    return (mod as any).SERVER_ENABLED;
-  });
+  const status = await configureServer(page, DEAD_URL);
+  if (status !== "error") {
+    errors.push(`server unreachable: expected status "error" for ${DEAD_URL}, got "${status}"`);
+    return;
+  }
 
-  if (serverEnabled === false) {
-    // Already false — run the real drop and check blob URL is kept
-    await dropFile(page, "noupload-clip.mp4");
-    await page.waitForTimeout(2000); // give time for any (unwanted) upload to complete
+  await dropFile(page, "noupload-clip.mp4");
+  await page.waitForTimeout(2000); // give any (unwanted) upload time to start
 
-    const stayedAsBlob = await page.evaluate(() => {
-      // blob entries aren't persisted, but check in-memory via the registry
-      // We can't import the registry here (separate module instance), so check
-      // for absence of a server URL in localStorage after waiting
-      const raw = localStorage.getItem("picodevil-media-registry");
-      if (!raw) return true; // nothing persisted — blob entries never hit localStorage
-      return !(JSON.parse(raw) as any[]).some(
-        (e) => e.name === "noupload-clip" && e.url?.startsWith("http://")
-      );
-    });
+  const entry = await getEntry(page, "noupload-clip");
+  if (!entry) {
+    errors.push("server unreachable: drop did not add a 'noupload-clip' entry");
+  } else if (!entry.url.startsWith("blob:")) {
+    errors.push(`server unreachable: expected the entry to stay a blob: URL, got ${entry.url}`);
+  }
 
-    if (!stayedAsBlob) {
-      errors.push("SERVER_ENABLED=false: entry URL was unexpectedly updated to a server URL");
-    }
-  } else {
-    // SERVER_ENABLED is true in the build — we can't toggle it at runtime without
-    // rebuilding. Instead verify the XHR interception caught an upload attempt to
-    // confirm the flag is the only thing gating it, and skip the assertion.
-    // The meaningful test here is that when SERVER_ENABLED=false is set, no XHR fires.
-    // We test this by checking __uploadAttempted is false after a drop in the patched context.
-    await dropFile(page, "noupload-clip.mp4");
-    await page.waitForTimeout(1500);
-    const attempted = await page.evaluate(() => (window as any).__uploadAttempted);
-    // With SERVER_ENABLED=true an upload IS attempted — confirm the XHR interceptor works
-    if (attempted === false) {
-      errors.push("SERVER_ENABLED=false simulation: XHR interceptor did not fire — drop handler may not be running");
-    }
-    // The actual SERVER_ENABLED=false no-upload assertion requires a build with the flag
-    // set to false; we note this as a skipped assertion rather than a hard failure.
-    console.log("[info] SERVER_ENABLED=false test: XHR interceptor confirmed working. " +
-      "Set SERVER_ENABLED=false in config.ts and re-run to verify no upload is made.");
+  const attempted = await page.evaluate(() => (window as any).__uploadAttempted);
+  if (attempted) {
+    errors.push("server unreachable: an /upload XHR was attempted despite status \"error\"");
   }
 }
 
@@ -232,32 +247,32 @@ async function main() {
   let mediaServer: http.Server | null = null;
   let downloadDir = "";
   try {
-    ({ server: mediaServer, downloadDir } = await startMediaServer(3456));
+    ({ server: mediaServer, downloadDir } = await startMediaServer(MEDIA_PORT));
   } catch (e: any) {
-    console.error(`Could not start media server on port 3456: ${e.message}`);
+    console.error(`Could not start media server on port ${MEDIA_PORT}: ${e.message}`);
     console.error("Kill any running media server and retry.");
     await vite.close();
     process.exit(1);
   }
 
-  const browser = await chromium.launch({ headless: HEADLESS });
+  const browser = await chromium.launch({ headless: HEADLESS, args: GL_ARGS });
   const results: { name: string; errors: string[] }[] = [];
 
   try {
-    // --- Scenario 1: SERVER_ENABLED=true ---
+    // --- Scenario 1: server reachable ---
     {
       const { page, errors } = await openFreshPage(browser, appUrl);
-      await testServerEnabled(page, errors);
+      await testServerReachable(page, errors);
       await page.context().close();
-      results.push({ name: "SERVER_ENABLED=true: drop uploads file to server", errors: errors.filter(isRelevantError) });
+      results.push({ name: "server reachable: drop uploads file to server", errors: errors.filter(isRelevantError) });
     }
 
-    // --- Scenario 2: SERVER_ENABLED=false ---
+    // --- Scenario 2: server unreachable ---
     {
       const { page, errors } = await openFreshPage(browser, appUrl);
-      await testServerDisabled(page, errors);
+      await testServerUnreachable(page, errors);
       await page.context().close();
-      results.push({ name: "SERVER_ENABLED=false: drop keeps blob URL, no upload", errors: errors.filter(isRelevantError) });
+      results.push({ name: "server unreachable: drop keeps blob URL, no upload", errors: errors.filter(isRelevantError) });
     }
   } finally {
     await browser.close();
