@@ -82,15 +82,36 @@ As such, we've added a few new functions for creating smooth signals - `lerp` an
 
 In Strudel, you often create "stacks" of patterns - multiple patterns that run in parallel. In Picodevil, you do this even more so! Frequently, you want to say something like "play this video 16 times in parallel, in a 4x4 grid, and change one of those instances to be a little different". Let's build that up: 
 
-*Play a video*: `$: s("ducks")`
+*Play a video*: 
+```js
+$: s("ducks")
+```
 
-*Play a video 16 times, all in sync*: Use `stackN` - `$: s("ducks").stackN(16)`
+*Play a video 16 times, all in sync*: Use `stackN` - 
+```js
+$: s("ducks").stackN(16)
+```
 
-*Take these 16 elements and then lay them out side by side on the screen, rather than on top of each other*: You index them, to add `i` and `count` values to each one so that patterns can distinguish between them. This looks like `$: s("ducks").stackN(16).index()`, except actually `stackN` already does an `index` for you, to be helpful. But something like `$: s("ducks, canalboat")` needs an index added.
+*Take these 16 elements and then lay them out side by side on the screen, rather than on top of each other*: You index them, to add `i` and `count` values to each one so that patterns can distinguish between them. This looks like:
+```js
+$: s("ducks").stackN(16).index()
+```
+Except actually `stackN` already does an `index` for you, to be helpful. But something like `$: s("ducks, canalboat")` needs an index added.
 
-*Actually put them in a grid pattern*: You can now call `tile` on them to do the layout: `$: s("ducks").stackN(16).tile()`. Tile looks at the `count` value and tries to figure out a grid that will accommodate that many items.
+*Actually put them in a grid pattern*: You can now call `tile` on them to do the layout: 
+```js 
+$: s("ducks").stackN(16).tile()
+```
+Tile looks at the `count` value and tries to figure out a grid that will accommodate that many items.
 
-*Wait, but what if I have 15 items stacked?*: Yeah, one row (the last one) has 3 columns instead of 4. If you want a fixed number of rows and columns, you can add `rows` & `cols`, then lay it out with `grid`: `$: s("ducks").stackN(15).rows(4).cols(4).grid()`. Or, if you want the items to repeat after they run out, you can use `gridMod`: `$: s("ducks").stackN(15).rows(4).cols(4).gridMod()`
+*Wait, but what if I have 15 items stacked?*: Yeah, one row (the last one) has 3 columns instead of 4. If you want a fixed number of rows and columns, you can add `rows` & `cols`, then lay it out with `grid`: 
+```js
+$: s("ducks").stackN(15).rows(4).cols(4).grid()
+```
+Or, if you want the items to repeat after they run out, you can use `gridMod`: 
+```js
+$: s("ducks").stackN(15).rows(4).cols(4).gridMod()
+```
 
 *Drawing one element*: We can also use `i` and `count` to manually set the index and count on a single element. This lets us draw to a particular point on a grid... So, we could do: 
 ```js
@@ -208,6 +229,8 @@ Hquack: s("ducks").stackN(9).tile()
 $: s("quack").cropStack(2,2).tile().scale(.9)
 ```
 Now you see black between each foreground chunk.
+
+Oh, one thing to be aware of: if you reference a layer *before* it's rendered, it's picked up from the previous frame. 
 
 ## More resources
 
