@@ -142,6 +142,13 @@ $: text('hi').fontBGColor('black').fontColor('white')
 $: text('hi').fontColor("red green blue")              // patterned color
 ```
 
+**Variable fonts** — `.fontAxis(tag, value)` sets an OpenType variation axis on a variable font (rendered via HarfBuzz). `tag` is a 4-letter axis tag (case-insensitive), e.g. `'wght'` (weight), `'wdth'` (width), `'slnt'` (slant). Multiple calls accumulate, and the value can be a pattern or a `slider()`.
+
+```js
+$: text('Hello').font('Recursive').fontAxis('wght', 900)
+$: text('A').font('Anybody').fontAxis('wght', slider(100, 100, 900)).fontAxis('slnt', 10)
+```
+
 ### `fontPicker(initialFont?)`
 
 An inline editor widget — like `slider()` — that embeds a font typeahead input directly in the code. Use it as the argument to `.font()` to browse and switch fonts live without re-evaluating.
@@ -186,7 +193,7 @@ Any registered named pattern (non-`$`) can be used as a pixel source by passing 
 ```js
 mycomp: stack(color("red"), color("blue").alpha(0.5).blend("screen"))
 $: s("mycomp").x(0.25).width(0.5)
-$: s("mycomp").x(0.75).width(0.5).blend("difference")
+$: s("mycomp").x(0.75).width(0.5).blend("multiply")
 ```
 
 `s("prev")` gives the previous frame's full composited canvas output, enabling feedback and echo effects:
@@ -205,6 +212,20 @@ $: text("hello")           // drawn over the hue-rotated canvas
 ```
 
 **Forward references** (referencing a pattern declared after the current one) work but show the previous frame's content
+
+### Camera and screen capture
+
+`loadCamera(name)` and `loadScreen(name)` register a live webcam or screen/window-capture stream under a short name, which you then use as a source with `s(name)`. Both are idempotent (calling again is a no-op) and prompt for browser permission on first use. No server required.
+
+```js
+loadCamera('cam')
+$: s('cam')
+
+loadScreen('scrn')
+$: s('scrn').barrel(0.3)
+```
+
+`fft.setSource('screen:scrn')` can tap the audio track from a `loadScreen()` stream — see [Audio](#audio).
 
 ## Mininotation
 
@@ -242,6 +263,8 @@ $: color(mini("red blue").slow(2))
 
 All controls are methods you chain onto a pattern. Every control accepts patterns (including mininotation strings) as arguments.
 
+A few have shorthand aliases: `.w()`/`.h()` for `.width()`/`.height()`, `.opacity()` for `.alpha()`, `.gray()` for `.grey()`, `.dur()` for `.duration()`, and `.left()`/`.top()` for `.x()`/`.y()`.
+
 ### Position and size
 
 By default, each pattern fills the entire canvas (x=0, y=0, width=1, height=1). Values are 0–1 relative to the canvas.
@@ -277,9 +300,9 @@ $: color("red").alpha("1 0.5 0")   // patterned alpha
 
 `.brightness(n)` adds a brightness offset after contrast. 0 = no change (default), positive = brighter, negative = darker.
 
-`.tint(hue, strength)` colorises toward a target hue while attracting saturation toward 1. `hue` is in [0,1] turns (0/1 = red, 0.33 = green, 0.67 = blue). `strength` defaults to 1 and is unclamped — values above 1 produce hyper-saturated effects; negative values push away from the hue. Operates in HSL space in a shared pass with `.huerot()` (applied before it, so huerot can further rotate the result).
+`.tint(hue, strength)` colorises toward a target hue while attracting saturation toward 1. `hue` is in [0,1] turns (0/1 = red, 0.33 = green, 0.67 = blue). `strength` defaults to 1 and is unclamped — values above 1 produce hyper-saturated effects; negative values push away from the hue. Operates in OKLab space in a shared pass with `.huerot()` (applied before it, so huerot can further rotate the result).
 
-All are applied in the fragment shader in order: grey → tint+huerot (shared HSL pass) → contrast → brightness → alpha.
+All are applied in the fragment shader in this order: contrast → brightness → grey + tint + huerot (one shared OKLab pass) → alpha. (Barrel distortion and pixelation, below, happen earlier still — in UV space, before the texture is even sampled.)
 
 ```js
 $: video("clip.mp4").grey(1)                               // fully greyscale
@@ -303,11 +326,77 @@ $: video("clip.mp4").tint(0.33, 2)                         // hyper-green (uncla
 $: video("clip.mp4").tint(0.5).huerot(sine)                // tint then spin the result
 ```
 
+### Pixelate and barrel distortion
+
+These two effects warp the image in UV space, *before* the texture is sampled, so they sit at the very start of the effect chain.
+
+`.pixelate(size)` quantises the tile into square blocks. `size` is the block edge in **screen pixels**; calling `.pixelate()` with no argument defaults to 8. The mosaic grid rotates with the tile when `.rotateZ()` is applied.
+
+`.barrel(k)` applies lens distortion: `k > 0` bows the image outward (the classic CRT curved-screen look, corners clipped to transparent), `k < 0` is pincushion. No argument defaults to 0.5; subtle CRT looks live around 0.3–0.5.
+
+```js
+$: video("clip.mp4").pixelate(20)                  // chunky mosaic
+$: video("clip.mp4").pixelate(sine.range(1, 40))   // animated block size
+$: video("clip.mp4").pixelate(10).rotateZ(0.25)    // grid rotates with the tile
+$: s("all").barrel(0.4)                            // CRT warp the whole composition
+$: video("clip.mp4").objectfit("fill").barrel(0.5) // barrel on a single video
+$: s("all").barrel(sine.range(0, 0.6))             // pulsing warp
+```
+
+### Blending
+
+`.blend(mode)` sets how a pattern composites onto whatever is already on the canvas. The default is `"source-over"` (normal alpha compositing). Supported modes:
+
+| Mode               | Effect                                                          |
+| ------------------ | -------------------------------------------------------------- |
+| `"source-over"`    | Normal alpha compositing (default)                             |
+| `"lighter"` / `"add"` | Additive — colours add together; good for glows/light leaks |
+| `"multiply"`       | Darkens — multiplies source with destination                  |
+| `"screen"`         | Lightens — inverse of multiply; good for fire/smoke           |
+| `"subtract"`       | Subtracts source from destination (clamped)                   |
+| `"min"`            | Per-channel minimum of source and destination (darkens)       |
+| `"max"`            | Per-channel maximum of source and destination (lightens)      |
+| `"destination-out"`| Erases the destination where the source is opaque (alpha mask)|
+
+```js
+$: video("fire.mp4").blend("lighter")     // additive glow
+$: color("red").blend("multiply")
+$: color("red").blend("screen lighter")   // alternates per cycle
+```
+
+Unrecognised mode names fall back to `"source-over"` with a console warning.
+
 ### Scale
 
 ```js
 $: video("clip.mp4").scale(0.5)          // half size (both axes)
 $: video("clip.mp4").scaleX(2).scaleY(0.5) // stretch/squash
+```
+
+`.size(w, h?)` sets width and height together — one argument applies to both axes, two set them independently:
+
+```js
+$: video("clip.mp4").size(0.5)       // half width and half height
+$: video("clip.mp4").size(0.5, 0.25) // half width, quarter height
+```
+
+### Rotation
+
+All rotation values are in **turns** (0.25 = 90°, 0.5 = 180°).
+
+| Method          | Description                                                        |
+| --------------- | ----------------------------------------------------------------- |
+| `.rotateZ(v)`   | Standard 2D rotation around the Z axis                            |
+| `.rotateX(v)`   | Tilt forward/back (orthographic projection — scales Y)            |
+| `.rotateY(v)`   | Tilt left/right (orthographic projection — scales X)              |
+| `.rotate(v)`    | Same as `.rotateZ(v)`                                              |
+| `.rotate(v, a)` | Rotate around an axis at angle `a` turns (0 = horizontal, 0.25 = vertical) |
+
+```js
+$: video("clip.mp4").rotateZ(0.25)        // 90° clockwise
+$: video("clip.mp4").rotateZ(sine)        // continuous spin
+$: video("clip.mp4").rotateY(sine)        // tilting left/right
+$: video("clip.mp4").rotate(sine, 0.25)   // rotate around the vertical axis
 ```
 
 ### Fit mode
@@ -399,27 +488,37 @@ $: video("clip.mp4").speed(0.5)     // half speed
 
 Negative speeds play in reverse via manual seeking. Very slow or very fast rates outside the browser's native range (0.0625–16) also use manual seeking.
 
-### Video start/end/duration
+### Video begin/end/duration
 
-Control which portion of the video plays. Values are relative to video duration by default (0–1), or you can use `.sec()` / `.ms()` for absolute time.
+Control which portion of the video plays with `.begin()`, `.end()`, and `.duration()` (alias `.dur()`). Values are relative to video duration by default (0–1), or you can use `.sec()` / `.ms()` for absolute time.
 
 ```js
-$: video("clip.mp4").start(0.5)              // start halfway through
-$: video("clip.mp4").start(0.25).end(0.75)   // play middle 50%
-$: video("clip.mp4").start(0).duration(0.25)  // play first quarter
-$: video("clip.mp4").scrub(0.5)               // freeze at 50% (start + duration(0))
+$: video("clip.mp4").begin(0.5)               // start halfway through
+$: video("clip.mp4").begin(0.25).end(0.75)    // play middle 50%
+$: video("clip.mp4").begin(0).duration(0.25)  // play first quarter (.dur() also works)
+$: video("clip.mp4").scrub(0.5)               // freeze at 50% (begin + duration(0))
 ```
 
 For absolute times:
 
 ```js
-$: video("clip.mp4").start(mini("5").sec())     // start at 5 seconds
+$: video("clip.mp4").begin(mini("5").sec())      // start at 5 seconds
 $: video("clip.mp4").duration(mini("500").ms())  // play 500ms
+```
+
+### Fit playback to cycles
+
+`.loopAt(n)` slows the pattern to span `n` cycles and adjusts playback speed so the video plays through exactly once over that span. (It needs the video's duration, which is known after the clip has loaded once.)
+
+```js
+$: s("clip.mp4").loopAt(4)                       // one video stretched over 4 cycles
+$: s("clip.mp4 clip2.mp4").loopAt(2)             // each clip spans 2 cycles
+$: s("clip.mp4").begin(0.5).end(1).loopAt(4)     // back half, over 4 cycles
 ```
 
 ### Continuous playback: sync() and rolling()
 
-By default, each cycle a video restarts from the beginning (or from `.start()`). Two modes let you play continuously:
+By default, each cycle a video restarts from the beginning (or from `.begin()`). Two modes let you play continuously:
 
 **`.sync()`** — plays relative to the global clock, ignoring cycle boundaries. Position is a pure function of elapsed time and speed, so re-evaluating code resyncs the video to where it "should" be at that moment.
 
@@ -496,6 +595,24 @@ Use `indexWith` / `indexCycleWith` to label with custom property names instead o
 $: indexWith("slot", "total", video("a.mp4"), video("b.mp4"))
 ```
 
+### `.shuffleStack(seed?)` / `.shuffleStackCycle(seed?)`
+
+Permutes the **order** of a stack's events. Place it before `.index()` so the shuffled order is what gets numbered.
+
+- **`.shuffleStack`** — permutes the events co-active at query time.
+- **`.shuffleStackCycle`** — permutes events within each onset-time group across the cycle (for all-simultaneous stacks this is the same as `shuffleStack`; the difference shows up when sources have different subdivisions).
+
+`seed` accepts a number, string, or pattern. A patterned seed reshuffles during the cycle — `"1 2 3 4"` gives four shuffles per cycle. No argument is a single fixed shuffle.
+
+```js
+$: stack(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4"))
+     .shuffleStack(42).index().rowscols(2).gridMod()
+$: stack(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4"))
+     .shuffleStack("1 2 3 4").index().rowscols(2).gridMod()  // reshuffles 4×/cycle
+```
+
+Contrast with `.shuffleIndex()` below: `shuffleStack` reorders the events (so video stacking order and pool identity change), while `shuffleIndex` keeps order and only randomises which cell each event lands in.
+
 ### `.shuffleIndex(seed?)` / `.shuffleIndexCycle(seed?)`
 
 Assigns shuffled `i` values (and matching `count`) to events **without changing their order**. Think of it as `.index()` / `.indexCycle()` but with randomised cell assignments.
@@ -518,14 +635,6 @@ $: stack(s("a.mp4"), s("b.mp4"), s("c.mp4"), s("d.mp4"))
 
 // Cycle variant for temporally-ordered patterns
 $: stack(video("a.mp4"), video("b.mp4 c.mp4")).shuffleIndexCycle(7).rowscols(2).gridMod()
-```
-
-### `autoseed(...patterns)`
-
-Stacks patterns and labels each hap with a deterministic `seed` value — a hash of the event's value, position in the cycle, and cycle number. Useful for giving each cell a stable unique random stream.
-
-```js
-$: autoseed(video("a.mp4").x(rand), video("b.mp4").x(rand)).rowscols(2).gridMod()
 ```
 
 ### `.grid(rows?, cols?, i?)`
@@ -653,15 +762,20 @@ $: index(video("a.mp4"), video("b.mp4")).circleCount(4).circleMod(0.35)
   .width(0.2).height(0.2)
 ```
 
-### `gridStack(children, cols, rows)`
+### `.tile()`
 
-Distributes patterns across grid cells. Accepts an array, a single pattern, or any iterable. `cols` defaults to 2, `rows` defaults to `cols`.
+Places each labelled element in its own cell, working out the layout automatically from the element count (rows = `round(sqrt(N))`, front-loaded — e.g. 7 elements → rows of 3, 2, 2). It reads the `i`/`count` that `index()` assigns, so chain it after `index(...)` — it's the quick way to lay a stack out on a grid without choosing rows/cols by hand.
 
 ```js
-$: gridStack([color("red"), color("blue"), video("clip.mp4")], 2, 2)
-$: gridStack(video("clip.mp4"), 3)                          // 3×3 grid, same video in each cell
-$: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i + 1)), 2, 2)
-$: gridStack(cycle([video("a.mp4"), video("b.mp4")], color("red")), 2, 2)
+$: index(color("red"), color("blue"), color("green")).tile()
+$: index(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4")).tile()
+```
+
+For full control over the grid (explicit rows/cols, strides, nesting), use `.gridMod()` instead of `.tile()`:
+
+```js
+$: index(video("a.mp4"), video("b.mp4"), video("c.mp4"), video("d.mp4"))
+     .rowscols(2).gridMod()
 ```
 
 ### `stackN(n, ...patterns)`
@@ -674,13 +788,21 @@ $: stackN(4, color("red"), color("blue"))           // red, blue, red, blue
 $: stackN(sine.range(1, 4).slow(4), color("red"))  // dynamic count
 ```
 
-### `cycle(...args)`
+### Slice stacking: `.chopStack(n)` and `.syncStack(n)`
 
-Round-robins between arguments. Arrays advance their own position; single patterns repeat forever.
+`chopStack`, `syncStack`, and `cropStack` (next) are three ways to explode one source into many simultaneous tiles. All three stamp `i`, `count`, `rows`, `cols` on the tiles, so a trailing `.gridMod()` (no args) reassembles them into a grid.
+
+**`.chopStack(n)`** slices the playback range into `n` consecutive segments (begin/end) and plays them all at once — different moments of the clip, side by side. Composes with `.begin()`/`.end()` to chop within a sub-range.
 
 ```js
-cycle([video("a.mp4"), video("b.mp4")], video("c.mp4"))
-// yields: a, c, b, c, a, c, ...
+$: s("clip.mp4").chopStack(4).rowscols(2).gridMod()              // 4 time-slices in a 2×2 grid
+$: stack(s("a.mp4"), s("b.mp4")).chopStack(4).index().rowscols(2).gridMod()
+```
+
+**`.syncStack(n)`** stacks `n` full copies of the clip, each phase-shifted by `i/n` via `sync()` — a staggered round-robin of the same video.
+
+```js
+$: s("clip.mp4").syncStack(4).rowscols(2).gridMod().rolling()    // 4 phase-offset copies
 ```
 
 ### `.cropStack(rows, cols?)`
@@ -694,16 +816,6 @@ $: s("clip.mp4").cropStack(2).alpha("1 0.5 1 0.5").gridMod()  // dim alternate c
 ```
 
 `cols` defaults to `rows` (square grid). Unlike `.chopStack()` which slices temporally (begin/end), `.cropStack()` slices spatially (crop region). The tiles share the same playback position so they're perfectly in sync.
-
-### `.iteratorWith(fn)` / `.iterator()`
-
-Returns an infinite iterable of pattern variants. `.iteratorWith(fn)` calls `fn(pattern, index)` for each item; `.iterator()` repeats the pattern unchanged.
-
-```js
-$: gridStack(video("clip.mp4").iteratorWith((x, i) => x.speed(i + 1)), 2, 2)
-$: gridStack(color("red").iterator(), 3, 1)
-```
-
 
 ## Signals
 
@@ -738,6 +850,16 @@ Continuous signals vary smoothly over each cycle (0–1 range unless noted). Use
 $: color("red").alpha(sine)             // pulsing transparency
 $: video("clip.mp4").x(sine).width(0.5) // slides back and forth
 $: video("clip.mp4").speed(sine.range(0.5, 2)) // speed varies smoothly
+```
+
+### `slider(value, min?, max?, step?)`
+
+An inline widget — the numeric sibling of `fontPicker()` — that embeds a draggable range input directly in the code and returns a continuous signal (like `mouseX`) tracking its position. `min` defaults to 0, `max` to 1, `step` to 0.001. Dragging writes the new value back into the source.
+
+```js
+$: video("clip.mp4").alpha(slider(0.5))             // 0–1 opacity knob
+$: video("clip.mp4").speed(slider(1, -2, 2, 0.1))   // -2..2, stepped by 0.1
+$: text('A').fontAxis('wght', slider(400, 100, 900)) // drive a font axis live
 ```
 
 ## Audio
@@ -841,12 +963,45 @@ $: video("clip.mp4").x("0 0.3 0.7 1".spline())
 $: color("red").alpha("0 1 0.5 1".spline(0.8))  // tension 0–1 (default 0.5)
 ```
 
+## Field transforms
+
+Every event carries a value object whose named fields are the controls you've set (`x`, `alpha`, `speed`, …). The `*On` family reaches into one named field, applies an operation, and writes the result back. The `amount` is interleaved with the field rhythmically (like a control pattern), and the **key itself can be a pattern**, so the target field can vary over time.
+
+| Method                | Operation on the field        |
+| --------------------- | ----------------------------- |
+| `.addOn(key, amt)`    | field + amt                   |
+| `.subOn(key, amt)`    | field − amt                   |
+| `.mulOn(key, amt)`    | field × amt                   |
+| `.divOn(key, amt)`    | field ÷ amt                   |
+| `.modOn(key, amt)`    | field mod amt                 |
+| `.powOn(key, amt)`    | field ^ amt                   |
+| `.setOn(key, amt)`    | replace field with amt        |
+| `.mapOn(key, fn)`     | `fn(fieldPattern)` → field    |
+
+> Use **single quotes** for literal key names — double quotes are wrapped in `mini()` by the transpiler.
+
+```js
+$: s("clip.mp4").x("-.1 .1").addOn('x', "<.2 .5>")   // nudge x by .2 or .5 each cycle
+$: s("clip.mp4").alpha(".5 1").mulOn('alpha', ".8 1") // scale the alpha field
+$: s("clip.mp4").x(".2").y(".3").addOn("x y", ".1")  // patterned key: x then y
+```
+
+`.mapOn(key, fn)` is the general form — `fn` receives a pure pattern of the field's value and returns a transformed pattern. It's the idiomatic way to smooth a single field with `.lerp()` / `.spline()`:
+
+```js
+$: s("clip.mp4").x(".1 -.1").mapOn('x', x => x.lerp())     // smoothly interpolate just x
+$: s("clip.mp4").alpha("0 1").mapOn('alpha', a => a.spline()) // spline-smooth just alpha
+```
+
+There are matching free-function forms too: `addOn(pat, key, amt)`, `mapOn(pat, key, fn)`, etc.
+
 ## Utility functions
 
 | Function                  | Description                                             |
 | ------------------------- | ------------------------------------------------------- |
 | `setCps(n)`               | Set cycles per second (default 0.5). Accepts a pattern. |
 | `setCpm(n)`               | Set cycles per minute. Accepts a pattern.               |
+| `hush()`                  | Clear all registered patterns (silence everything)      |
 | `run(n)`                  | Pattern of integers 0 to n-1                            |
 | `choose(a, b, ...)`       | Random choice each cycle                                |
 | `chooseIn(a, b, ...)`     | Random choice within subdivisions                       |
@@ -902,6 +1057,15 @@ The transform argument can be written either as a control directly (`speed(-1)`)
 
 > Without a stacking op upstream there's no per-tile seed, so co-active events share one time-based coin flip — i.e. plain Strudel behaviour, all-or-none across the stack.
 
+### `scramble(n)` / `.scramble(n)`
+
+Cuts a pattern into `n` equal slices and shuffles their order. The shuffle is **cycle-stable** — it changes once per cycle, not per frame. Works as a free function or a chained method.
+
+```js
+$: s("clip.mp4").scramble(4)                    // 4 time-slices, reshuffled each cycle
+$: scramble(4, color("red blue green yellow"))  // function form
+```
+
 ## Pattern methods from Strudel
 
 Since picodevil patterns are Strudel patterns, all standard Strudel methods work:
@@ -921,12 +1085,12 @@ bg: color("darkblue purple")
 $: video("clip.mp4").alpha(0.7).scale(0.8)
 
 // 2×2 grid of videos with varying speed
-$: gridStack([
+$: index(
   video("a.mp4").speed(1),
   video("b.mp4").speed(-1),
   video("c.mp4").speed(0.5),
   video("d.mp4").speed(2)
-], 2, 2)
+).rowscols(2).gridMod()
 
 // Smoothly sliding video
 $: video("clip.mp4").x(sine.slow(4)).width(0.5)
