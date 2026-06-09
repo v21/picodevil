@@ -24,14 +24,6 @@ export const PREWARM_NEW_ELEMENTS_PER_FRAME = 2;
 export const MAX_FREE_VIDEO_ELEMENTS = 64;
 
 /**
- * Max total memory used by cached video blobs, in bytes.
- * Each entry holds the full video file — I-frame-only re-encoded files from the
- * server can be 100–500 MB each. Oldest entries are evicted when the limit is exceeded.
- * Default: 2 GB.
- */
-export const MAX_BLOB_CACHE_BYTES = 2 * 1024 * 1024 * 1024;
-
-/**
  * Two NeededSources are considered shareable (can reuse the same pool element)
  * if their expected playhead positions are within this many seconds of each other.
  */

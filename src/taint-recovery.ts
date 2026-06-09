@@ -11,12 +11,13 @@
  * sends `Access-Control-Allow-Origin: *`, so in theory this should never fire —
  * but it does, intermittently, under heavy performance load. Rather than reason
  * about the exact browser-side cause, we capture rich diagnostics the *moment* it
- * happens (so a real occurrence is conclusive) and auto-cure by swapping the
- * element onto its same-origin `blob:` URL, which can never taint.
+ * happens (so a real occurrence is conclusive) and auto-cure by reloading the
+ * element with a cache-busting `?pdcb=N` param, which forces a fresh CORS fetch
+ * and dodges any poisoned no-CORS cache entry.
  *
  * The pure helpers (`isTaintError`, `buildTaintRecord`, `appendToRing`) are unit
  * tested; the orchestrator `recoverFromDrawError` wires them to console /
- * localStorage / the video pool.
+ * localStorage.
  */
 
 import type { TileParams } from "./renderer-interface";
@@ -26,12 +27,6 @@ import type { FrameEvent } from "./source-query";
 export const TAINT_LOG_KEY = "picodevil-taint-log";
 /** Max records kept in the localStorage ring buffer. */
 export const TAINT_LOG_MAX = 50;
-
-/** Minimal pool surface the cure needs (subset of VideoPoolManager). */
-export interface CurePool {
-  getBlobUrl(srcUrl: string): string | undefined;
-  fetchVideoBlob(srcUrl: string): void;
-}
 
 /** A single captured taint event. Plain JSON — safe to stringify into localStorage. */
 export interface TaintRecord {
@@ -43,7 +38,7 @@ export interface TaintRecord {
   eventIndex?: number;
   /** The logical media URL the element was assigned (from `_state.srcUrl`). */
   srcUrl?: string;
-  /** What the element actually loaded — distinguishes a raw http: src from a cured blob:. */
+  /** What the element actually loaded — e.g. a raw http: src vs a cache-busted ?pdcb= src. */
   currentSrc?: string;
   src?: string;
   /** Origin/host of `currentSrc`, the single most useful field for finding the culprit host. */
@@ -55,11 +50,8 @@ export interface TaintRecord {
   videoHeight?: number;
   /** HTMLMediaElement.error.code, if any. */
   mediaErrorCode?: number;
-  /** Whether a same-origin blob was already cached for this src at taint time. */
-  hadBlob?: boolean;
   /**
    * What the recovery did:
-   * - "cured-blob": swapped onto the already-cached same-origin blob: URL (guaranteed clean).
    * - "cured-cachebust": reloaded src with a `?pdcb=N` param to force a fresh CORS fetch.
    * - "no-cure": couldn't act (no srcUrl, or a stream/image source).
    */
@@ -94,7 +86,6 @@ export function buildTaintRecord(
   fe: Pick<FrameEvent, "screenIndex" | "eventIndex"> | undefined,
   e: unknown,
   now: string,
-  hadBlob: boolean,
   action: string,
 ): TaintRecord {
   const src = params.source;
@@ -105,7 +96,6 @@ export function buildTaintRecord(
     errorName: (e as { name?: string })?.name,
     screenIndex: fe?.screenIndex,
     eventIndex: fe?.eventIndex,
-    hadBlob,
     action,
   };
   if (src.kind === "video" || src.kind === "stream" || src.kind === "image") {
@@ -159,37 +149,31 @@ export function cacheBustUrl(url: string, n: number): string {
 
 /**
  * Decide how to cure a tainted video element. Pure — returns the new src to assign
- * (or undefined if the element already holds it / can't be cured) and an action label.
+ * and an action label.
  *
- * blob fast-path: a same-origin blob: URL can never taint, so if one is already cached
- * we just swap to it (no download forced). Otherwise reload with a cache-busting param,
- * which forces a fresh CORS fetch and dodges a poisoned no-CORS cache entry.
+ * Reload the source with a cache-busting `?pdcb=N` param: the fresh cache key forces
+ * a new CORS fetch (the element is `crossOrigin="anonymous"`), dodging any poisoned
+ * no-CORS cache entry that caused the taint.
  */
 export function decideCure(
   srcUrl: string | undefined,
-  blobUrl: string | undefined,
-  currentSrc: string,
   cbN: number,
 ): { newSrc?: string; action: string } {
   if (!srcUrl) return { action: "no-cure" };
-  if (blobUrl) {
-    return currentSrc === blobUrl ? { action: "cured-blob" } : { newSrc: blobUrl, action: "cured-blob" };
-  }
   return { newSrc: cacheBustUrl(srcUrl, cbN), action: "cured-cachebust" };
 }
 
 // Dedupe: act at most once per (element, srcUrl) so a tainted element doesn't trigger
 // a reload storm or flood console/localStorage at 60fps. Re-acts if the element is later
 // recycled onto a different src. After a cure the element reloads (videoWidth → 0, so the
-// uploader skips it) and shouldn't re-throw; if the blob later lands the renderer's own
-// reuse path upgrades it.
+// uploader skips it) and shouldn't re-throw.
 const handled = new WeakMap<object, string | undefined>();
 let cbCounter = 0;
 
 /**
  * Called from the renderer's drawTile catch. No-ops for non-taint errors.
  * On a taint error it logs diagnostics once (console.error + localStorage) and, for video
- * sources, cures the element via {@link decideCure} (cached blob, else cache-bust reload).
+ * sources, cures the element via {@link decideCure} (cache-bust reload).
  *
  * @returns true if it handled a taint error (caller can skip its generic warn).
  */
@@ -197,7 +181,6 @@ export function recoverFromDrawError(
   e: unknown,
   params: Pick<TileParams, "source">,
   fe: Pick<FrameEvent, "screenIndex" | "eventIndex"> | undefined,
-  pool: CurePool,
   now: string = new Date().toISOString(),
 ): boolean {
   if (!isTaintError(e)) return false;
@@ -214,16 +197,13 @@ export function recoverFromDrawError(
   if (el) handled.set(el, srcUrl);
 
   let action = "no-cure";
-  let hadBlob = false;
   if (src.kind === "video" && el) {
-    const blobUrl = srcUrl ? pool.getBlobUrl(srcUrl) : undefined;
-    hadBlob = blobUrl !== undefined;
-    const cure = decideCure(srcUrl, blobUrl, el.src, ++cbCounter);
+    const cure = decideCure(srcUrl, ++cbCounter);
     action = cure.action;
     if (cure.newSrc !== undefined) el.src = cure.newSrc;
   }
 
-  const rec = buildTaintRecord(params, fe, e, now, hadBlob, action);
+  const rec = buildTaintRecord(params, fe, e, now, action);
   console.error("[pd] WebGL CORS taint:", rec);
   persist(rec);
   return true;

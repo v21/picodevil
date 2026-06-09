@@ -1,5 +1,4 @@
 import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME } from './config';
-import { getVideoBase } from './server-config';
 import { eventBeginFromHap } from './event-begin';
 import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
@@ -71,21 +70,6 @@ export class FrameRenderer {
     this.renderer = renderer;
     this.pool = pool;
     this.metrics = metrics;
-  }
-
-  /**
-   * Called from pdEval after new screens are registered.
-   * Pre-fetches blobs for all video sources visible in the screen.
-   */
-  prewarmBlobs(screen: Screen): void {
-    const probe = screen.queryArc(0, 1);
-    for (const h of probe) {
-      const v = h.value;
-      if (v?._type === 'video') {
-        const base = v.urlBase ?? getVideoBase();
-        this.pool.fetchVideoBlob(this.pool.resolveMediaUrl(v.src, base));
-      }
-    }
   }
 
   /**
@@ -447,18 +431,12 @@ export class FrameRenderer {
           // New element from matchSources: set src and start playing
           const srcUrl = a.needed.srcUrl;
           el._state.srcUrl = srcUrl;
-          const blobUrl = pool.getBlobUrl(srcUrl);
-          el.src = blobUrl ?? srcUrl;
-          if (!blobUrl) pool.fetchVideoBlob(srcUrl);
+          el.src = srcUrl;
           el.play().catch((e: DOMException | Error) => {
             if ((e as DOMException).name !== 'AbortError') console.warn('video play failed:', e);
           });
-        } else {
-          // Reused element: update src if blob became available
-          const srcUrl = a.needed.srcUrl;
-          const blobUrl = pool.getBlobUrl(srcUrl);
-          if (blobUrl && el.src !== blobUrl) el.src = blobUrl;
         }
+        // Reused elements keep their existing src/stream — nothing to update.
       } else {
         // Image: update pool cache
         this.imageFreePool.set(a.needed.srcUrl, a.el as HTMLImageElement);
@@ -592,9 +570,9 @@ export class FrameRenderer {
         }
         this.renderer.drawTile(params);
       } catch (e) {
-        // Cross-origin texture taint: capture diagnostics + auto-cure (blob / cache-bust).
+        // Cross-origin texture taint: capture diagnostics + auto-cure (cache-bust reload).
         // recoverFromDrawError no-ops for any other error, falling through to the generic warn.
-        if (!recoverFromDrawError(e, params, fe, this.pool)) {
+        if (!recoverFromDrawError(e, params, fe)) {
           warn(`screen ${fe.screenIndex} event ${fe.eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
         }
       }
@@ -614,7 +592,6 @@ export class FrameRenderer {
     const neededBySrc = new Map<string, NeededSource[]>();
     for (const ns of futureNeeded) {
       if (ns.kind !== 'video') continue;
-      pool.fetchVideoBlob(ns.srcUrl);
       const list = neededBySrc.get(ns.srcUrl) ?? [];
       list.push(ns);
       neededBySrc.set(ns.srcUrl, list);
@@ -641,10 +618,6 @@ export class FrameRenderer {
         if (!ns) continue;
         const el = freeList[i];
 
-        // Upgrade to blob URL if it became available since element was created
-        const blobUrl = pool.getBlobUrl(srcUrl);
-        if (blobUrl && el.src !== blobUrl) el.src = blobUrl;
-
         const dur = isFinite(el.duration) ? el.duration : (pool.videoDurations.get(srcUrl) ?? 0);
         const activationCycle = Number(ns.hap.whole.begin);
         const activationTarget = computeExpectedFromEvent(
@@ -665,8 +638,7 @@ export class FrameRenderer {
         const ns = nsList[available + i];
         const el = pool.makeVideoEl(srcUrl);
         el._state.srcUrl = srcUrl;
-        const blobUrl = pool.getBlobUrl(srcUrl);
-        el.src = blobUrl ?? srcUrl;
+        el.src = srcUrl;
         el.preload = 'auto';
         if (ns) {
           const activationCycle = Number(ns.hap.whole.begin);

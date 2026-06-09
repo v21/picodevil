@@ -11,7 +11,6 @@ import type { Screen } from "./renderer-interface";
 
 export interface EvalDeps<CpsSnap> {
   clearActiveVideos(): void;
-  prewarmScreen(s: Screen): void;
   snapshotCps(): CpsSnap;
   restoreCps(snap: CpsSnap): void;
   globals: Record<string, unknown>;
@@ -79,7 +78,6 @@ export class EvalController<CpsSnap> {
       if (pScreens.length > 0) {
         this.screens = [...this.screens, ...pScreens];
       }
-      for (const s of this.screens) this.deps.prewarmScreen(s);
       console.log("evaluated:", code, "screens:", this.screens.length);
       return { error: null, widgets };
     } catch (e) {

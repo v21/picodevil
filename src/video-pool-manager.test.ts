@@ -217,48 +217,4 @@ describe("VideoPoolManager", () => {
     });
   });
 
-  describe("blob cache eviction", () => {
-    function addBlob(pool: VideoPoolManager, key: string, bytes: number) {
-      pool.videoBlobUrls.set(key, `blob:${key}`);
-      pool.videoBlobSizes.set(key, bytes);
-    }
-
-    it("evicts oldest blob URLs when total size exceeds limit", () => {
-      // limit = 300 bytes; add 4 × 100 bytes = 400 bytes total → evict oldest 1
-      const pool = createTestPool({ maxBlobBytes: 300 });
-      addBlob(pool, "url1", 100);
-      addBlob(pool, "url2", 100);
-      addBlob(pool, "url3", 100);
-      addBlob(pool, "url4", 100);
-
-      pool.evictOldestBlobs();
-      expect(pool.videoBlobUrls.size).toBe(3);
-      expect(pool.videoBlobUrls.has("url1")).toBe(false);
-      expect(pool.videoBlobUrls.has("url2")).toBe(true);
-      expect(pool.videoBlobUrls.has("url3")).toBe(true);
-      expect(pool.videoBlobUrls.has("url4")).toBe(true);
-    });
-
-    it("evicts multiple entries to get under cap", () => {
-      // limit = 200 bytes; add 5 × 100 bytes → evict oldest 3
-      const pool = createTestPool({ maxBlobBytes: 200 });
-      addBlob(pool, "a", 100);
-      addBlob(pool, "b", 100);
-      addBlob(pool, "c", 100);
-      addBlob(pool, "d", 100);
-      addBlob(pool, "e", 100);
-
-      pool.evictOldestBlobs();
-      expect(pool.videoBlobUrls.size).toBe(2);
-      expect(pool.videoBlobUrls.has("d")).toBe(true);
-      expect(pool.videoBlobUrls.has("e")).toBe(true);
-    });
-
-    it("does nothing when under cap", () => {
-      const pool = createTestPool({ maxBlobBytes: 1000 });
-      addBlob(pool, "x", 100);
-      pool.evictOldestBlobs();
-      expect(pool.videoBlobUrls.size).toBe(1);
-    });
-  });
 });

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { EvalController, type EvalDeps } from "./eval-controller";
 import { initRegistry as initPatternRegistry } from "./pattern-registry";
 import "./visual-controls"; // side-effect: registers .alpha(), .speed(), etc. on Pattern.prototype
-import type { Screen } from "./renderer-interface";
 
 // Install .p() on Pattern.prototype before any tests run
 initPatternRegistry();
@@ -13,12 +12,10 @@ function makeDeps() {
   let storedSnap: CpsSnap = { value: 0.5 };
   const calls = {
     clearActiveVideos: 0,
-    prewarmScreens: [] as Screen[],
     restoreCpsCalls: [] as CpsSnap[],
   };
   const deps: EvalDeps<CpsSnap> = {
     clearActiveVideos: () => { calls.clearActiveVideos++; },
-    prewarmScreen: (s) => { calls.prewarmScreens.push(s); },
     snapshotCps: () => ({ ...storedSnap }),
     restoreCps: (snap) => { calls.restoreCpsCalls.push(snap); storedSnap = snap; },
     globals: {},
@@ -94,11 +91,6 @@ describe("EvalController", () => {
       ctrl.eval('$: color("red")');
       ctrl.eval('$: color("blue")');
       expect(calls.clearActiveVideos).toBe(2);
-    });
-
-    it("calls prewarmScreen for each screen", () => {
-      ctrl.eval('$: color("red"); $: color("blue")');
-      expect(calls.prewarmScreens).toHaveLength(2);
     });
 
     it("clears screens from previous eval on new eval", () => {

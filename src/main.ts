@@ -1,7 +1,7 @@
 import "./visual-controls";
 import { setupEditor } from "./editor";
 import "./shuffle-stack";
-import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS, MAX_BLOB_CACHE_BYTES } from "./config";
+import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS } from "./config";
 import { CpsController } from "./cps-controller";
 import { createMetrics, recordFrameMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
@@ -42,8 +42,6 @@ resize();
 const pdMetrics = createMetrics();
 (window as any).pdMetrics = pdMetrics;
 (window as any).pdPerfInfo = () => {
-  let blobCacheBytes = 0;
-  for (const s of pool.videoBlobSizes.values()) blobCacheBytes += s;
   return {
     naturalCount: pdMetrics.naturalCount,
     seekCount: pdMetrics.seekModeCount,
@@ -52,8 +50,6 @@ const pdMetrics = createMetrics();
     seeksThisFrame: pdMetrics.seeksThisFrame,
     seeksPer300f: pdMetrics.seeksHistory.reduce((a, b) => a + b, 0),
     driftSeeksPer300f: pdMetrics.driftSeeksHistory.reduce((a, b) => a + b, 0),
-    blobCacheBytes,
-    blobCacheCount: pool.videoBlobUrls.size,
   };
 };
 
@@ -72,7 +68,6 @@ const pool = createVideoPoolManager({
     return el;
   },
   maxFreeTotal: MAX_FREE_VIDEO_ELEMENTS,
-  maxBlobBytes: MAX_BLOB_CACHE_BYTES,
 });
 
 const frameRenderer = new FrameRenderer(activeRenderer, pool, pdMetrics);
@@ -101,7 +96,6 @@ function setCpm(cpm: number | Pattern) {
 
 const evalController = new EvalController({
   clearActiveVideos: () => pool.clearVideos(frameRenderer.activeVideoEls.splice(0)),
-  prewarmScreen: (s) => frameRenderer.prewarmBlobs(s),
   snapshotCps: () => cpsController.snapshot(),
   restoreCps: (snap) => cpsController.restore(snap),
   globals: {

@@ -47,7 +47,7 @@ picodevil/
     video-pool.ts         — computeExpectedFromEvent (expected time from event props), scoreFreeElement (seek-cost scoring for pool candidates)
     source-query.ts       — queryNeeded: queries all screens and builds NeededSource list (what elements are needed this frame)
     source-matcher.ts     — matchSources: greedy best-match assignment of free pool elements to NeededSources by seek cost; creates new elements when pool is empty
-    video-pool-manager.ts — VideoPoolManager: owns freeVideoPool and imagePool Maps, element creation, duration caching, blob URL management
+    video-pool-manager.ts — VideoPoolManager: owns freeVideoPool and imagePool Maps, element creation, duration caching
     video-element-state.ts — VideoEl type and _state bag (lastEventBegin, lastSyncSpeed, syncDistOffset, etc.)
     playback-rate.ts      — setPlaybackRate helper, native rate range constants
     time-value.ts         — TimeValue type and parsing (relative, seconds, milliseconds)
@@ -57,7 +57,7 @@ picodevil/
     renderer.ts           — FrameRenderer: frame loop logic, event collection, video assignment, dispatches TileParams to backend
     webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2; GPU texture upload, UV/fit on CPU, blend modes
     texture-cache.ts      — TextureCache: manages WebGL textures; videos re-uploaded each frame, images/colors cached
-    taint-recovery.ts     — WebGL cross-origin taint detection + auto-cure (cached blob / cache-bust reload); diagnostics to console.error + a localStorage ring (window.pdTaintLog())
+    taint-recovery.ts     — WebGL cross-origin taint detection + auto-cure (cache-bust reload, ?pdcb=N); diagnostics to console.error + a localStorage ring (window.pdTaintLog())
     playback-simulation-helpers.ts — shared setup and helpers for simulation test files: DUR, CPS, TracePoint, evalPattern, simulateTrace, checkTraceInvariants, assertTracesMatch, setupSimulation()
   test/
     monkey-test.ts              — grammar-based random pattern generator + browser runner
@@ -96,7 +96,7 @@ Backend selection in `main.ts`: `new WebGLRenderer(canvas)` — unconditional, n
 - Images: uploaded once, cached by element reference
 - Colors: 1×1 RGBA texture, cached by `"r,g,b"` key
 - All video elements are created with `crossOrigin = "anonymous"` (set in the pool factory in `main.ts`) so WebGL can upload them without CORS errors
-- If `texImage2D` still throws a cross-origin taint error ("video element contains cross-origin data" — sources go black; caused by browser HTTP-cache poisoning when the CDN lacks `Vary: Origin`), the `drawTile` catch in `renderer.ts` routes it to `recoverFromDrawError` (`taint-recovery.ts`): it logs a diagnostics record (`console.error` + a localStorage ring readable via `window.pdTaintLog()`) and auto-cures the element via its cached `blob:` URL, else a cache-busting reload (`?pdcb=N`). The CDN (`videoclip.picodevil.com`) carries `Vary: Origin` as the root-cause fix.
+- If `texImage2D` still throws a cross-origin taint error ("video element contains cross-origin data" — sources go black; caused by browser HTTP-cache poisoning when the CDN lacks `Vary: Origin`), the `drawTile` catch in `renderer.ts` routes it to `recoverFromDrawError` (`taint-recovery.ts`): it logs a diagnostics record (`console.error` + a localStorage ring readable via `window.pdTaintLog()`) and auto-cures the element with a cache-busting reload (`?pdcb=N`) — a fresh cache key forces a new CORS fetch, dodging the poisoned entry. The CDN (`videoclip.picodevil.com`) carries `Vary: Origin` as the root-cause fix.
 
 ## Pattern architecture
 

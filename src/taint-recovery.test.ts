@@ -10,7 +10,6 @@ import {
   clearTaintLog,
   TAINT_LOG_MAX,
   type TaintRecord,
-  type CurePool,
 } from "./taint-recovery";
 
 const NOW = "2026-06-04T00:00:00.000Z";
@@ -65,23 +64,20 @@ describe("taint-recovery: cacheBustUrl", () => {
 });
 
 describe("taint-recovery: decideCure", () => {
-  it("uses a cached blob (fast path) when one exists", () => {
-    expect(decideCure("u", "blob:abc", "https://cdn/u.mp4", 1)).toEqual({
-      newSrc: "blob:abc",
-      action: "cured-blob",
-    });
-  });
-  it("no-ops the swap when already on the blob", () => {
-    expect(decideCure("u", "blob:abc", "blob:abc", 1)).toEqual({ action: "cured-blob" });
-  });
-  it("cache-busts when no blob is cached", () => {
-    expect(decideCure("https://cdn/u.mp4", undefined, "https://cdn/u.mp4", 5)).toEqual({
+  it("cache-busts the source url", () => {
+    expect(decideCure("https://cdn/u.mp4", 5)).toEqual({
       newSrc: "https://cdn/u.mp4?pdcb=5",
       action: "cured-cachebust",
     });
   });
+  it("appends to an existing query", () => {
+    expect(decideCure("https://cdn/u.mp4?a=1", 2)).toEqual({
+      newSrc: "https://cdn/u.mp4?a=1&pdcb=2",
+      action: "cured-cachebust",
+    });
+  });
   it("cannot cure without a srcUrl", () => {
-    expect(decideCure(undefined, undefined, "", 1)).toEqual({ action: "no-cure" });
+    expect(decideCure(undefined, 1)).toEqual({ action: "no-cure" });
   });
 });
 
@@ -99,7 +95,7 @@ describe("taint-recovery: appendToRing", () => {
 describe("taint-recovery: buildTaintRecord", () => {
   it("captures element + tile diagnostics", () => {
     const el = fakeVideoEl("https://cdn/clip.mp4", "https://cdn/clip.mp4");
-    const rec = buildTaintRecord(videoParams(el), { screenIndex: 2, eventIndex: 0 } as any, TAINT, NOW, false, "cured-cachebust");
+    const rec = buildTaintRecord(videoParams(el), { screenIndex: 2, eventIndex: 0 } as any, TAINT, NOW, "cured-cachebust");
     expect(rec).toMatchObject({
       time: NOW,
       kind: "video",
@@ -111,29 +107,25 @@ describe("taint-recovery: buildTaintRecord", () => {
       crossOrigin: "anonymous",
       readyState: 4,
       videoWidth: 640,
-      hadBlob: false,
       action: "cured-cachebust",
     });
   });
 });
 
 describe("taint-recovery: recoverFromDrawError", () => {
-  const noBlobPool: CurePool = { getBlobUrl: () => undefined, fetchVideoBlob: () => {} };
-  const blobPool: CurePool = { getBlobUrl: () => "blob:cached", fetchVideoBlob: () => {} };
-
   beforeEach(() => clearTaintLog());
 
   it("returns false and does nothing for non-taint errors", () => {
     const el = fakeVideoEl("u1", "u1");
     const before = el.src;
-    expect(recoverFromDrawError(new Error("plain"), videoParams(el), undefined, noBlobPool, NOW)).toBe(false);
+    expect(recoverFromDrawError(new Error("plain"), videoParams(el), undefined, NOW)).toBe(false);
     expect(el.src).toBe(before);
     expect(readTaintLog()).toHaveLength(0);
   });
 
-  it("cache-busts the element and persists a record when no blob is cached", () => {
+  it("cache-busts the element and persists a record", () => {
     const el = fakeVideoEl("https://cdn/u2.mp4", "https://cdn/u2.mp4");
-    expect(recoverFromDrawError(TAINT, videoParams(el), undefined, noBlobPool, NOW)).toBe(true);
+    expect(recoverFromDrawError(TAINT, videoParams(el), undefined, NOW)).toBe(true);
     expect(el.src).toMatch(/^https:\/\/cdn\/u2\.mp4\?pdcb=\d+$/);
     const log = readTaintLog();
     expect(log).toHaveLength(1);
@@ -141,20 +133,13 @@ describe("taint-recovery: recoverFromDrawError", () => {
     expect(log[0].srcUrl).toBe("https://cdn/u2.mp4");
   });
 
-  it("swaps to the cached blob when available", () => {
-    const el = fakeVideoEl("https://cdn/u3.mp4", "https://cdn/u3.mp4");
-    recoverFromDrawError(TAINT, videoParams(el), undefined, blobPool, NOW);
-    expect(el.src).toBe("blob:cached");
-    expect(readTaintLog()[0].action).toBe("cured-blob");
-  });
-
   it("acts once per element+src (no reload storm / no flood)", () => {
     const el = fakeVideoEl("https://cdn/u4.mp4", "https://cdn/u4.mp4");
-    recoverFromDrawError(TAINT, videoParams(el), undefined, noBlobPool, NOW);
+    recoverFromDrawError(TAINT, videoParams(el), undefined, NOW);
     const afterFirst = el.src;
     // Subsequent taints for the same element+src are no-ops (deduped).
-    recoverFromDrawError(TAINT, videoParams(el), undefined, noBlobPool, NOW);
-    recoverFromDrawError(TAINT, videoParams(el), undefined, noBlobPool, NOW);
+    recoverFromDrawError(TAINT, videoParams(el), undefined, NOW);
+    recoverFromDrawError(TAINT, videoParams(el), undefined, NOW);
     expect(el.src).toBe(afterFirst);
     expect(readTaintLog()).toHaveLength(1);
   });

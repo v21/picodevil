@@ -10,8 +10,6 @@ export interface VideoPoolManagerConfig {
   onDurationDiscovered?: (srcUrl: string, duration: number) => void;
   /** Max idle elements total across all srcs. Default: 16 */
   maxFreeTotal?: number;
-  /** Max total blob memory in bytes. Oldest evicted when exceeded. Default: 2 GB. */
-  maxBlobBytes?: number;
 }
 
 export interface VideoPoolManager {
@@ -26,28 +24,19 @@ export interface VideoPoolManager {
   makeVideoEl(name: string): VideoEl;
   destroyVideoEl(el: VideoEl): void;
   trimFreePool(): void;
-  fetchVideoBlob(srcUrl: string): void;
-  evictOldestBlobs(): void;
-  getBlobUrl(srcUrl: string): string | undefined;
   resolveMediaUrl(name: string, base: string): string;
 
   readonly freeVideoPool: Map<string, VideoEl[]>;
-  readonly videoBlobUrls: Map<string, string>;
-  readonly videoBlobSizes: Map<string, number>;
   readonly videoDurations: Map<string, number>;
 }
 
 export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoolManager {
   const MAX_FREE_TOTAL = config.maxFreeTotal ?? 64;
-  const MAX_BLOB_BYTES = config.maxBlobBytes ?? 2 * 1024 * 1024 * 1024;
   const createEl = config.createElement ?? (() => document.createElement("video"));
   const resolve = config.resolveMediaUrl;
   const onDuration = config.onDurationDiscovered;
 
   const freeVideoPool = new Map<string, VideoEl[]>();
-  const videoBlobUrls = new Map<string, string>();
-  const videoBlobSizes = new Map<string, number>(); // srcUrl → bytes
-  const videoBlobPending = new Map<string, Promise<void>>();
   const videoDurations = new Map<string, number>();
 
   function destroyVideoEl(el: VideoEl) {
@@ -80,36 +69,6 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     freeList.push(el);
     freeVideoPool.set(srcUrl, freeList);
     trimFreePool();
-  }
-
-  function evictOldestBlobs() {
-    let total = 0;
-    for (const s of videoBlobSizes.values()) total += s;
-    while (total > MAX_BLOB_BYTES && videoBlobUrls.size > 0) {
-      const oldest = videoBlobUrls.keys().next().value!;
-      URL.revokeObjectURL(videoBlobUrls.get(oldest)!);
-      total -= videoBlobSizes.get(oldest) ?? 0;
-      videoBlobUrls.delete(oldest);
-      videoBlobSizes.delete(oldest);
-    }
-  }
-
-  function fetchVideoBlob(srcUrl: string): void {
-    if (videoBlobUrls.has(srcUrl) || videoBlobPending.has(srcUrl)) return;
-    const p = fetch(srcUrl)
-      .then(r => r.blob())
-      .then(blob => {
-        const blobUrl = URL.createObjectURL(blob);
-        videoBlobUrls.set(srcUrl, blobUrl);
-        videoBlobSizes.set(srcUrl, blob.size);
-        videoBlobPending.delete(srcUrl);
-        evictOldestBlobs();
-      })
-      .catch(e => {
-        videoBlobPending.delete(srcUrl);
-        console.error("video blob fetch failed:", srcUrl, e);
-      });
-    videoBlobPending.set(srcUrl, p);
   }
 
   function makeVideoEl(name: string): VideoEl {
@@ -162,16 +121,6 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     for (const el of activeEls) freeVideoEl(el);
   }
 
-  function getBlobUrl(srcUrl: string): string | undefined {
-    const url = videoBlobUrls.get(srcUrl);
-    if (url !== undefined) {
-      // Touch for LRU: delete and re-insert moves entry to Map tail
-      videoBlobUrls.delete(srcUrl);
-      videoBlobUrls.set(srcUrl, url);
-    }
-    return url;
-  }
-
   return {
     takeFromFreePool,
     freeVideoEl,
@@ -179,13 +128,8 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     makeVideoEl,
     destroyVideoEl,
     trimFreePool,
-    fetchVideoBlob,
-    evictOldestBlobs,
-    getBlobUrl,
     resolveMediaUrl: resolve,
     freeVideoPool,
-    videoBlobUrls,
-    videoBlobSizes,
     videoDurations,
   };
 }
