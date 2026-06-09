@@ -347,6 +347,7 @@ PatternProto.splice = function (n: any, ipat: any) {
  *
  * @returns {Pattern} pattern with values tagged as seconds
  * @deprecated begin/end now use 0-1 normalized values; absolute time support is planned for a future version
+ * @internal
  */
 PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
 
@@ -356,6 +357,7 @@ PatternProto.sec = function () { return this.fmap((v: number) => v + "sec"); };
  *
  * @returns {Pattern} pattern with values tagged as milliseconds
  * @deprecated begin/end now use 0-1 normalized values; absolute time support is planned for a future version
+ * @internal
  */
 PatternProto.ms = function () { return this.fmap((v: number) => v + "ms"); };
 
