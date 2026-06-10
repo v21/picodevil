@@ -69,7 +69,25 @@ export class TextureCache {
       this.elementTextures.set(el, tex);
     }
 
-    const isDynamic = source.kind === 'video' || source.kind === 'stream';
+    // A <video> mid-seek (or stalled) has no decodable current frame: texImage2D
+    // would push zeros (a black tile). During reverse playback that means every
+    // seek gap blanks the tile. Instead, skip the upload and keep the last good
+    // frame on the texture — the tile shows a frozen frame until the seek lands.
+    // (Streams never seek and are always live, so they always upload. Mocks have
+    // no `seeking`/`readyState`, so `undefined < 2` is false → they still upload.)
+    const frameStale = el.seeking === true || (el as HTMLVideoElement).readyState < 2; // < HAVE_CURRENT_DATA
+    if (source.kind === 'video') {
+      if (!frameStale) {
+        this.upload(tex, el);
+        this.uploaded.add(el);
+      } else if (!this.uploaded.has(el)) {
+        // Never decoded a frame yet — nothing to hold, so don't draw a blank texture.
+        return null;
+      }
+      return tex;
+    }
+
+    const isDynamic = source.kind === 'stream';
     if (isDynamic || !this.uploaded.has(el)) {
       this.upload(tex, el, source.kind === 'stream');
       this.uploaded.add(el);

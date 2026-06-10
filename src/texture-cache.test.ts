@@ -42,6 +42,54 @@ describe("TextureCache.release", () => {
   });
 });
 
+/** A real <video> element (so `instanceof HTMLVideoElement` / isReady pass) with
+ *  overridden, reassignable videoWidth/seeking/readyState for the seek tests. */
+function mockVideo(opts: { seeking?: boolean; readyState?: number } = {}): HTMLVideoElement {
+  const el = document.createElement("video");
+  const def = (k: string, v: unknown) => Object.defineProperty(el, k, { value: v, writable: true, configurable: true });
+  def("videoWidth", 4); def("videoHeight", 4);
+  def("seeking", opts.seeking ?? false);
+  def("readyState", opts.readyState ?? 4); // HAVE_ENOUGH_DATA
+  return el;
+}
+
+describe("TextureCache: hold last frame during a seek/stall", () => {
+  // Count texImage2D calls to detect re-uploads (an upload of a not-ready frame
+  // would push zeros = black; we want it skipped while seeking).
+  function instrument(gl: WebGL2RenderingContext) {
+    let uploads = 0;
+    const orig = gl.texImage2D.bind(gl);
+    (gl as any).texImage2D = (...args: any[]) => { uploads++; return (orig as any)(...args); };
+    return () => uploads;
+  }
+
+  it("uploads a fresh video frame, then holds it (no re-upload) while seeking", () => {
+    const gl = makeGL();
+    const cache = new TextureCache(gl);
+    const el = mockVideo({ seeking: false, readyState: 4 });
+    const uploads = instrument(gl);
+
+    const tex1 = cache.get({ kind: "video", el } as TileSource);
+    expect(tex1).toBeTruthy();
+    const afterFirst = uploads();
+    expect(afterFirst).toBeGreaterThan(0);
+
+    // Now mid-seek: same texture returned, but NO new upload (last frame held).
+    (el as any).seeking = true;
+    (el as any).readyState = 1; // HAVE_METADATA
+    const tex2 = cache.get({ kind: "video", el } as TileSource);
+    expect(tex2).toBe(tex1);
+    expect(uploads()).toBe(afterFirst); // held — no zeros pushed
+  });
+
+  it("returns null (don't draw) for a video that has never decoded a frame", () => {
+    const gl = makeGL();
+    const cache = new TextureCache(gl);
+    const el = mockVideo({ seeking: true, readyState: 1 });
+    expect(cache.get({ kind: "video", el } as TileSource)).toBeNull();
+  });
+});
+
 describe("TextureCache colour LRU cap", () => {
   it("stays bounded under a sweep of distinct colours", () => {
     const gl = makeGL();
