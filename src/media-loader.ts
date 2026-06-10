@@ -67,7 +67,11 @@ export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
       importAll(text);
       showToast("Imported from paste");
       e.preventDefault();
-    } catch { /* not valid JSON, let paste proceed normally */ }
+    } catch {
+      // Text started with "[" so it was clearly an import attempt — surface the
+      // parse failure instead of swallowing it.
+      showToast("Import failed: invalid JSON");
+    }
   });
 
   // Drag & drop files or URLs
@@ -104,7 +108,8 @@ export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
     const text = e.dataTransfer?.getData("text/plain")?.trim();
     if (!text) return;
     if (text.startsWith("[")) {
-      try { importAll(text); showToast("Imported from drop"); return; } catch {}
+      try { importAll(text); showToast("Imported from drop"); return; }
+      catch { showToast("Import failed: invalid JSON"); return; }
     }
     if (text.startsWith("http")) {
       addMedia(text);
