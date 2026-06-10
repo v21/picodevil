@@ -3,7 +3,8 @@
  * colour-texture LRU cap (bounded under a colour sweep).
  */
 import { describe, it, expect } from "vitest";
-import { TextureCache } from "./texture-cache";
+import { TextureCache, makeCopyCanvas } from "./texture-cache";
+import { flushWarnings, clearWarnings } from "./warnings";
 import type { TileSource } from "./renderer-interface";
 
 function makeGL(): WebGL2RenderingContext {
@@ -39,6 +40,28 @@ describe("TextureCache.release", () => {
     const tex2 = cache.get(source);
     expect(tex2).toBeTruthy();
     expect(tex2).not.toBe(tex1); // fresh handle, not the released one
+  });
+});
+
+describe("makeCopyCanvas (screen-capture OffscreenCanvas fallback)", () => {
+  it("uses OffscreenCanvas when available", () => {
+    const c = makeCopyCanvas(8, 8);
+    expect(c).toBeInstanceOf(OffscreenCanvas);
+    expect(c.width).toBe(8);
+  });
+
+  it("falls back to a <canvas> and warns when OffscreenCanvas is missing", () => {
+    clearWarnings();
+    const saved = (globalThis as any).OffscreenCanvas;
+    (globalThis as any).OffscreenCanvas = undefined;
+    try {
+      const c = makeCopyCanvas(16, 16);
+      expect(c).toBeInstanceOf(HTMLCanvasElement);
+      expect(c.width).toBe(16);
+      expect(flushWarnings().some(m => /OffscreenCanvas/i.test(m))).toBe(true);
+    } finally {
+      (globalThis as any).OffscreenCanvas = saved;
+    }
   });
 });
 

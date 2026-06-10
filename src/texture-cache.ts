@@ -1,4 +1,5 @@
 import type { TileSource } from './renderer-interface';
+import { warn } from './warnings';
 
 type SourceElement = HTMLVideoElement | HTMLImageElement;
 
@@ -18,6 +19,23 @@ type SourceElement = HTMLVideoElement | HTMLImageElement;
 // the cache without bound. 4096 distinct colours on screen is already implausible,
 // so the LRU cap never bites real patterns; it just stops the slow leak.
 const MAX_COLOR_TEXTURES = 4096;
+
+// Make a scratch canvas for the screen-capture CPU copy. Prefers OffscreenCanvas,
+// but older Safari / embedded webviews lack it — fall back to a regular <canvas>
+// (warned once) so screen-share tiles still render instead of going silently blank.
+let warnedNoOffscreen = false;
+export function makeCopyCanvas(w: number, h: number): OffscreenCanvas | HTMLCanvasElement {
+  if (typeof OffscreenCanvas !== 'undefined') {
+    try { return new OffscreenCanvas(w, h); } catch { /* fall through to <canvas> */ }
+  }
+  if (!warnedNoOffscreen) {
+    warnedNoOffscreen = true;
+    warn("OffscreenCanvas isn't available in this browser — screen capture uses a slower fallback path.");
+  }
+  const cvs = document.createElement('canvas');
+  cvs.width = w; cvs.height = h;
+  return cvs;
+}
 
 export class TextureCache {
   private readonly gl: WebGL2RenderingContext;
@@ -147,9 +165,16 @@ export class TextureCache {
     if (useCanvas && el instanceof HTMLVideoElement && el.videoWidth > 0) {
       // Screen/window capture streams use cross-process GPU textures that Chrome
       // cannot upload via texImage2D directly. Force a CPU-side copy via canvas.
-      const cvs = new OffscreenCanvas(el.videoWidth, el.videoHeight);
-      cvs.getContext('2d')!.drawImage(el, 0, 0);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cvs);
+      const cvs = makeCopyCanvas(el.videoWidth, el.videoHeight);
+      const ctx = cvs.getContext('2d') as
+        CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+      if (ctx) {
+        ctx.drawImage(el, 0, 0);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, cvs);
+      } else {
+        // No 2D context at all — fall back to a direct upload so the tile isn't blank.
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
+      }
     } else {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, el);
     }
