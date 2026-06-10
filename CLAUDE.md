@@ -32,7 +32,7 @@ picodevil/
   src/
     main.ts               — core runtime: pattern state, video pool, render loop, eval bridge; wires renderer backend
     editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
-    config.ts             — constants: REVERSE_SEEK_INTERVAL (ms), VIDEO_BASE, IMAGE_BASE, CYCLES_PER_SECOND (server URL is runtime — see server-config.ts)
+    config.ts             — timing/pool/limit constants: CYCLES_PER_SECOND, EVAL_TIMEOUT_MS (eval loop-guard budget), MAX_DRAW_TIME_MS (per-frame draw budget), MAX_SOURCES_PER_FRAME/MAX_EVENTS_PER_FRAME (crash guards), prewarm + pool-scoring tuning (server URL is runtime — see server-config.ts)
     transpiler.ts         — $: label transpiler, double-quote mini() wrapping
     visual-controls.ts    — createMixParam, position/grid/speed/alpha controls on Pattern.prototype
     grid-stack.ts         — gridStack() and four() helpers using .gridModulo()
@@ -351,7 +351,7 @@ Use this when the stress-test shows `draw` is slow but you need to understand *w
 
 To investigate a specific pattern:
 
-1. Edit the `SETUP_CODE` and `PATTERN_CODE` constants at the top of `test/perf-trace.ts`. Set `SETUP_CODE = ""` if no imperative setup is needed (e.g. when `s("file.mp4")` resolves via `VIDEO_BASE` automatically).
+1. Edit the `SETUP_CODE` and `PATTERN_CODE` constants at the top of `test/perf-trace.ts`. Set `SETUP_CODE = ""` if no imperative setup is needed (e.g. when `s("file.mp4")` resolves via the configured server/media URL automatically — see server-config.ts).
 2. Set `DURATION_MS` (total run time, including warmup) and `TRACE_DURATION_MS` (how long to actually record). Warmup = `DURATION_MS - TRACE_DURATION_MS`; use at least 10–15s warmup for pool settling. A 20s trace gives enough data for p95/p99.
 3. Run: `npx tsx test/perf-trace.ts` (opens a visible browser window).
 4. The script prints several analysis sections to stdout:
