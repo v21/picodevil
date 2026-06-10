@@ -3,8 +3,10 @@ import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
   loadVideo, loadImage, uploadToServer, setOnChange, addFromServer, missingFromServer,
-  guessTypeFromFile,
+  guessTypeFromFile, initRegistry, pruneOrphanThumbs,
 } from "./media-registry";
+
+const THUMB_PREFIX = "picodevil:thumb:";
 import { resolveUrl } from "./server-config";
 
 beforeEach(() => {
@@ -435,6 +437,43 @@ describe("missingFromServer", () => {
     const list = [{ name: "a", url: "https://cdn.example/a.mp4", type: "video" as const }];
     addFromServer(list);
     expect(missingFromServer(list)).toHaveLength(0);
+  });
+});
+
+describe("thumbnail storage cleanup", () => {
+  it("removeMedia deletes the entry's cached thumbnail", () => {
+    const entry = addMedia("blob:x", "thumbvid");
+    localStorage.setItem(THUMB_PREFIX + entry.id, "data:thumb");
+    removeMedia("thumbvid");
+    expect(localStorage.getItem(THUMB_PREFIX + entry.id)).toBeNull();
+  });
+
+  it("clearAll deletes all cached thumbnails for current entries", () => {
+    const a = addMedia("blob:x", "tvA");
+    const b = addMedia("blob:y", "tvB");
+    localStorage.setItem(THUMB_PREFIX + a.id, "t");
+    localStorage.setItem(THUMB_PREFIX + b.id, "t");
+    clearAll();
+    expect(localStorage.getItem(THUMB_PREFIX + a.id)).toBeNull();
+    expect(localStorage.getItem(THUMB_PREFIX + b.id)).toBeNull();
+  });
+
+  it("initRegistry prunes orphan thumbs but keeps ones for live entries", () => {
+    clearAll();
+    localStorage.setItem(THUMB_PREFIX + "orphan-id", "stale");
+    localStorage.setItem(THUMB_PREFIX + "live-id", "data:live");
+    initRegistry([{ id: "live-id", name: "livevid", url: "https://example.com/v.mp4", type: "video" }]);
+    expect(localStorage.getItem(THUMB_PREFIX + "orphan-id")).toBeNull();
+    expect(localStorage.getItem(THUMB_PREFIX + "live-id")).toBe("data:live");
+  });
+
+  it("pruneOrphanThumbs leaves non-thumb keys untouched", () => {
+    clearAll();
+    localStorage.setItem("picodevil-server-url", "http://localhost:47426");
+    localStorage.setItem(THUMB_PREFIX + "gone", "x");
+    pruneOrphanThumbs();
+    expect(localStorage.getItem("picodevil-server-url")).toBe("http://localhost:47426");
+    expect(localStorage.getItem(THUMB_PREFIX + "gone")).toBeNull();
   });
 });
 

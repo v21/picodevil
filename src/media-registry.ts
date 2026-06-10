@@ -65,12 +65,40 @@ export function initRegistry(entries: { id: string; name: string; url: string; t
     registry.push({ ...entry, url: migratedUrl, ...(thumb ? { thumbnail: thumb } : {}) } as MediaEntry);
   }
   onChange?.();
+  // Drop orphaned thumbnail cache entries — localStorage thumbs whose id is no
+  // longer in the registry (media removed in a past session). No expiry; presence
+  // in the registry is the only liveness signal.
+  pruneOrphanThumbs();
   // Generate thumbnails for entries that don't have one (e.g. first load on a new device)
   for (const entry of registry) {
     if (!entry.thumbnail && entry.url && !entry.url.startsWith("blob:") && entry.type !== "stream") {
       generateThumbnail(entry);
     }
   }
+}
+
+/** Remove a single entry's cached thumbnail from localStorage. */
+function removeThumb(id: string) {
+  try { localStorage.removeItem(THUMB_STORAGE_PREFIX + id); } catch { /* storage unavailable */ }
+}
+
+/**
+ * Remove every `picodevil:thumb:*` localStorage key whose id isn't in the current
+ * registry. These accumulate as media is removed across sessions; without this
+ * they leak until the storage quota fills and thumbnails silently stop saving.
+ */
+export function pruneOrphanThumbs() {
+  try {
+    const live = new Set(registry.map(e => e.id));
+    const stale: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(THUMB_STORAGE_PREFIX) && !live.has(key.slice(THUMB_STORAGE_PREFIX.length))) {
+        stale.push(key);
+      }
+    }
+    for (const key of stale) localStorage.removeItem(key);
+  } catch { /* storage unavailable */ }
 }
 
 const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi", "ogv"]);
@@ -143,7 +171,10 @@ export function addStream(kind: "webcam" | "screen", name?: string, deviceId?: s
 
 export function removeMedia(name: string) {
   const i = registry.findIndex(e => e.name === name);
-  if (i >= 0) registry.splice(i, 1);
+  if (i >= 0) {
+    removeThumb(registry[i].id);
+    registry.splice(i, 1);
+  }
   save();
 }
 
@@ -320,6 +351,7 @@ export function loadImage(name: string, url: string): void {
 }
 
 export function clearAll() {
+  for (const entry of registry) removeThumb(entry.id);
   registry.length = 0;
   save();
 }
