@@ -41,7 +41,6 @@ $: s("issexercise1, issexercise2, issexercise3, issdock, issmodule, tvsnow, test
 .sync()
 .shuffleindex(rand.segment(1))
 .stack(s("scan").blend("multiply").alpha(.4))
-.often(speed(-1))
 .rows(3)
 .cols(4)
 .gridMod()
