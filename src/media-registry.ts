@@ -388,10 +388,16 @@ function pollTranscodeReady(
   { flag = "uploading", rawError = false, interval = 2000 }:
     { flag?: "uploading" | "downloading"; rawError?: boolean; interval?: number } = {},
 ) {
+  // Give up after enough consecutive failures that the server is clearly gone,
+  // so a server that dies mid-job doesn't leave the row spinning forever (B6).
+  // ~20 misses (e.g. 16s at the upload interval, 40s at downloads) is generous.
+  const MAX_CONSECUTIVE_FAILURES = 20;
+  let failures = 0;
   const timer = setInterval(async () => {
     try {
       const res = await fetch(`${serverBase}/ready/${encodeURIComponent(stem)}`);
       const data = await res.json() as ReadyResponse;
+      failures = 0; // a successful poll resets the counter
       const current = getEntryById(entryId);
       if (!current) { clearInterval(timer); return; }
       if (data.ready || data.error) {
@@ -409,7 +415,19 @@ function pollTranscodeReady(
         save();
       }
     } catch {
-      // server not reachable yet, keep polling
+      // Server not reachable — tolerate transient blips, but give up if it stays
+      // unreachable so the spinner resolves into an error instead of hanging.
+      if (++failures >= MAX_CONSECUTIVE_FAILURES) {
+        clearInterval(timer);
+        const current = getEntryById(entryId);
+        if (current) {
+          current[flag] = false;
+          current.phase = undefined;
+          current.phasePercent = undefined;
+          current.error = "Lost contact with the server";
+          save();
+        }
+      }
     }
   }, interval);
 }
