@@ -217,11 +217,10 @@ Gives you a kind of temporal blur, smearing out motion over time.
 You can also use the labels to pull particular layers in:
 ```js
 quack: s("ducks").stackN(9).tile()
-$: s("quack").cropStack(2,2).tile().scale(.9)
+$: s("canalboat").alpha(.7)
+$: s("quack").cropStack(4,4).tile().scale(.7)
 ```
-Makes that 3x3 grid of ducks, and then on top of that draws that grid, but sliced into a 2x2 grid, and scaled down a bit so you can see the other grid behind.
-
-(Why do we need to use the label rather than just using `all`? Because if we use `all`, we'll sample the canvas even as we're laying out these 4 slices. They're each individual events rendering their own chunk, not a single sample that actually gets sliced up)
+Makes that 3x3 grid of ducks, and then on top of that draws the canalboat footage, and then on top of *that* draws that first grid of ducks, but now also sliced into a 4x4 grid, each of which is scaled down a bit so you can see the other grid behind.
 
 If you want to *not* render some things directly, but use them later on, then you can also do that - in the same way that Strudel lets you prefix lines with `_` to mute or `S` to solo, you can also prefix things with `H` to hide:
 ```js
@@ -230,7 +229,7 @@ $: s("quack").cropStack(2,2).tile().scale(.9)
 ```
 Now you see black between each foreground chunk.
 
-Oh, one thing to be aware of: if you reference a layer *before* it's rendered, it's picked up from the previous frame. 
+Oh, one thing to be aware of: if you reference a layer *before* it's rendered, it's picked up from the previous frame. Yes, you can use this to do feedback effects.
 
 ## More resources
 
