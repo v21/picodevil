@@ -448,11 +448,13 @@ interface FBOEntry { fbo: WebGLFramebuffer; tex: WebGLTexture; w: number; h: num
 
 export class WebGLRenderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
-  private readonly program: WebGLProgram;
-  private readonly vao: WebGLVertexArrayObject;
+  // GL resources are recreated on context restore (see restoreContext), so they
+  // aren't readonly — definite-assignment via initGLResources() in the constructor.
+  private program!: WebGLProgram;
+  private vao!: WebGLVertexArrayObject;
+  private instanceVBO!: WebGLBuffer;
+  private opsUBO!: WebGLBuffer;
   private readonly texCache: TextureCache;
-  private readonly instanceVBO: WebGLBuffer;
-  private readonly opsUBO: WebGLBuffer;
   private readonly maxTexUnits: number;
   private readonly fbos = new Map<string, FBOEntry>();
 
@@ -479,11 +481,34 @@ export class WebGLRenderer implements Renderer {
     // Query the device limit before compiling the shader so we don't declare
     // more samplers than the hardware supports (causes a link error on some GPUs).
     this.maxTexUnits = Math.min(MAX_TEX_UNITS, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number);
+    this.texCache    = new TextureCache(gl);
+    this.initGLResources();
+
+    // Handle context loss + restore. On a real loss (mobile tab-switch, GPU reset,
+    // memory pressure) every GL handle dies; preventDefault on the lost event lets
+    // the browser fire 'restored', where we rebuild the program/buffers/VAO/UBO and
+    // drop the now-dead FBO + texture caches so they re-create lazily. Without this
+    // the canvas stays black until a full page reload.
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      warn('Graphics context lost — attempting to recover. If the screen stays black, reload the page.');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.restoreContext();
+    });
+  }
+
+  /**
+   * Create (or recreate) all GL resources that die with the context: the program,
+   * instance VBO, VAO, and the Effects UBO, plus the one-time sampler-unit bindings.
+   * Called from the constructor and again on context restore.
+   */
+  private initGLResources(): void {
+    const { gl } = this;
     this.program     = createProgram(gl, VERT_SRC, buildFragSrc(this.maxTexUnits));
     this.instanceVBO = gl.createBuffer()!;
     this.opsUBO      = gl.createBuffer()!;
     this.vao         = createVAO(gl, this.instanceVBO);
-    this.texCache    = new TextureCache(gl);
 
     // Bind texture units 0..N-1 to u_tex[0..N-1] once at init
     gl.useProgram(this.program);
@@ -499,16 +524,21 @@ export class WebGLRenderer implements Renderer {
     gl.uniformBlockBinding(this.program, blockIdx, 0);
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, this.opsUBO);
     gl.bindBuffer(gl.UNIFORM_BUFFER, null);
+  }
 
-    // Handle context loss
-    canvas.addEventListener('webglcontextlost', (e) => {
-      e.preventDefault();
-      console.warn('WebGL context lost');
-    });
-    canvas.addEventListener('webglcontextrestored', () => {
-      console.warn('WebGL context restored — re-initialising');
-      this.texCache.clear();
-    });
+  /** Rebuild everything after the WebGL2 context is restored. */
+  private restoreContext(): void {
+    // Program/buffers/VAO/UBO are dead — recreate them.
+    this.initGLResources();
+    // FBO handles are dead too; drop the map so getOrCreateFBO rebuilds them at the
+    // current size on next use. (No deleteFramebuffer — the old context is gone.)
+    this.fbos.clear();
+    this.currentFBO = null;
+    this.offscreenName = null;
+    // Drop cached textures so the next frame re-uploads onto fresh handles.
+    this.texCache.clear();
+    // Reapply the viewport for the restored context.
+    if (this.w && this.h) this.gl.viewport(0, 0, this.w, this.h);
   }
 
   resize(w: number, h: number): void {

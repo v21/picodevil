@@ -21,8 +21,8 @@ export class TextureCache {
   private readonly uploaded = new Set<SourceElement>();
   /** Colour textures, keyed by "r,g,b" integer string. */
   private readonly colorTextures = new Map<string, WebGLTexture>();
-  private readonly canvasTextures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
-  private readonly uploadedCanvases = new WeakSet<HTMLCanvasElement>();
+  private canvasTextures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
+  private uploadedCanvases = new WeakSet<HTMLCanvasElement>();
 
   constructor(gl: WebGL2RenderingContext) {
     this.gl = gl;
@@ -76,6 +76,11 @@ export class TextureCache {
     this.elementTextures.clear();
     this.colorTextures.clear();
     this.uploaded.clear();
+    // The canvas (text-tile) caches are Weak collections — can't iterate to delete,
+    // so swap in fresh ones. After a context loss the old GL textures are dead
+    // anyway; dropping the references lets text tiles re-upload onto new handles.
+    this.canvasTextures = new WeakMap();
+    this.uploadedCanvases = new WeakSet();
   }
 
   private getColor(r: number, g: number, b: number): WebGLTexture {
