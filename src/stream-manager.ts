@@ -1,4 +1,6 @@
 import { addStream, removeMedia, updateEntry, resolveMedia, getAllEntries, setOnChange } from "./media-registry";
+import { warn } from "./warnings";
+import { describeMediaError } from "./media-errors";
 
 export type StreamState = {
   name: string;
@@ -149,7 +151,8 @@ export function getAllStreamStates(): StreamState[] {
 export function loadCamera(name: string): void {
   if (isStreamActive(name)) return;
   startWebcam(name).catch(err => {
-    console.warn(`[loadCamera] failed for "${name}":`, err.message);
+    console.warn(`[loadCamera] failed for "${name}":`, err?.message);
+    warn(describeMediaError(err, "Camera"));
   });
 }
 
@@ -166,7 +169,8 @@ export function loadCamera(name: string): void {
 export function loadScreen(name: string): void {
   if (isStreamActive(name)) return;
   startScreenCapture(name).catch(err => {
-    console.warn(`[loadScreen] failed for "${name}":`, err.message);
+    console.warn(`[loadScreen] failed for "${name}":`, err?.message);
+    warn(describeMediaError(err, "Screen capture"));
   });
 }
 

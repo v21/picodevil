@@ -30,6 +30,8 @@ import type { MeydaFeaturesObject, MeydaAudioFeature } from 'meyda';
 import { signal } from '@strudel/core';
 import { mini } from '@strudel/mini';
 import { getAllStreamStates } from './stream-manager';
+import { warn } from './warnings';
+import { describeMediaError, isPermissionDenied } from './media-errors';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,10 @@ let currentStream: MediaStream | null = null;
 let sourceNode: MediaStreamAudioSourceNode | null = null;
 let streamIsBorrowed = false; // true when stream's tracks belong to a screen capture
 let initStarted = false;
+// Terminal "mic permission denied" flag: once the user denies the auto mic prompt,
+// stop re-prompting on every fft access (was a repeated-permission-prompt loop).
+// Cleared by an explicit fft.setSource() retry.
+let micDenied = false;
 // macOS Core Audio powers down the mic when idle; first onaudioprocess buffer contains
 // a hardware startup transient (step-function discontinuity) that looks like broadband
 // FFT energy. Skip updateFrame processing for 300ms after Meyda starts to clear it.
@@ -120,7 +126,7 @@ export function logBinAverage(
 // ── Audio init ───────────────────────────────────────────────────────────────
 
 async function lazyInit(): Promise<void> {
-  if (initStarted) return;
+  if (initStarted || micDenied) return;
   initStarted = true;
   // Create AudioContext synchronously — if we're called during a user gesture
   // (Ctrl+Enter eval), the context starts in "running" state. If called from rAF
@@ -137,7 +143,14 @@ async function lazyInit(): Promise<void> {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('[fft] audio init failed:', msg);
-    initStarted = false; // allow retry on next access
+    warn(describeMediaError(err, "Microphone"));
+    if (isPermissionDenied(err)) {
+      // Terminal: don't re-prompt on every subsequent fft access. The user can
+      // explicitly retry via fft.setSource('mic'), which clears this.
+      micDenied = true;
+    } else {
+      initStarted = false; // transient (no device, etc.) — allow retry on next access
+    }
   }
 }
 
@@ -259,6 +272,7 @@ function resolveBinName(token: string): number {
 /** @internal — accessed as fft.setSource() */
 export async function setSource(source: string): Promise<void> {
   audioCtx ??= new AudioContext();
+  micDenied = false; // explicit retry clears the terminal auto-mic denial
 
   // Stop existing stream (unless we borrowed tracks from a screen capture)
   if (currentStream && !streamIsBorrowed) {
@@ -273,6 +287,7 @@ export async function setSource(source: string): Promise<void> {
 
   let stream: MediaStream;
 
+  try {
   if (source === 'mic') {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } else if (source === 'system') {
@@ -299,6 +314,13 @@ export async function setSource(source: string): Promise<void> {
   await audioCtx.resume();
   sourceNode = audioCtx.createMediaStreamSource(stream);
   startMeyda(sourceNode);
+  } catch (err) {
+    // Surface permission denial / device errors instead of an unhandled rejection
+    // (fft.setSource(...) in user code is typically not awaited).
+    const label = source === 'system' ? 'System audio' : source === 'mic' ? 'Microphone' : 'Audio input';
+    console.warn(`[fft] setSource("${source}") failed:`, (err as Error)?.message);
+    warn(describeMediaError(err, label));
+  }
 }
 
 // ── getFftState (sidebar) ────────────────────────────────────────────────────
