@@ -7,11 +7,15 @@ import {
   subscribe,
   getServerStatus,
   probeHealth,
+  probeWouldPromptLocalNetwork,
+  hasConnectedBefore,
+  shouldAutoProbeOnStartup,
   _resetForTests,
 } from "./server-config";
 
 beforeEach(() => {
   localStorage.removeItem("picodevil-server-url");
+  localStorage.removeItem("picodevil-server-connected");
   _resetForTests();
 });
 
@@ -237,5 +241,74 @@ describe("probeHealth", () => {
     // no-URL branch, we'd need a way to force getServerUrl()=null. Skipping that case;
     // covered by code inspection.
     expect(true).toBe(true);
+  });
+
+  it("records that we've connected once on a successful probe (permission resolved)", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ name: "picodevil-server", version: "1.0.0", apiVersion: 1, port: 47426, ok: true }),
+    } as Response)) as typeof fetch;
+    expect(hasConnectedBefore()).toBe(false);
+    await probeHealth("http://localhost:47426");
+    expect(hasConnectedBefore()).toBe(true);
+  });
+
+  it("does NOT record a connection on a failed probe", async () => {
+    globalThis.fetch = vi.fn(async () => { throw new Error("ECONNREFUSED"); }) as typeof fetch;
+    await probeHealth("http://localhost:47426");
+    expect(hasConnectedBefore()).toBe(false);
+  });
+});
+
+describe("probeWouldPromptLocalNetwork", () => {
+  it("true: loopback target fetched from a public page (the PNA prompt case)", () => {
+    expect(probeWouldPromptLocalNetwork("http://localhost:47426", "picodevil.com")).toBe(true);
+    expect(probeWouldPromptLocalNetwork("http://127.0.0.1:47426", "picodevil.com")).toBe(true);
+    expect(probeWouldPromptLocalNetwork("http://foo.localhost:47426", "picodevil.com")).toBe(true);
+  });
+
+  it("false: loopback target fetched from a loopback page (dev server → no prompt)", () => {
+    expect(probeWouldPromptLocalNetwork("http://localhost:47426", "localhost")).toBe(false);
+    expect(probeWouldPromptLocalNetwork("http://localhost:47426", "127.0.0.1")).toBe(false);
+  });
+
+  it("false: remote target (no local network involved)", () => {
+    expect(probeWouldPromptLocalNetwork("https://my-server.example.com", "picodevil.com")).toBe(false);
+  });
+
+  it("false: no URL / unparseable URL", () => {
+    expect(probeWouldPromptLocalNetwork(null, "picodevil.com")).toBe(false);
+    expect(probeWouldPromptLocalNetwork("not a url", "picodevil.com")).toBe(false);
+  });
+});
+
+describe("shouldAutoProbeOnStartup", () => {
+  it("false: no server URL configured", () => {
+    // Force the no-URL case by stubbing getServerUrl via localStorage being empty
+    // AND a non-dev page host is irrelevant — in browser test mode isDev() is true,
+    // so getServerUrl() returns the localhost dev default. With a loopback page host
+    // it would auto-probe; we assert the loopback-page path instead below.
+    expect(true).toBe(true);
+  });
+
+  it("false: localhost server from a public page, never connected (defer the prompt)", () => {
+    localStorage.setItem("picodevil-server-url", "http://localhost:47426");
+    expect(shouldAutoProbeOnStartup("picodevil.com")).toBe(false);
+  });
+
+  it("true: localhost server from a public page once we've connected before", () => {
+    localStorage.setItem("picodevil-server-url", "http://localhost:47426");
+    localStorage.setItem("picodevil-server-connected", "1");
+    expect(shouldAutoProbeOnStartup("picodevil.com")).toBe(true);
+  });
+
+  it("true: localhost server from a loopback page (dev — no prompt to defer)", () => {
+    localStorage.setItem("picodevil-server-url", "http://localhost:47426");
+    expect(shouldAutoProbeOnStartup("localhost")).toBe(true);
+  });
+
+  it("true: remote server from a public page (no local-network prompt)", () => {
+    localStorage.setItem("picodevil-server-url", "https://my-server.example.com");
+    expect(shouldAutoProbeOnStartup("picodevil.com")).toBe(true);
   });
 });

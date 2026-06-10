@@ -5,6 +5,7 @@ import {
   getServerHealth,
   getServerError,
   subscribe,
+  probeHealth,
   checkCompatibility,
   type CompatibilityResult,
 } from "./server-config";
@@ -108,10 +109,21 @@ export function createServerSettingsButton(): { el: HTMLElement; dispose: () => 
   function commit() {
     const trimmed = urlInput.value.trim();
     const current = getServerUrl() ?? "";
-    if (trimmed === current) return; // no change
-    if (trimmed === "") { setServerUrl(null); return; }
+    if (trimmed === "") {
+      if (current !== "") setServerUrl(null);
+      return;
+    }
     if (lastCompat.level === "error") return; // refuse hard errors
-    setServerUrl(trimmed);
+    if (trimmed !== current) {
+      setServerUrl(trimmed); // changed → persist (setServerUrl probes)
+    } else if (getServerStatus() === "unknown") {
+      // Unchanged URL, but we never probed it — on a public page we defer the
+      // startup probe of a localhost server to avoid an unsolicited
+      // local-network permission prompt. The user has now opened this box (their
+      // chance to point it elsewhere) and closed it on this URL, so run the
+      // liveness check they've implicitly authorised.
+      probeHealth().catch(() => {/* status set internally */});
+    }
   }
 
   function openPopover() {

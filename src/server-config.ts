@@ -24,6 +24,13 @@ export interface HealthResponse {
 
 const STORAGE_KEY = "picodevil-server-url";
 const DEFAULT_DEV_URL = "http://localhost:47426";
+/** Set once a probe succeeds — proxy for "the local-network permission prompt is resolved". */
+const CONNECTED_KEY = "picodevil-server-connected";
+
+/** Loopback / localhost hosts — the ones that draw a Private Network Access prompt. */
+function isLoopbackHost(hostname: string): boolean {
+  return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(hostname) || hostname.endsWith(".localhost");
+}
 
 let status: ServerStatus = "unknown";
 let health: HealthResponse | null = null;
@@ -76,6 +83,52 @@ export function getServerHealth(): HealthResponse | null { return health; }
 export function getServerError(): string | null { return lastError; }
 
 /**
+ * Have we ever reached a picodevil-server from this browser? Used as a proxy for
+ * "the browser's local-network permission prompt has already been resolved", so
+ * we can re-probe a localhost server on startup without springing a fresh prompt.
+ * Persisted across reloads in localStorage.
+ */
+export function hasConnectedBefore(): boolean {
+  try { return localStorage.getItem(CONNECTED_KEY) === "1"; } catch { return false; }
+}
+function markConnected(): void {
+  try { localStorage.setItem(CONNECTED_KEY, "1"); } catch { /* denied */ }
+}
+
+/**
+ * Would probing `url` from this page trigger the browser's "access devices on
+ * your local network" (Private Network Access) permission prompt? That fires
+ * only for a loopback/localhost target requested from a non-loopback page —
+ * so probing localhost from a localhost dev server is NOT a prompt, and this
+ * returns false there.
+ */
+export function probeWouldPromptLocalNetwork(
+  url: string | null = getServerUrl(),
+  pageHostname: string = typeof location !== "undefined" ? location.hostname : "",
+): boolean {
+  if (!url) return false;
+  let host: string;
+  try { host = new URL(url).hostname; } catch { return false; }
+  return isLoopbackHost(host) && !isLoopbackHost(pageHostname);
+}
+
+/**
+ * Should we auto-probe the configured server on boot? Yes when a server is
+ * configured AND probing it won't ambush the user with an unsolicited
+ * local-network permission prompt — i.e. it wouldn't prompt at all, or we've
+ * already connected once (so the prompt is behind us). Otherwise we defer the
+ * probe until the user opens the server box and closes it on a localhost URL.
+ */
+export function shouldAutoProbeOnStartup(
+  pageHostname: string = typeof location !== "undefined" ? location.hostname : "",
+): boolean {
+  const url = getServerUrl();
+  if (!url) return false;
+  if (!probeWouldPromptLocalNetwork(url, pageHostname)) return true;
+  return hasConnectedBefore();
+}
+
+/**
  * Probe the configured (or supplied) server URL's /health endpoint.
  * Updates status as a side-effect. Returns parsed health response, or null on failure.
  */
@@ -101,6 +154,7 @@ export async function probeHealth(url?: string): Promise<HealthResponse | null> 
     health = data;
     status = "ok";
     lastError = null;
+    markConnected();
     notify();
     return data;
   } catch (err) {
@@ -181,8 +235,7 @@ export function checkCompatibility(
     };
   }
 
-  const isLocalhost = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(parsed.hostname)
-    || parsed.hostname.endsWith(".localhost");
+  const isLocalhost = isLoopbackHost(parsed.hostname);
 
   if (pageProtocol === "https:" && parsed.protocol === "http:" && !isLocalhost) {
     return {
@@ -227,4 +280,5 @@ export function _resetForTests() {
   health = null;
   lastError = null;
   subscribers.clear();
+  try { localStorage.removeItem(CONNECTED_KEY); } catch { /* denied */ }
 }

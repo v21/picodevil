@@ -5,7 +5,7 @@ import { CYCLES_PER_SECOND, setRuntimeCps, MAX_FREE_VIDEO_ELEMENTS } from "./con
 import { CpsController } from "./cps-controller";
 import { createMetrics, recordFrameMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
-import { resolveUrl, probeHealth, getServerUrl } from "./server-config";
+import { resolveUrl, probeHealth, shouldAutoProbeOnStartup } from "./server-config";
 import { initRegistry as initPatternRegistry, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback, hashLooksCorrupt } from "./url-state";
 import { defaultCode } from "./editor";
@@ -131,8 +131,14 @@ const evalController = new EvalController({
 initFontList(repopulateFontDatalist);
 
 // Probe the optional companion server in the background so server-gated flows
-// (upload/download) know whether it's reachable. No-op if no URL is configured.
-if (getServerUrl()) {
+// (upload/download) know whether it's reachable. We deliberately DON'T probe a
+// localhost server from the public site on first load — that fetch springs the
+// browser's "access devices on your local network" permission prompt before the
+// user has asked for anything. We only auto-probe when it wouldn't prompt (a
+// remote server, or a localhost dev server) or once we've connected before (the
+// prompt is already behind us). Otherwise the probe is deferred until the user
+// opens the server box and closes it on a localhost URL (see server-settings-ui).
+if (shouldAutoProbeOnStartup()) {
   probeHealth().catch(() => {/* status set internally */});
 }
 
