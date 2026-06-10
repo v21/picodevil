@@ -35,7 +35,7 @@ export function resolveSidebarOpen(raw: string | null): boolean {
   try { return JSON.parse(raw).open ?? true; } catch { return true; }
 }
 
-export function setupSidebar() {
+export function setupSidebar(isFreshSession = false) {
   const toggle = document.getElementById("sidebar-toggle")!;
   const panel = document.getElementById("sidebar-panel")!;
   const handle = panel.querySelector<HTMLElement>(".resize-handle")!;
@@ -88,7 +88,7 @@ export function setupSidebar() {
   const refTab = document.getElementById("tab-reference");
   if (refTab) setupReference(refTab);
   const videosTab = document.getElementById("tab-videos");
-  if (videosTab) setupMediaLoader(videosTab);
+  if (videosTab) setupMediaLoader(videosTab, isFreshSession);
   const perfTab = document.getElementById("tab-perf");
   if (perfTab) setupPerfPanel(perfTab);
   const audioTab = document.getElementById("tab-audio");

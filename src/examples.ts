@@ -1,8 +1,17 @@
-export interface Example { name: string; code: string }
+export interface Example {
+  name: string;
+  code: string;
+  /** Opt in to greeting a first-time visitor on a fresh session. Opt-in: only
+   *  examples set `true` join the autostart pool. Omitted (or `false`) keeps an
+   *  example out — `false` is used to flag *why* it's excluded (e.g.
+   *  heavily-flashing ones that shouldn't be shown without a warning). */
+  autostart?: boolean;
+}
 
 export const examples: Example[] = [
   {
     name: "rgb",
+    autostart: true,
     code: `// by v21
 
 $: S("<rgb1 rgb2 rgb3>")
@@ -20,6 +29,7 @@ $: s("prev").scale(.95).barrel(.01).alpha(.9)
   },
   {
     name: "space_tv",
+    autostart: true,
     code: `// by v21
 
 $: s("#222")
@@ -44,6 +54,7 @@ $: s("issexercise1, issexercise2, issexercise3, issdock, issmodule, tvsnow, test
   ,
   {
     name: "canalslices",
+    autostart: true,
     code: `// by v21
  $: s("canalboat")
 .syncStack(5)
@@ -54,6 +65,7 @@ $: s("issexercise1, issexercise2, issexercise3, issdock, issmodule, tvsnow, test
   },
   {
     name: "ducks",
+    autostart: true,
     code: `// by v21
 
 setCps(0.125)
@@ -66,6 +78,7 @@ setCps(0.125)
   },
   {
     name:"picodevil",
+    autostart: true,
     code:`// by v21
 
 
@@ -96,6 +109,7 @@ $: s("text:picodevil")
 `
   },{
     "name":"colour grids (flashing)",
+    "autostart": false,
     "code":`// by v21
 
 $: s("prev")
@@ -112,6 +126,25 @@ $: s("<#f00 #0f0 #00f prev>,<white black ~>")
 .gridMod()`
   }
 ];
+
+/** Examples eligible to autostart on a fresh session — opt-in, only those
+ *  flagged `autostart: true`. */
+export function autostartExamples(): Example[] {
+  return examples.filter(e => e.autostart === true);
+}
+
+/**
+ * Code to show a first-time visitor on a fresh session: a random
+ * autostart-eligible example, or "" if none are eligible. `pick` chooses an
+ * index in [0, n) and is injectable so tests can be deterministic.
+ */
+export function pickAutostartCode(
+  pick: (n: number) => number = (n) => Math.floor(Math.random() * n),
+): string {
+  const eligible = autostartExamples();
+  if (eligible.length === 0) return "";
+  return eligible[pick(eligible.length)].code;
+}
 
 export function setupExamples(container: HTMLElement) {
   container.innerHTML = "";

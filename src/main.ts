@@ -9,6 +9,7 @@ import { resolveUrl, probeHealth, getServerUrl } from "./server-config";
 import { initRegistry as initPatternRegistry, each, all } from "./pattern-registry";
 import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
 import { defaultCode } from "./editor";
+import { pickAutostartCode } from "./examples";
 import { createVideoPoolManager } from "./video-pool-manager";
 import { slider as sliderWidget, fontPicker as fontPickerWidget } from "./widgets";
 import { initFontList } from "./font-list";
@@ -182,6 +183,12 @@ if (urlState) {
   initRegistry(urlState.media);
   currentCode = urlState.code;
   if (urlState.fft) applyFftConfig(urlState.fft);
+} else {
+  // Fresh session: greet the visitor with a random autostart-eligible example,
+  // paired with the CDN defaults the media loader auto-pulls. Flashing examples
+  // are excluded via `autostart: false`. Source names resolve at query time, so
+  // it renders once the async defaults land — no re-eval needed.
+  currentCode = pickAutostartCode() || defaultCode;
 }
 
 setUrlWarnCallback((msg) => { if (msg) warn(msg); });
@@ -198,4 +205,6 @@ setupEditor(
     saveUrl();
   },
 );
-setupSidebar();
+// A fresh session = no saved URL state. Tells the media loader to auto-pull the
+// curated CDN defaults so a first-time visitor lands with media ready.
+setupSidebar(!urlState);

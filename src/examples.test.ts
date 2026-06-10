@@ -1,5 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { setupExamples } from "./examples";
+import { setupExamples, autostartExamples, pickAutostartCode } from "./examples";
+
+describe("autostart example selection", () => {
+  it("includes only examples opted in with autostart:true, never the flashing colour grids", () => {
+    const eligible = autostartExamples();
+    expect(eligible.length).toBeGreaterThan(0);
+    expect(eligible.every(e => e.autostart === true)).toBe(true);
+    expect(eligible.some(e => e.name === "colour grids (flashing)")).toBe(false);
+  });
+
+  it("picks code only from the eligible subset", () => {
+    const eligible = autostartExamples();
+    // Deterministic selector → last eligible example's code.
+    const code = pickAutostartCode(() => eligible.length - 1);
+    expect(code).toBe(eligible[eligible.length - 1].code);
+    expect(eligible.some(e => e.code === code)).toBe(true);
+  });
+});
 
 describe("examples list", () => {
   let container: HTMLElement;

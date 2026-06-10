@@ -18,7 +18,18 @@ const DEFAULTS_URL = "https://videoclip.picodevil.com/sources.json";
 /** The fetched defaults list, or null until the one-shot fetch resolves (or fails). */
 let defaultSources: SourceItem[] | null = null;
 
-export function setupMediaLoader(el: HTMLElement) {
+/**
+ * Whether to auto-populate the registry with the CDN defaults once they're
+ * fetched. True only on a genuinely fresh session (no saved URL state) that
+ * hasn't loaded anything yet. A returning user who deliberately cleared their
+ * media still carries a URL hash, so their session is *not* fresh and we leave
+ * it untouched.
+ */
+export function shouldAutoloadDefaults(isFreshSession: boolean, entryCount: number): boolean {
+  return isFreshSession && entryCount === 0;
+}
+
+export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
   container = el;
   setOnChange(render);
   setStreamOnChange(render);
@@ -27,15 +38,23 @@ export function setupMediaLoader(el: HTMLElement) {
   subscribeServer(render);
   render();
 
-  // Fetch the defaults bundle once. The "Defaults" button only shows when this
-  // resolves AND it contains media not already in the list, so a failed/blocked
-  // fetch simply leaves the button hidden.
+  // Fetch the defaults bundle once. On a fresh session we pull it in
+  // automatically so a first-time visitor lands with media ready (same effect
+  // as clicking "Defaults", which then self-hides). For a returning user it
+  // just enables the "Defaults" button, shown only when it contains media not
+  // already in the list — so a failed/blocked fetch loads nothing and the
+  // button stays hidden.
   fetch(DEFAULTS_URL)
     .then(res => res.ok ? res.json() : null)
     .then(items => {
-      if (Array.isArray(items)) { defaultSources = items; render(); }
+      if (!Array.isArray(items)) return;
+      defaultSources = items;
+      if (shouldAutoloadDefaults(isFreshSession, getAllEntries().length)) {
+        addFromServer(defaultSources);
+      }
+      render();
     })
-    .catch(() => {/* offline or CORS-blocked — button stays hidden */});
+    .catch(() => {/* offline or CORS-blocked — nothing loaded, button stays hidden */});
 
   // Reconnect persisted webcam streams (screen captures need manual reconnect)
   reconnectStreams().then(render);
