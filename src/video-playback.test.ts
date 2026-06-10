@@ -971,3 +971,47 @@ describe("playback mode selection (multi-frame)", () => {
     }
   });
 });
+
+describe("renderVideoFrame: reverse-seek throttling (!el.seeking)", () => {
+  const cps = 0.5;
+
+  // Mock with a settable `seeking` flag to simulate an in-flight seek.
+  function seekableEl(opts: { duration: number; currentTime: number; seeking: boolean }): VideoEl {
+    const st = { currentTime: opts.currentTime, paused: true, seeking: opts.seeking, playbackRate: 1 };
+    return {
+      _state: createVideoState(),
+      get currentTime() { return st.currentTime; },
+      set currentTime(v: number) { st.currentTime = v; },
+      get duration() { return opts.duration; },
+      get paused() { return st.paused; },
+      get seeking() { return st.seeking; },
+      get playbackRate() { return st.playbackRate; },
+      set playbackRate(v: number) { st.playbackRate = v; },
+      get src() { return "test.mp4"; },
+      play() { st.paused = false; return Promise.resolve(); },
+      pause() { st.paused = true; },
+    } as unknown as VideoEl;
+  }
+
+  // Reverse (speed:-1) takes the non-native manual-seek path. Pick a cycle whose
+  // expected position is clearly away from the element's currentTime so a seek
+  // *would* fire if not throttled.
+  const ev = { speed: -1 };
+  const expectedTarget = computeExpectedTime({
+    currentCycle: 0.3, eventBegin: 0, cps, speed: -1,
+    loopStart: 0, loopEnd: 10, duration: 10, syncOffset: 0,
+  });
+
+  it("seeks when no seek is in flight", () => {
+    const el = seekableEl({ duration: 10, currentTime: 5, seeking: false });
+    renderVideoFrame({ ev, el, currentCycle: 0.3, eventBegin: 0, cps });
+    expect(Math.abs(el.currentTime - expectedTarget)).toBeLessThan(1e-6);
+  });
+
+  it("does NOT seek while a seek is already in flight (prevents the abort storm)", () => {
+    expect(Math.abs(5 - expectedTarget)).toBeGreaterThan(0.01); // sanity: a seek would otherwise fire
+    const el = seekableEl({ duration: 10, currentTime: 5, seeking: true });
+    renderVideoFrame({ ev, el, currentCycle: 0.3, eventBegin: 0, cps });
+    expect(el.currentTime).toBe(5); // unchanged — the in-flight seek wasn't aborted
+  });
+});

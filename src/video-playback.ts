@@ -358,9 +358,15 @@ function updateVideoPlayback(
       }
     }
   } else {
-    // Non-native rate: pause and seek to computed position
+    // Non-native rate (reverse, or outside the native 0.0625–16× range): there's no
+    // native playback, so position is driven by manual seeks. Skip issuing a new seek
+    // while one is still in flight (`el.seeking`): otherwise reverse playback fires a
+    // fresh seek every frame (~60/s), and each one aborts the previous seek's HTTP
+    // range request before it completes — so short/dense clips never buffer enough to
+    // decode and render black. Gating on `!el.seeking` lets each seek finish (the tile
+    // renders) and the buffer fill, after which seeks become instant buffer reads.
     if (!el.paused) el.pause();
-    if (Math.abs(el.currentTime - expected) > 0.01) {
+    if (!el.seeking && Math.abs(el.currentTime - expected) > 0.01) {
       st.lastSeekReason = "nonnative";
       el.currentTime = expected;
       if (onSeek) onSeek("nonnative");
