@@ -149,27 +149,35 @@ body {
   font-family: var(--font-mono);
   font-size: 20px;
   overflow-x: hidden;
-  text-shadow: oklch(29.707% 0.00794 223.882 / 0.5) 0 0 20px, oklch(29.707% 0.00794 223.882 / 0.7) 0 0 8px, oklch(29.707% 0.00794 223.882 ) 0 0 2px;
+  text-shadow:oklch(29.707% 0.00794 223.882 / 0.7) 0 0 36px, oklch(29.707% 0.00794 223.882 / 08) 0 0 8px, oklch(29.707% 0.00794 223.882 ) 0 0 4px;
 }
 
 .cm-editor .cm-gutters {
   background: none !important;
   border: none !important;
+  user-select: none;
+  -webkit-user-select: none;
+  text-shadow:none;
+
+  color: var(--scrollbar-thumb) !important;
 }
 
 .cm-editor .cm-line {
   /* background: hsla(50, 23%, 5%, 0.6); */
+
+  background: oklch(40.191% 0.06019 292.389 / 0.3) !important;
   max-width: fit-content;
   padding: 0;
 }
 
 .cm-editor .cm-activeLine {
-  background: oklch(40.191% 0.06019 292.389 / 0.4) !important;
+  background: oklch(40.191% 0.06019 292.389 / 0.6) !important;
   max-width: fit-content;
 }
 
 .cm-editor .cm-activeLineGutter {
   background: transparent !important;
+  color: var(--scrollbar-thumb-hover) !important;
 }
 
 .cm-editor .cm-content {

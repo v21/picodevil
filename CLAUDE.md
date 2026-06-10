@@ -1,6 +1,6 @@
 # picodevil - agent orientation doc
 
-> This file is machine-authored for use by coding agents. Last updated 2026-06-02.
+> This file is machine-authored for use by coding agents. Last updated 2026-06-10.
 
 ## What is this?
 
@@ -45,7 +45,7 @@ picodevil/
     video-playback.ts     — video frame rendering: playback update, seeking (computeExpectedTime, detectWindowMoving, renderVideoFrame)
     event-begin.ts        — eventBeginFromHap: derives playback start cycle from hap + event value
     video-pool.ts         — computeExpectedFromEvent (expected time from event props), scoreFreeElement (seek-cost scoring for pool candidates)
-    source-query.ts       — queryNeeded: queries all screens and builds NeededSource list (what elements are needed this frame)
+    source-query.ts       — queryNeeded: queries all screens and builds NeededSource list (what elements are needed this frame); caps sources/events per frame (MAX_SOURCES_PER_FRAME/MAX_EVENTS_PER_FRAME) so a pathological pattern can't spawn thousands of <video> elements and hang the tab
     source-matcher.ts     — matchSources: greedy best-match assignment of free pool elements to NeededSources by seek cost; creates new elements when pool is empty
     video-pool-manager.ts — VideoPoolManager: owns freeVideoPool and imagePool Maps, element creation, duration caching
     video-element-state.ts — VideoEl type and _state bag (lastEventBegin, lastSyncSpeed, syncDistOffset, etc.)
@@ -54,10 +54,12 @@ picodevil/
     pattern-extensions.ts — .lerp(), .spline(), .sec(), .ms() pattern extensions
     create-mix-param.ts   — createMixParam: custom combiner preserving whole spans
     renderer-interface.ts — Renderer interface, TileParams, TileSource types, FitMode type
-    renderer.ts           — FrameRenderer: frame loop logic, event collection, video assignment, dispatches TileParams to backend
-    webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2; GPU texture upload, UV/fit on CPU, blend modes
-    texture-cache.ts      — TextureCache: manages WebGL textures; videos re-uploaded each frame, images/colors cached
+    renderer.ts           — FrameRenderer: frame loop logic, event collection, video assignment, dispatches TileParams to backend; draw loop bails past a per-frame budget (MAX_DRAW_TIME_MS) so a runaway pattern stays responsive
+    webgl-renderer.ts     — WebGLRenderer: Renderer impl using WebGL2; GPU texture upload, UV/fit on CPU, blend modes; rebuilds all GL resources on context restore (initGLResources/restoreContext)
+    texture-cache.ts      — TextureCache: manages WebGL textures; videos re-uploaded each frame (last frame held during a seek/stall), images/colors cached; per-element release(), colour LRU cap; makeCopyCanvas() OffscreenCanvas-with-<canvas>-fallback for screen capture
     taint-recovery.ts     — WebGL cross-origin taint detection + auto-cure (cache-bust reload, ?pdcb=N); diagnostics to console.error + a localStorage ring (window.pdTaintLog())
+    fatal-overlay.ts      — showFatalOverlay(): full-screen explainer for unrecoverable startup failures (e.g. no WebGL2), shown instead of a silent black page
+    media-errors.ts       — describeMediaError()/warnOnMediaLoadError(): map getUserMedia/getDisplayMedia + media-element load failures (denial, 404, decode) to user-facing warn() messages
     playback-simulation-helpers.ts — shared setup and helpers for simulation test files: DUR, CPS, TracePoint, evalPattern, simulateTrace, checkTraceInvariants, assertTracesMatch, setupSimulation()
   test/
     monkey-test.ts              — grammar-based random pattern generator + browser runner
@@ -89,7 +91,7 @@ One backend:
 
 - **`WebGLRenderer`** (`src/webgl-renderer.ts`) — the only renderer. Uploads video frames as GPU textures (`gl.texImage2D`) — no CPU readback. UV rect and fit (cover/fill/tile/tilecenter) computed CPU-side; contain/none shrink the dest rect so the letterbox area is simply not drawn. Transforms (rotateZ, rotateX/Y scale, scaleX/Y) encoded as a 4×4 column-major matrix built on CPU. Blend modes use `blendFuncSeparate` so RGB and alpha channels accumulate correctly.
 
-Backend selection in `main.ts`: `new WebGLRenderer(canvas)` — unconditional, no fallback.
+Backend selection in `main.ts`: `new WebGLRenderer(canvas)` — wrapped in try/catch. If the WebGL2 context can't be created (no WebGL2 / hardware acceleration off), the constructor throws and `main.ts` shows `showFatalOverlay()` ("needs WebGL2…") instead of a silent black page, then rethrows to halt init. On a *real* context loss after startup, the renderer rebuilds all GL resources on `webglcontextrestored` (`initGLResources`/`restoreContext` — program, VAO, buffers, UBO, FBOs) so the canvas recovers instead of staying black until reload; it `warn()`s on loss.
 
 `TextureCache` (`src/texture-cache.ts`) manages WebGL textures:
 - Videos/streams: `texImage2D` every frame (content changes) — **except** when a video has no fresh frame (`el.seeking` or `readyState < HAVE_CURRENT_DATA`): the re-upload is skipped and the **last decoded frame is held** instead of uploading zeros (a black tile). A video that has *never* decoded a frame returns `null` (the tile isn't drawn) rather than a blank 0×0 texture. This is what stops reverse-playback seek gaps from flashing black.
@@ -231,6 +233,10 @@ There is **no `SERVER_ENABLED` flag** any more. Whether server flows run is pure
 **"Defaults" button** (Videos sidebar footer, left group): loads curated starter media from the static CDN (`DEFAULTS_URL`, fetched once on setup). Shown only when `missingFromServer()` reports the defaults contain something not already loaded — so it self-hides once everything's pulled in. `missingFromServer()` is the shared pure dedup-by-resolved-URL check that `addFromServer()` also uses. Needs no server connection; a CORS-blocked/offline fetch just leaves it hidden.
 
 On a **fresh session** the defaults are pulled in automatically — no click needed — so a first-time visitor lands with media ready, and the editor opens on a random autostart example (see below). "Fresh" means `loadFromUrl()` returned null (no saved URL hash); [src/main.ts](src/main.ts) passes `!urlState` into `setupSidebar()` → `setupMediaLoader(el, isFreshSession)`, and the defaults-fetch handler calls `addFromServer()` when `shouldAutoloadDefaults(isFreshSession, entryCount)` holds (fresh **and** registry still empty). A returning user who deliberately cleared their media still carries a hash, so their session isn't fresh and the defaults aren't re-injected. Auto-loaded defaults serialize into the URL hash like any other registry change (same as clicking the button), so they're sticky across reloads and the "Defaults" button self-hides afterwards.
+
+> **Corrupt shared links:** `decodeUrlState` returns null for both an absent hash (fresh visit) and a *corrupt* one. `hashLooksCorrupt()` distinguishes them (a `v1,` envelope that failed to decode), and `main.ts` `warn()`s "this link looks corrupted… starting fresh" only in the corrupt case, so a truncated/edited share link doesn't silently drop the user's work.
+
+> **Client thumbnail cache:** generated thumbnails persist in `localStorage` under `picodevil:thumb:<id>`. `removeMedia`/`clearAll` delete the matching key, and `initRegistry` runs `pruneOrphanThumbs()` to sweep any `picodevil:thumb:*` whose id is no longer in the registry — so the cache doesn't leak across sessions. No expiry; registry membership is the liveness signal.
 
 **Fresh-session starter code** ([src/examples.ts](src/examples.ts)): on a fresh session [src/main.ts](src/main.ts) sets the editor's initial code to `pickAutostartCode()` — a random example drawn from `autostartExamples()`. The `autostart` flag is **opt-in**: only `examples[]` entries set `autostart: true` join the greeting pool; omitting it keeps an example out. `"colour grids (flashing)"` carries an explicit `autostart: false` to document *why* it's excluded (flashes too hard to show without a warning). Source-name tokens (e.g. `rgb1`) resolve at **query time** in [src/screen-pattern.ts](src/screen-pattern.ts), so the example renders correctly once the async-loaded defaults arrive — no re-eval needed.
 

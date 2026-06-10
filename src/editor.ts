@@ -1,7 +1,45 @@
-import { EditorView, keymap } from "@codemirror/view";
+import {
+  EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars,
+  drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine,
+} from "@codemirror/view";
 import { EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import { javascriptLanguage } from "@codemirror/lang-javascript";
-import { basicSetup } from "codemirror";
+import { indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
+import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { lintKeymap } from "@codemirror/lint";
+
+// Reconstruction of codemirror's `basicSetup` WITHOUT code folding — picodevil
+// has no fold support, so foldGutter()/foldKeymap are dropped (the fold gutter
+// otherwise adds an unused, distracting column). Everything else matches the
+// upstream `basicSetup` (codemirror 6.0.2).
+const basicSetup: Extension = [
+  lineNumbers(),
+  highlightActiveLineGutter(),
+  highlightSpecialChars(),
+  history(),
+  drawSelection(),
+  dropCursor(),
+  EditorState.allowMultipleSelections.of(true),
+  indentOnInput(),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  bracketMatching(),
+  closeBrackets(),
+  autocompletion(),
+  rectangularSelection(),
+  crosshairCursor(),
+  highlightActiveLine(),
+  highlightSelectionMatches(),
+  keymap.of([
+    ...closeBracketsKeymap,
+    ...defaultKeymap,
+    ...searchKeymap,
+    ...historyKeymap,
+    ...completionKeymap,
+    ...lintKeymap,
+  ]),
+];
 import { onWarnings, warn } from "./warnings";
 import { pdHighlight } from "./highlight";
 import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
@@ -181,6 +219,9 @@ export function setupEditor(
 
   // evaluate initial code at startup
   evalAndDecorate(view, initialCode);
+
+  // default focus to the editor so typing/eval works without a click
+  view.focus();
 
   return view;
 }
