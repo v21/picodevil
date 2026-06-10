@@ -81,6 +81,18 @@ export function loadFromUrl(): { code: string; media: UrlMediaEntry[]; fft?: Fft
   return decodeUrlState(window.location.hash);
 }
 
+/**
+ * True if the hash carries a `v1,` state envelope that failed to decode —
+ * i.e. a corrupt/truncated shared link, as opposed to a simply-absent hash (a
+ * fresh visit). Used to warn the user that their link dropped its work, instead
+ * of silently treating it as a new session.
+ */
+export function hashLooksCorrupt(hash: string): boolean {
+  const content = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!content.startsWith(PREFIX)) return false;
+  return decodeUrlState(hash) === null;
+}
+
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let urlWarnCallback: ((msg: string | null) => void) | null = null;
 

@@ -7,7 +7,7 @@ import { createMetrics, recordFrameMetrics } from "./frame-metrics";
 import { resolveMedia, addMedia, clearAll as clearMediaRegistry, setDurationByUrl, loadVideo, loadImage, getAllEntries, initRegistry, addOnChange } from "./media-registry";
 import { resolveUrl, probeHealth, getServerUrl } from "./server-config";
 import { initRegistry as initPatternRegistry, each, all } from "./pattern-registry";
-import { loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
+import { loadFromUrl, saveToUrl, setUrlWarnCallback, hashLooksCorrupt } from "./url-state";
 import { defaultCode } from "./editor";
 import { pickAutostartCode } from "./examples";
 import { createVideoPoolManager } from "./video-pool-manager";
@@ -196,6 +196,12 @@ let currentCode = defaultCode;
 export function getCurrentCode(): string { return currentCode; }
 
 const urlState = loadFromUrl();
+if (!urlState && hashLooksCorrupt(window.location.hash)) {
+  // The link carried a v1 state envelope that didn't decode (truncated by a chat
+  // app/proxy, hand-edited, etc.). Tell the user their work was dropped instead of
+  // silently opening a fresh session.
+  warn("This shared link looks corrupted or truncated — couldn't restore it, starting a fresh session instead.");
+}
 if (urlState) {
   initRegistry(urlState.media);
   currentCode = urlState.code;

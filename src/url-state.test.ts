@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { encodeUrlState, decodeUrlState, loadFromUrl, saveToUrl, setUrlWarnCallback } from "./url-state";
+import { encodeUrlState, decodeUrlState, loadFromUrl, saveToUrl, setUrlWarnCallback, hashLooksCorrupt } from "./url-state";
 import type { MediaEntry } from "./media-registry";
 
 // ---------------------------------------------------------------------------
@@ -28,6 +28,25 @@ const ENTRY_WITH_THUMB: MediaEntry = {
 // ---------------------------------------------------------------------------
 // encodeUrlState / decodeUrlState round-trip
 // ---------------------------------------------------------------------------
+
+describe("hashLooksCorrupt", () => {
+  it("is false for an absent hash (a plain fresh visit)", () => {
+    expect(hashLooksCorrupt("")).toBe(false);
+    expect(hashLooksCorrupt("#")).toBe(false);
+    expect(hashLooksCorrupt("#some-other-anchor")).toBe(false);
+  });
+
+  it("is false for a valid v1 link", () => {
+    const encoded = encodeUrlState(SAMPLE_CODE, SAMPLE_MEDIA);
+    expect(hashLooksCorrupt("#" + encoded)).toBe(false);
+  });
+
+  it("is true for a v1 envelope that fails to decode (truncated / garbled)", () => {
+    expect(hashLooksCorrupt("#v1,not-valid-base64-$$$")).toBe(true);
+    const encoded = encodeUrlState(SAMPLE_CODE, SAMPLE_MEDIA);
+    expect(hashLooksCorrupt("#" + encoded.slice(0, encoded.length - 8))).toBe(true); // truncated
+  });
+});
 
 describe("encodeUrlState / decodeUrlState", () => {
   it("round-trips code and media", () => {
