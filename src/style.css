@@ -46,7 +46,7 @@
   /* Accents */
   --accent: var(--hl-string);  /* lime — about links, fontpicker (mirrors string style) */
   --danger: #f92672;       /* stop / delete-hover / retry */
-  --success: #6a6;
+  --success: var(--hl-class);
 
   /* Scrollbars — a thin warm-grey overlay thumb that brightens on hover, over a
      transparent track. Tuned to read on both the dark sidebar panel and the
@@ -245,8 +245,13 @@ body {
 .pd-error {
   display: none;
   position: fixed;
-  bottom: 15px;
-  left: 15px;
+  /* Vertically centred on the play button's centre line so the button + toast
+     read as one row (button: bottom:20px + 56px tall → centre 48px up).
+     translateY(50%) keeps it centred no matter how many lines the toast wraps. */
+  bottom: 48px;
+  transform: translateY(50%);
+  /* Clear the round play button in the bottom-left corner (left:20px + 56px). */
+  left: 90px;
   z-index: 20;
   background: hsla(0, 80%, 30%, 0.85);
   color: var(--fg-bright);
@@ -262,8 +267,10 @@ body {
 .pd-warning {
   display: none;
   position: fixed;
-  bottom: 50px;
-  left: 15px;
+  /* Stacked just above the button + error-toast row (button top is 76px up). */
+  bottom: 84px;
+  /* Clear the round play button in the bottom-left corner (left:20px + 56px). */
+  left: 90px;
   z-index: 20;
   background: hsla(49, 100%, 38%, 0.85);
   color: var(--fg-bright);
@@ -274,6 +281,61 @@ body {
   max-width: 80vw;
   white-space: pre-wrap;
   pointer-events: none;
+}
+
+/* ===========================================================================
+   Play / evaluate button (bottom-left, round)
+   A touch-friendly re-eval affordance: lit when the editor has unevaluated
+   changes, greyed out when the canvas already reflects the code. Shown on
+   desktop too (it doubles as a re-eval / restart tap).
+   =========================================================================== */
+.pd-play-button {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  z-index: 25;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 3px white solid;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--fg-bright);
+  /* nudge the triangle a hair right so it reads as optically centred */
+  padding-left: 2px;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.2s ease, background 0.2s ease,
+    box-shadow 0.2s ease, transform 0.08s ease;
+  /* Lifted above the on-screen keyboard. play-button.ts sets --pd-kb-inset to
+     the keyboard's height (0 when closed) via the visualViewport API. */
+  --pd-kb-inset: 0px;
+  transform: translateY(calc(-1 * var(--pd-kb-inset)));
+}
+
+.pd-play-button:active {
+  transform: translateY(calc(-1 * var(--pd-kb-inset))) scale(0.97);
+  opacity: 1;
+}
+
+/* Up to date — dimmed, recedes into the background. */
+.pd-play-button.pd-play-clean {
+  background: var(--bg-input);
+  opacity: 0.5;
+}
+
+/* Unevaluated changes — lit green with a soft glow, asking to be pressed. */
+.pd-play-button.pd-play-dirty {
+  background: var(--hl-class);
+  opacity: 0.8;
+}
+
+@media (hover: hover) {
+  .pd-play-button:hover {
+    opacity: 0.8;
+  }
 }
 
 /* ===========================================================================
@@ -350,10 +412,19 @@ body {
   display: flex;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  /* When the tabs don't fit (narrow / mobile), scroll horizontally rather than
+     wrapping or squashing the labels. Scrollbar hidden — it's a thin strip. */
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  -webkit-overflow-scrolling: touch;
+}
+
+#sidebar-panel .tabs::-webkit-scrollbar {
+  display: none; /* WebKit */
 }
 
 #sidebar-panel .tabs button {
-  flex: 1;
+  flex: 1 0 auto;
   background: none;
   border: none;
   color: var(--fg-dimmer);
@@ -362,6 +433,8 @@ body {
   font-size: 13px;
   cursor: pointer;
   border-bottom: 2px solid transparent;
+  /* Keep each label on one line so the strip scrolls instead of text wrapping. */
+  white-space: nowrap;
 }
 
 #sidebar-panel .tabs button:hover {
@@ -392,7 +465,10 @@ body {
    =========================================================================== */
 @media (max-width: 640px) {
   #sidebar-panel {
-    width: 100vw;
+    /* !important so we override the inline width the desktop drag-resize stores
+       on panel.style.width (sidebar.ts). Without it the panel keeps its saved
+       pixel width and never goes full-screen on a narrow viewport. */
+    width: 100vw !important;
     right: 0;
     min-width: 0;
     padding-left: 0;
@@ -409,6 +485,11 @@ body {
   /* Keep the open/close toggle tappable above the full-screen panel. */
   #sidebar-toggle.open {
     z-index: 31;
+  }
+  /* Reclaim horizontal space on a phone: drop the line-number gutter. Purely
+     visual — the editor still works the same, lines just start at the edge. */
+  .cm-editor .cm-gutters {
+    display: none;
   }
 }
 

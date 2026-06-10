@@ -44,6 +44,7 @@ import { onWarnings, warn } from "./warnings";
 import { pdHighlight } from "./highlight";
 import { widgetExtension, setWidgetMeta, toSigFigs, widgetPositions } from "./editor-widgets";
 import type { WidgetCallInfo, FontPickerCallInfo } from "./transpiler";
+import { createPlayButton, type PlayButton } from "./play-button";
 
 declare global {
   interface Window {
@@ -127,11 +128,31 @@ export function setupEditor(
 
   const widgets = widgetExtension({ slider: handleSliderChange, fontPicker: handleFontPickerChange });
 
-  const changeListener: Extension = onCodeChange
-    ? EditorView.updateListener.of((update) => {
-        if (update.docChanged) onCodeChange(update.state.doc.toString());
-      })
-    : [];
+  // The round "evaluate" button at the bottom-left. It lights up whenever the
+  // editor text differs from what was last evaluated, so touch users (who can't
+  // press Ctrl/Cmd-Enter) have a way to re-eval. Created below once the view
+  // exists; tracked here so evalAndDecorate can clear the dirty flag.
+  let playButton: PlayButton | null = null;
+  let lastEvaluatedCode = initialCode;
+
+  /** Light the play button iff the current doc differs from the last eval. */
+  function refreshDirty(code: string) {
+    playButton?.setDirty(code !== lastEvaluatedCode);
+  }
+
+  /** Record the code that was just evaluated and clear the dirty indicator. */
+  function markEvaluated(editorView: EditorView) {
+    lastEvaluatedCode = editorView.state.doc.toString();
+    playButton?.setDirty(false);
+  }
+
+  const changeListener: Extension = EditorView.updateListener.of((update) => {
+    if (update.docChanged) {
+      const code = update.state.doc.toString();
+      onCodeChange?.(code);
+      refreshDirty(code);
+    }
+  });
 
   /** Eval code and push widget decorations into the editor. */
   function evalAndDecorate(editorView: EditorView, code: string) {
@@ -144,6 +165,7 @@ export function setupEditor(
 
     if (noArgPickers.length === 0) {
       editorView.dispatch({ effects: setWidgetMeta.of(result.widgets) });
+      markEvaluated(editorView);
       return;
     }
 
@@ -173,6 +195,7 @@ export function setupEditor(
       annotations: Transaction.addToHistory.of(true),
     });
     onCodeChange?.(editorView.state.doc.toString());
+    markEvaluated(editorView);
   }
 
   const runEval = (view: EditorView) => {
@@ -203,9 +226,15 @@ export function setupEditor(
     parent,
     state: EditorState.create({
       doc: initialCode,
-      extensions: [basicSetup, javascriptLanguage, pdHighlight, evalKeymap, widgets, changeListener],
+      // lineWrapping: long lines flow onto the next visual line instead of
+      // scrolling sideways (which is awkward on touch / narrow screens).
+      extensions: [basicSetup, EditorView.lineWrapping, javascriptLanguage, pdHighlight, evalKeymap, widgets, changeListener],
     }),
   });
+
+  // Round evaluate button (bottom-left). Lives on <body> so it isn't clipped by
+  // editor-wrap's overflow:hidden, and is visible on desktop + touch alike.
+  playButton = createPlayButton(document.body, () => runEval(view));
 
   window.pdSetCode = (code: string, evaluate = false) => {
     view.dispatch({
