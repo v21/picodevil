@@ -1,8 +1,12 @@
 import type { MediaEntry } from "./media-registry";
 
-/** Hash fields we persist to the URL. Thumbnails go to localStorage instead. */
+/**
+ * Hash fields we persist to the URL. A *remote* thumbnail URL is persisted (it's
+ * tiny — a CDN `/thumbs/x.jpg`); client-generated `data:` thumbnails are not (large,
+ * device-specific) and live in localStorage instead.
+ */
 type UrlMediaEntry = Pick<MediaEntry, "id" | "name" | "url" | "type"> &
-  Partial<Pick<MediaEntry, "duration" | "streamKind" | "deviceId">>;
+  Partial<Pick<MediaEntry, "duration" | "streamKind" | "deviceId" | "thumbnail">>;
 
 type FftConfig = { bins: number; smooth: number; cutoff: number; scale: number };
 type UrlState = { v: number; code: string; media: UrlMediaEntry[]; fft?: FftConfig };
@@ -37,12 +41,19 @@ function stripEntry(e: MediaEntry): UrlMediaEntry {
     ...(e.duration != null ? { duration: e.duration } : {}),
     ...(e.streamKind != null ? { streamKind: e.streamKind } : {}),
     ...(e.deviceId != null ? { deviceId: e.deviceId } : {}),
+    // Carry remote thumbnail URLs (e.g. a CDN /thumbs/x.jpg, ~55 chars) so they travel
+    // with a share link and render as <img> on the recipient's device with no client-side
+    // regeneration — which iOS Safari can't do for video (it won't seek an off-DOM
+    // <video> to grab a frame without a gesture). data: thumbnails are excluded: large,
+    // device-specific, and already cached in localStorage by id.
+    ...(e.thumbnail && !e.thumbnail.startsWith("data:") ? { thumbnail: e.thumbnail } : {}),
   };
 }
 
 /**
  * Encode pattern code + media registry into a URL hash string (without the leading #).
- * Thumbnails, transient state, and blob URLs are stripped.
+ * Transient state, blob URLs, and client-generated data: thumbnails are stripped;
+ * remote thumbnail URLs are kept (see stripEntry).
  */
 export function encodeUrlState(code: string, media: MediaEntry[], fft?: FftConfig): string {
   // Drop blob: entries — they're session-scoped object URLs. The underlying File

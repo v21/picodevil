@@ -467,6 +467,27 @@ describe("thumbnail storage cleanup", () => {
     expect(localStorage.getItem(THUMB_PREFIX + "live-id")).toBe("data:live");
   });
 
+  it("initRegistry adopts a thumbnail carried on the entry (CDN URL from a share link)", () => {
+    clearAll();
+    initRegistry([{
+      id: "cdn-id", name: "cdnvid", url: "https://videoclip.picodevil.com/carpetshop.mp4",
+      type: "video", thumbnail: "https://videoclip.picodevil.com/thumbs/carpetshop.jpg",
+    }]);
+    const entry = getAllEntries().find(e => e.id === "cdn-id")!;
+    expect(entry.thumbnail).toBe("https://videoclip.picodevil.com/thumbs/carpetshop.jpg");
+  });
+
+  it("initRegistry prefers a carried thumbnail over the localStorage cache", () => {
+    clearAll();
+    localStorage.setItem(THUMB_PREFIX + "cdn-id", "data:cached");
+    initRegistry([{
+      id: "cdn-id", name: "cdnvid", url: "https://videoclip.picodevil.com/carpetshop.mp4",
+      type: "video", thumbnail: "https://videoclip.picodevil.com/thumbs/carpetshop.jpg",
+    }]);
+    const entry = getAllEntries().find(e => e.id === "cdn-id")!;
+    expect(entry.thumbnail).toBe("https://videoclip.picodevil.com/thumbs/carpetshop.jpg");
+  });
+
   it("pruneOrphanThumbs leaves non-thumb keys untouched", () => {
     clearAll();
     localStorage.setItem("picodevil-server-url", "http://localhost:47426");

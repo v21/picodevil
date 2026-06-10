@@ -57,11 +57,15 @@ function save() {
  * Call this once at startup before any other registry operations.
  * @internal
  */
-export function initRegistry(entries: { id: string; name: string; url: string; type: MediaEntry["type"]; duration?: number; streamKind?: MediaEntry["streamKind"]; deviceId?: string }[]) {
+export function initRegistry(entries: { id: string; name: string; url: string; type: MediaEntry["type"]; duration?: number; streamKind?: MediaEntry["streamKind"]; deviceId?: string; thumbnail?: string }[]) {
   registry.length = 0;
   for (const entry of entries) {
     const migratedUrl = entry.url ? migrateLegacyServerUrl(entry.url) : entry.url;
-    const thumb = localStorage.getItem(THUMB_STORAGE_PREFIX + entry.id) ?? undefined;
+    // Prefer a thumbnail carried on the entry (a remote CDN/server URL that travelled
+    // in the share link) over the per-device localStorage cache. Either one lets the
+    // row render an <img> straight away instead of regenerating a frame client-side —
+    // which iOS Safari can't do for video sources.
+    const thumb = entry.thumbnail ?? localStorage.getItem(THUMB_STORAGE_PREFIX + entry.id) ?? undefined;
     registry.push({ ...entry, url: migratedUrl, ...(thumb ? { thumbnail: thumb } : {}) } as MediaEntry);
   }
   onChange?.();
@@ -612,6 +616,7 @@ function processThumbQueue() {
     const vid = document.createElement("video");
     if (isCrossOrigin) vid.crossOrigin = "anonymous";
     vid.muted = true;
+    vid.playsInline = true; // iOS Safari won't decode/seek a frame inline without this
     vid.preload = "metadata";
 
     const cleanup = () => {

@@ -25,6 +25,12 @@ const ENTRY_WITH_THUMB: MediaEntry = {
   downloading: true,
 };
 
+// A default/CDN entry whose thumbnail is a short remote URL (not a data: blob).
+const ENTRY_WITH_REMOTE_THUMB: MediaEntry = {
+  id: "id-6", name: "cdn-vid", url: "https://videoclip.picodevil.com/carpetshop.mp4", type: "video",
+  thumbnail: "https://videoclip.picodevil.com/thumbs/carpetshop.jpg",
+};
+
 // ---------------------------------------------------------------------------
 // encodeUrlState / decodeUrlState round-trip
 // ---------------------------------------------------------------------------
@@ -67,10 +73,16 @@ describe("encodeUrlState / decodeUrlState", () => {
     expect(vid.duration).toBe(30);
   });
 
-  it("strips thumbnail from encoded state", () => {
+  it("strips a client-generated data: thumbnail from encoded state (large, device-specific)", () => {
     const encoded = encodeUrlState(SAMPLE_CODE, [ENTRY_WITH_THUMB]);
     const decoded = decodeUrlState(encoded)!;
     expect((decoded.media[0] as any).thumbnail).toBeUndefined();
+  });
+
+  it("persists a remote (http/https) thumbnail URL so it travels with the share link", () => {
+    const encoded = encodeUrlState(SAMPLE_CODE, [ENTRY_WITH_REMOTE_THUMB]);
+    const decoded = decodeUrlState(encoded)!;
+    expect((decoded.media[0] as any).thumbnail).toBe(ENTRY_WITH_REMOTE_THUMB.thumbnail);
   });
 
   it("strips transient fields: uploading, uploadProgress, error, downloading", () => {
