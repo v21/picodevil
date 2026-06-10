@@ -91,7 +91,11 @@ export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
         // would try to render a video as a still image.
         const entry = addMedia(blobUrl, name, guessTypeFromFile(file));
         if (getServerUrl() && getServerStatus() !== "error") {
-          uploadToServer(entry.name, file).catch(() => {/* error stored in entry */});
+          uploadToServer(entry.name, file).catch((err) => {
+            // Most failures are stored on the entry (row shows an error + retry);
+            // surface the oversize case as a toast too, since it's a user action.
+            if (/too large/i.test(err?.message ?? "")) showToast(err.message);
+          });
         }
       }
       return;

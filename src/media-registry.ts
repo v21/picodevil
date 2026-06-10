@@ -1,4 +1,5 @@
 import { getServerUrl, resolveUrl, migrateLegacyServerUrl } from "./server-config";
+import { MAX_UPLOAD_BYTES } from "./config";
 
 const THUMB_STORAGE_PREFIX = "picodevil:thumb:";
 
@@ -388,6 +389,19 @@ export function uploadToServer(name: string, file: File, serverBase?: string): P
     const entry = registry.find(e => e.name === name);
     if (!entry) return reject(new Error(`Entry not found: ${name}`));
     const { id } = entry;
+
+    // The server caps the upload body (default 1 GiB) and would 413 anyway, so
+    // reject up front rather than push a doomed multi-hundred-MB transfer. The
+    // entry keeps its local blob URL — playable this session, just not persisted.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      const limitGb = (MAX_UPLOAD_BYTES / (1024 * 1024 * 1024)).toFixed(0);
+      entry.uploading = false;
+      entry.uploadProgress = undefined;
+      entry.pendingFile = undefined;
+      entry.error = `Too large to upload (max ${limitGb} GB) — using local copy only`;
+      save();
+      return reject(new Error(entry.error));
+    }
 
     entry.uploading = true;
     entry.uploadProgress = 0;

@@ -492,6 +492,17 @@ describe("uploadToServer", () => {
     expect(e.uploadProgress).toBe(0);
   });
 
+  it("rejects an oversize file without sending, setting a 'too large' error", async () => {
+    const entry = addMedia("blob:fake", "hugevid");
+    const file = new File(["data"], "hugevid.mp4");
+    Object.defineProperty(file, "size", { value: 2 * 1024 * 1024 * 1024 }); // 2 GiB
+    await expect(uploadToServer(entry.name, file)).rejects.toThrow(/too large/i);
+    expect(MockXHR.instance).toBeNull(); // never opened an XHR
+    const e = getAllEntries().find(x => x.name === "hugevid")!;
+    expect(e.uploading).toBeFalsy();
+    expect(e.error).toMatch(/too large/i);
+  });
+
   it("updates uploadProgress on XHR progress events", () => {
     const changes: number[] = [];
     setOnChange(() => {

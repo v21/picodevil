@@ -5,6 +5,14 @@
  */
 
 export const CYCLES_PER_SECOND = 0.5;
+
+/**
+ * Max size of a file we'll try to upload to the picodevil-server (1 GiB). Mirrors
+ * the server's own default cap (PICODEVIL_MAX_UPLOAD_MB) — over this, the server
+ * would 413, so we warn and skip the upload rather than waste a transfer. The
+ * dropped file still plays locally from its blob URL; it just isn't persisted.
+ */
+export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 /** How far ahead to query patterns for video prewarming, in milliseconds. */
 export const PREWARM_LOOKAHEAD_MS = 500;
 
