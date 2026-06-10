@@ -622,9 +622,13 @@ export class WebGLRenderer implements Renderer {
     const isTile = p.fit === 'tile' || p.fit === 'tilecenter';
     const tileAw = Math.abs(p.cropw), tileAh = Math.abs(p.croph);
     const cropOffX  = isTile ? p.cropx - tileAw / 2 : 0;
-    const cropOffY  = isTile ? p.cropy - tileAh / 2 : 0;
+    let cropOffY    = isTile ? p.cropy - tileAh / 2 : 0;
     const cropSizeX = isTile ? Math.max(1e-6, tileAw) : 1;
     const cropSizeY = isTile ? Math.max(1e-6, tileAh) : 1;
+    // The OP_WRAP repeat subregion (cropOffY..cropOffY+cropSizeY) must live in the
+    // same V space as the sampled uv — which was mirrored above for FBO sources.
+    // Mirror the window too (no-op for the default full [0,1] window).
+    if (fboSource && isTile) cropOffY = 1 - cropOffY - cropSizeY;
 
     this.pendingDraws.push({
       texture:     tex,
