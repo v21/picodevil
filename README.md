@@ -14,8 +14,6 @@ You can also load videos by opening the sidebar - click the little arrow on the 
 
 There's also an optional server, which will let you do things like transcode videos so they can be scrubbed backwards, and allow downloading from YouTube - see [picodevil-server](https://github.com/v21/picodevil-server) for details.
 
-Picodevil has currently only been tested with Chrome, and only on desktop. Yes, I know this isn't great.
-
 ## If you want to run it locally
 
 You can do this by cloning this repository (or downloading it), and then running:
