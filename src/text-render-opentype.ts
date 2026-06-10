@@ -21,7 +21,7 @@ export function getOpentypeFont(srcUrl: string): Font | null {
       .then(buf => {
         fontCache.set(srcUrl, parse(buf as ArrayBuffer));
       })
-      .catch(err => console.warn('[uzu] opentype font load failed:', srcUrl, err));
+      .catch(err => console.warn('[pd] opentype font load failed:', srcUrl, err));
   }
   return null;
 }

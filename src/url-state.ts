@@ -52,7 +52,7 @@ export function encodeUrlState(code: string, media: MediaEntry[], fft?: FftConfi
   const state: UrlState = { v: 1, code, media: persistable.map(stripEntry), ...(fft ? { fft } : {}) };
   return PREFIX + toBase64url(JSON.stringify(state, (key, value) => {
     if (typeof value === 'bigint') {
-      console.warn(`[uzu] unexpected BigInt in URL state field "${key}":`, value);
+      console.warn(`[pd] unexpected BigInt in URL state field "${key}":`, value);
       return Number(value);
     }
     return value;

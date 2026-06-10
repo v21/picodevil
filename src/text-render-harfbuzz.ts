@@ -33,7 +33,7 @@ export function getHarfbuzzFace(srcUrl: string): FontEntry | null {
       })
       .catch(err => {
         fontLoading.delete(srcUrl);
-        console.warn('[uzu] harfbuzz font load failed:', srcUrl, err);
+        console.warn('[pd] harfbuzz font load failed:', srcUrl, err);
       });
   }
   return null;
