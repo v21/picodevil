@@ -376,6 +376,34 @@ body {
   display: block;
 }
 
+/* ---------------------------------------------------------------------------
+   Mobile / narrow viewport: the sidebar takes the whole screen instead of a
+   600px panel. Needs the viewport meta in index.html to engage on phones.
+   (Touch-target sizing — bigger toggle/tabs — intentionally left out pending
+   on-device testing.)
+   =========================================================================== */
+@media (max-width: 640px) {
+  #sidebar-panel {
+    width: 100vw;
+    right: 0;
+    min-width: 0;
+    padding-left: 0;
+    /* Reserve the toggle strip on the right so panel content isn't hidden under it. */
+    padding-right: 24px;
+  }
+  #sidebar-panel.open {
+    padding-left: 0;
+  }
+  /* Nothing to resize when full-screen. */
+  #sidebar-panel .resize-handle {
+    display: none;
+  }
+  /* Keep the open/close toggle tappable above the full-screen panel. */
+  #sidebar-toggle.open {
+    z-index: 31;
+  }
+}
+
 /* Per-tab .active overrides (layout differs from the default block pane) */
 #tab-videos.active {
   display: flex !important;
