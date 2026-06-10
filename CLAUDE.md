@@ -4,7 +4,7 @@
 
 ## What is this?
 
-picodevil is a live-coding visual performance tool. Users write JavaScript in a browser-based editor (CodeMirror), hit Ctrl+Enter to evaluate, and the code controls what gets drawn to a fullscreen canvas. It uses Strudel's mininotation system for rhythmic patterns of colors and videos.
+picodevil is a live-coding visual performance tool. Users write JavaScript in a browser-based editor (CodeMirror), hit Ctrl+Enter (or Cmd+Enter) to evaluate, and the code controls what gets drawn to a fullscreen canvas. It uses Strudel's mininotation system for rhythmic patterns of colors and videos.
 
 > **Name history**: this project was previously called **uzuvid**. The working directory is now `/Users/v/picodevil/picodevil/` and older git history, commit messages, and external links may use the old name. If you find a stray `uzuvid` / `uzu*` reference in code, it's a missed rename — flag it.
 >
@@ -31,9 +31,9 @@ picodevil/
   README.md               - human-authored README file, explaining the architecture of the project
   src/
     main.ts               — core runtime: pattern state, video pool, render loop, eval bridge; wires renderer backend
-    editor.ts             — CodeMirror 6 editor setup, Ctrl+Enter eval binding
+    editor.ts             — CodeMirror 6 editor setup, Ctrl-Enter + Mod-Enter (Cmd-Enter) eval binding
     config.ts             — timing/pool/limit constants: CYCLES_PER_SECOND, EVAL_TIMEOUT_MS (eval loop-guard budget), MAX_DRAW_TIME_MS (per-frame draw budget), MAX_SOURCES_PER_FRAME/MAX_EVENTS_PER_FRAME (crash guards), prewarm + pool-scoring tuning (server URL is runtime — see server-config.ts)
-    transpiler.ts         — $: label transpiler, double-quote mini() wrapping
+    transpiler.ts         — $: label transpiler, double-quote mini() wrapping, eval loop-guard injection (__pdGuard)
     visual-controls.ts    — createMixParam, position/grid/speed/alpha controls on Pattern.prototype
     grid-stack.ts         — gridStack() and four() helpers using .gridModulo()
     shuffle-stack.ts      — .shuffleStack(seed?), .shuffleStackCycle(seed?), .shuffleIndex(seed?), .shuffleIndexCycle(seed?) on Pattern.prototype
@@ -76,7 +76,7 @@ The Node server lives in a sibling repo at [`../server/`](../server/) — see [`
    - Computes cycle position from elapsed time and `cyclesPerSecond`
    - Queries each screen pattern with `queryArc(t, t)` (zero-width instant query)
    - `FrameRenderer.render()` calls `queryNeeded` to collect needed sources, calls `matchSources` to assign pool elements by seek-cost scoring, then dispatches `TileParams` to the active `Renderer` backend
-4. `window.pdEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`.
+4. `window.pdEval(code)` is called by the editor. It transpiles, clears state, then runs the code as a `new Function`. The transpiler injects a `__pdGuard()` call into every loop body; `runTranspiled` supplies a time-budget guard (`EVAL_TIMEOUT_MS`, 2s) that throws once exceeded, so a runaway loop (`while(true){}`) aborts instead of freezing the tab — `EvalController` catches it and restores the prior pattern. (Loops only; recursion / non-loop freezes aren't preempted — would need a Worker.)
 
 ## Renderer architecture
 
@@ -92,9 +92,10 @@ One backend:
 Backend selection in `main.ts`: `new WebGLRenderer(canvas)` — unconditional, no fallback.
 
 `TextureCache` (`src/texture-cache.ts`) manages WebGL textures:
-- Videos/streams: `texImage2D` every frame (content changes)
+- Videos/streams: `texImage2D` every frame (content changes) — **except** when a video has no fresh frame (`el.seeking` or `readyState < HAVE_CURRENT_DATA`): the re-upload is skipped and the **last decoded frame is held** instead of uploading zeros (a black tile). A video that has *never* decoded a frame returns `null` (the tile isn't drawn) rather than a blank 0×0 texture. This is what stops reverse-playback seek gaps from flashing black.
+- Element textures are keyed in a `WeakMap` (+ `WeakSet` for uploaded), and `release(el)` deletes the GL texture + drops the element when the video pool evicts it (wired via `onDestroyElement` → `WebGLRenderer.releaseSource` → `destroyVideoEl`), so textures/elements don't leak over a long set.
 - Images: uploaded once, cached by element reference
-- Colors: 1×1 RGBA texture, cached by `"r,g,b"` key
+- Colors: 1×1 RGBA texture, cached by `"r,g,b"` key, **LRU-capped at 4096** (a colour sweep / FFT-driven colour can otherwise mint unbounded textures)
 - All video elements are created with `crossOrigin = "anonymous"` (set in the pool factory in `main.ts`) so WebGL can upload them without CORS errors
 - If `texImage2D` still throws a cross-origin taint error ("video element contains cross-origin data" — sources go black; caused by browser HTTP-cache poisoning when the CDN lacks `Vary: Origin`), the `drawTile` catch in `renderer.ts` routes it to `recoverFromDrawError` (`taint-recovery.ts`): it logs a diagnostics record (`console.error` + a localStorage ring readable via `window.pdTaintLog()`) and auto-cures the element with a cache-busting reload (`?pdcb=N`) — a fresh cache key forces a new CORS fetch, dodging the poisoned entry. The CDN (`videoclip.picodevil.com`) carries `Vary: Origin` as the root-cause fix.
 
@@ -186,7 +187,17 @@ Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().
 ## Video playback speed
 
 - Native HTML5 playback rates (0.0625–16.0) use `el.playbackRate` directly
-- Rates outside this range (including negative/reverse) use manual seeking
+- Rates outside this range (including negative/reverse) use manual seeking: the
+  non-native branch in `video-playback.ts` pauses and sets `el.currentTime` to the
+  computed position. It is **throttled by `!el.seeking`** — it won't issue a new
+  seek while one is in flight, so each seek's HTTP range request completes instead
+  of being aborted by the next. Without this, reverse playback fired ~60 seeks/s
+  per element, each aborting the previous fetch, so networked clips never buffered
+  and rendered black (worst in Firefox, which logs every aborted range fetch as
+  "CORS request did not succeed"). Reverse over the network is still
+  fetch-latency-bound (it plays at the seek-completion rate until the clip is
+  buffered) — see `docs/reports/firefox-cors.md` for the full analysis and the
+  parked full-file-prefetch plan.
 - `setPlaybackRate()` in `src/playback-rate.ts` catches `NotSupportedError` to prevent the render loop from breaking
 
 ## Continuous playback modes: sync() vs rolling()
