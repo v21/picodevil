@@ -47,6 +47,12 @@
   --accent: var(--hl-string);  /* lime — about links, fontpicker (mirrors string style) */
   --danger: #f92672;       /* stop / delete-hover / retry */
   --success: #6a6;
+
+  /* Scrollbars — a thin warm-grey overlay thumb that brightens on hover, over a
+     transparent track. Tuned to read on both the dark sidebar panel and the
+     transparent editor sitting over the canvas. */
+  --scrollbar-thumb: hsla(50, 12%, 55%, 0.5);
+  --scrollbar-thumb-hover: hsla(50, 14%, 65%, 1);
 }
 
 /* ===========================================================================
@@ -64,6 +70,45 @@ body {
   height: 100%;
   overflow: hidden;
   background: var(--bg-page);
+}
+
+/* ===========================================================================
+   Scrollbars
+   Themed to match the panel chrome: thin, transparent track, subtle overlay
+   thumb that brightens on hover. Covers every scroll pane in the app — the
+   sidebar tabs, the reference nav/detail, the perf panel, and the CodeMirror
+   editor's vertical scroll for long code. Firefox uses scrollbar-width/color;
+   WebKit (Chrome/Safari/Edge — our primary target) uses the pseudo-elements.
+   =========================================================================== */
+* {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  /* The 2px transparent border + padding-box clip leaves breathing room around
+     the thumb so it reads as a slim pill rather than filling the gutter. */
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* ===========================================================================
@@ -85,6 +130,11 @@ body {
   height: 100%;
   z-index: 10;
   overflow: hidden;
+  /* Inset the right edge by the sidebar-toggle width (24px, same constant as
+     #sidebar-toggle / #sidebar-panel) so CodeMirror's vertical scrollbar for
+     long code lands flush against the toggle's left edge instead of hiding
+     beneath it. box-sizing:border-box keeps the element full-width. */
+  padding-right: 24px;
 }
 
 /* ===========================================================================
