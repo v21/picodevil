@@ -4,6 +4,7 @@ import type { NeededSource } from "./source-query";
 import { minCostAssignment } from "./assignment";
 import { SEEK_PENALTY, NEW_ELEMENT_COST } from "./config";
 import { DRIFT_THRESHOLD } from "./video-playback";
+import { warnOnMediaLoadError } from "./media-errors";
 
 /** Tiny per-id perturbation to break exact cost ties deterministically (lower id wins). */
 const ID_EPS = 1e-9;
@@ -169,6 +170,7 @@ function createFreshElement(
   if (ns.kind === "image") {
     const img = new Image();
     img.crossOrigin = "anonymous";
+    warnOnMediaLoadError(img); // surface a 404/decode failure instead of a silent blank tile
     img.src = ns.srcUrl;
     return img;
   }

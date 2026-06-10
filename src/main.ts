@@ -15,6 +15,7 @@ import { slider as sliderWidget, fontPicker as fontPickerWidget } from "./widget
 import { initFontList } from "./font-list";
 import { repopulateFontDatalist } from "./editor-widgets";
 import { warn, flushWarnings } from "./warnings";
+import { warnOnMediaLoadError } from "./media-errors";
 import { setupSidebar } from "./sidebar";
 import { loadCamera, loadScreen } from "./stream-manager";
 import { fft, updateFrame as fftUpdateFrame, applyFftConfig, getFftConfig, onFftConfigChange } from "./fft-audio";
@@ -80,6 +81,7 @@ const pool = createVideoPoolManager({
   createElement: () => {
     const el = document.createElement("video");
     el.crossOrigin = "anonymous";
+    warnOnMediaLoadError(el); // surface a 404/decode failure instead of a silent black tile
     return el;
   },
   maxFreeTotal: MAX_FREE_VIDEO_ELEMENTS,
