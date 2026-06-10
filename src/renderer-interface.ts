@@ -88,4 +88,9 @@ export interface Renderer {
   captureAll(): void;
   /** Release GPU/canvas resources. */
   dispose(): void;
+  /**
+   * Release the cached GPU texture for a media element the video pool has
+   * permanently discarded. Optional — backends without a texture cache omit it.
+   */
+  releaseSource?(el: HTMLVideoElement | HTMLImageElement): void;
 }

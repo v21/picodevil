@@ -8,6 +8,11 @@ export interface VideoPoolManagerConfig {
   resolveMediaUrl: (name: string, base: string) => string;
   /** Called when a video's duration is discovered from loadedmetadata. */
   onDurationDiscovered?: (srcUrl: string, duration: number) => void;
+  /**
+   * Called when an element is permanently torn down (pool eviction), so the
+   * renderer can free its cached GPU texture. Without this the texture leaks.
+   */
+  onDestroyElement?: (el: VideoEl) => void;
   /** Max idle elements total across all srcs. Default: 16 */
   maxFreeTotal?: number;
 }
@@ -43,6 +48,9 @@ export function createVideoPoolManager(config: VideoPoolManagerConfig): VideoPoo
     el.pause();
     el.removeAttribute("src");
     el.load();
+    // Free the element's cached GPU texture — this is the only point where an
+    // element is permanently discarded, so it's where the renderer must release it.
+    config.onDestroyElement?.(el);
   }
 
   function trimFreePool() {

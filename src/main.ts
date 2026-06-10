@@ -83,6 +83,9 @@ const pool = createVideoPoolManager({
     return el;
   },
   maxFreeTotal: MAX_FREE_VIDEO_ELEMENTS,
+  // Free the GPU texture when the pool permanently evicts an element, so video
+  // textures + detached elements don't accumulate over a long set.
+  onDestroyElement: (el) => activeRenderer.releaseSource?.(el),
 });
 
 const frameRenderer = new FrameRenderer(activeRenderer, pool, pdMetrics);

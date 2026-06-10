@@ -13,13 +13,22 @@ type SourceElement = HTMLVideoElement | HTMLImageElement;
  * Images and colours are uploaded once and cached permanently.
  * Colour fills use a 1×1 RGBA texture — no canvas needed.
  */
+// Upper bound on cached colour textures (each a 1×1 RGBA). Colours are minted per
+// distinct quantised "r,g,b", so a hue sweep / FFT-driven colour can otherwise grow
+// the cache without bound. 4096 distinct colours on screen is already implausible,
+// so the LRU cap never bites real patterns; it just stops the slow leak.
+const MAX_COLOR_TEXTURES = 4096;
+
 export class TextureCache {
   private readonly gl: WebGL2RenderingContext;
-  /** Texture per media element. */
-  private readonly elementTextures = new Map<SourceElement, WebGLTexture>();
+  // Texture per media element — WeakMap so a discarded <video>/<img> (and its
+  // decoder buffers) can be GC'd even if release() is somehow missed. The GL
+  // texture is freed deterministically by release() (pool eviction calls it);
+  // WeakMap collection is heap-only insurance since a WebGLTexture has no finalizer.
+  private elementTextures = new WeakMap<SourceElement, WebGLTexture>();
   /** Whether a static source (image) has had its first upload. */
-  private readonly uploaded = new Set<SourceElement>();
-  /** Colour textures, keyed by "r,g,b" integer string. */
+  private uploaded = new WeakSet<SourceElement>();
+  /** Colour textures, keyed by "r,g,b" integer string. Insertion-ordered for LRU. */
   private readonly colorTextures = new Map<string, WebGLTexture>();
   private canvasTextures = new WeakMap<HTMLCanvasElement, WebGLTexture>();
   private uploadedCanvases = new WeakSet<HTMLCanvasElement>();
@@ -68,34 +77,56 @@ export class TextureCache {
     return tex;
   }
 
+  /**
+   * Release the texture for a single media element. Call when the video pool
+   * permanently discards the element (eviction) so its GL texture is freed and the
+   * element is dropped from the cache — otherwise both leak for the session.
+   */
+  release(el: SourceElement): void {
+    const tex = this.elementTextures.get(el);
+    if (tex) this.gl.deleteTexture(tex);
+    this.elementTextures.delete(el);
+    this.uploaded.delete(el);
+  }
+
   /** Release all GL resources (call on context loss or disposal). */
   clear(): void {
     const { gl } = this;
-    for (const tex of this.elementTextures.values()) gl.deleteTexture(tex);
     for (const tex of this.colorTextures.values()) gl.deleteTexture(tex);
-    this.elementTextures.clear();
     this.colorTextures.clear();
-    this.uploaded.clear();
-    // The canvas (text-tile) caches are Weak collections — can't iterate to delete,
-    // so swap in fresh ones. After a context loss the old GL textures are dead
-    // anyway; dropping the references lets text tiles re-upload onto new handles.
+    // elementTextures/uploaded are Weak (can't iterate to delete) — individual GL
+    // textures are freed by release() during normal churn; here we just swap in
+    // fresh collections. On context loss the old textures are dead anyway; on
+    // dispose the context is going away. Same trade-off as the canvas caches.
+    this.elementTextures = new WeakMap();
+    this.uploaded = new WeakSet();
     this.canvasTextures = new WeakMap();
     this.uploadedCanvases = new WeakSet();
   }
 
   private getColor(r: number, g: number, b: number): WebGLTexture {
     const key = `${Math.round(r * 255)},${Math.round(g * 255)},${Math.round(b * 255)}`;
-    let tex = this.colorTextures.get(key);
-    if (!tex) {
-      const { gl } = this;
-      tex = this.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(
-        gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
-        new Uint8Array([Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), 255]),
-      );
-      this.colorTextures.set(key, tex);
+    const existing = this.colorTextures.get(key);
+    if (existing) {
+      // LRU touch: re-insert so the most-recently-used colour sits at the tail.
+      this.colorTextures.delete(key);
+      this.colorTextures.set(key, existing);
+      return existing;
     }
+    const { gl } = this;
+    // Evict the least-recently-used colour(s) before inserting past the cap.
+    while (this.colorTextures.size >= MAX_COLOR_TEXTURES) {
+      const oldest = this.colorTextures.keys().next().value as string;
+      gl.deleteTexture(this.colorTextures.get(oldest)!);
+      this.colorTextures.delete(oldest);
+    }
+    const tex = this.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(
+      gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+      new Uint8Array([Math.round(r * 255), Math.round(g * 255), Math.round(b * 255), 255]),
+    );
+    this.colorTextures.set(key, tex);
     return tex;
   }
 

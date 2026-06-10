@@ -911,6 +911,11 @@ export class WebGLRenderer implements Renderer {
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
   }
 
+  /** Free the cached texture for an element the video pool has discarded. */
+  releaseSource(el: HTMLVideoElement | HTMLImageElement): void {
+    this.texCache.release(el);
+  }
+
   dispose(): void {
     const { gl } = this;
     this.texCache.clear();
