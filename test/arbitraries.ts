@@ -264,7 +264,7 @@ const NUMERIC_LITERALS = [
 
 /** Any numeric argument: unconstrained double, signal, or mini-patterned literal. */
 const numericArg: fc.Arbitrary<string> = fc.oneof(
-  { weight: 5, arbitrary: fc.double({ noNaN: true }).map(n => String(n)) },
+  { weight: 5, arbitrary: fc.double({ min: -16, max: 16, noNaN: true, noDefaultInfinity: true }).map(n => String(n)) },
   { weight: 4, arbitrary: anySignalExpr },
   { weight: 3, arbitrary: miniArb(NUMERIC_LITERALS, 1).map(m => `"${m}"`) },
 );
@@ -274,6 +274,39 @@ const integerArg: fc.Arbitrary<string> = fc.oneof(
   { weight: 5, arbitrary: fc.integer({ min: -16, max: 64 }).map(n => String(n)) },
   { weight: 3, arbitrary: anySignalExpr },
   { weight: 2, arbitrary: miniArb(NUMERIC_LITERALS.filter(n => !n.includes(".")), 1).map(m => `"${m}"`) },
+);
+
+/** Unipolar [0,1] continuous signals (no bipolar `*2` variants that dip below 0). */
+const UNIPOLAR_SIGNALS = CONTINUOUS_SIGNALS.filter(s => !s.endsWith("2"));
+
+/**
+ * Time-stretch factor — for operators that scale cycle *density* by their arg
+ * (slow/fast/hurry/fastGap/linger/inside/outside). A factor of 0, a denormal
+ * (e.g. 5e-324), or ±Infinity sends the effective cycle count to infinity →
+ * "RangeError: Invalid array length". Keep factors finite and bounded away from
+ * zero; animated factors are confined to a strictly-positive range so they
+ * never cross 0. This is a *generation* constraint — these inputs are outside
+ * the grammar we intend to exercise, not a claim the engine must survive them.
+ */
+const STRETCH_LITERALS = ["0.25", "0.5", "1", "2", "4", "8", "-1", "-2"];
+const stretchArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 6, arbitrary: miniArb(STRETCH_LITERALS, 1).map(m => `"${m}"`) },
+  { weight: 3, arbitrary: fc.double({ min: 0.125, max: 16, noNaN: true, noDefaultInfinity: true }).map(n => n.toFixed(3)) },
+  { weight: 2, arbitrary: fc.constantFrom(...UNIPOLAR_SIGNALS).map(s => `${s}.range(0.25, 4)`) },
+);
+
+/**
+ * Integer period / count — for operators that slice a cycle into N parts or
+ * repeat N times (iter/iterBack/ply/repeatCycles/chop/every/firstOf/lastOf/
+ * chunk/chunkBack/swing/pace/echo count). They divide by N, so N = 0 — whether a
+ * literal `0` or a signal/slider that *resolves* to 0 — yields "RangeError:
+ * Invalid array length". Constrain to positive integers ≥ 1 and exclude
+ * zero-capable signals from these positions entirely. (Sliders/signals are still
+ * fine elsewhere — the bug is only feeding a 0 into a divisor, not the 0 itself.)
+ */
+const periodArg: fc.Arbitrary<string> = fc.oneof(
+  { weight: 6, arbitrary: fc.integer({ min: 1, max: 16 }).map(n => String(n)) },
+  { weight: 3, arbitrary: miniArb(["1", "2", "3", "4", "5", "6", "7", "8"], 1).map(m => `"${m}"`) },
 );
 
 /** Binary/boolean pattern: mini 0/1, or signal comparison. */
@@ -351,8 +384,8 @@ const shuffleSeed: fc.Arbitrary<string> = fc.oneof(
 /** Strudel methods + transform functions — mutually recursive via fc.letrec. */
 const _strudelBuilders = fc.letrec((tie: any) => ({
   simpleTransformFn: fc.oneof(
-    { weight: 4, arbitrary: numericArg.map((n: string) => `x => x.fast(${n})`) },
-    { weight: 4, arbitrary: numericArg.map((n: string) => `x => x.slow(${n})`) },
+    { weight: 4, arbitrary: stretchArg.map((n: string) => `x => x.fast(${n})`) },
+    { weight: 4, arbitrary: stretchArg.map((n: string) => `x => x.slow(${n})`) },
     { weight: 3, arbitrary: fc.constant("x => x.rev()") },
     { weight: 2, arbitrary: alphaArg.map((a: string) => `x => x.alpha(${a})`) },
     { weight: 2, arbitrary: speedArg.map((s: string) => `x => x.speed(${s})`) },
@@ -360,17 +393,17 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
     { weight: 2, arbitrary: posArg.map((p: string) => `x => x.x(${p})`) },
     { weight: 1, arbitrary: fc.constant("x => x.palindrome()") },
     { weight: 1, arbitrary: fc.constant("x => x.brak()") },
-    { weight: 1, arbitrary: integerArg.map((n: string) => `x => x.iter(${n})`) },
+    { weight: 1, arbitrary: periodArg.map((n: string) => `x => x.iter(${n})`) },
     { weight: 1, arbitrary: (tie("strudelMethod") as fc.Arbitrary<string>).map((m: string) => `x => x${m}`) },
   ),
   strudelMethod: fc.oneof(
-    // ── Existing (now use numericArg/integerArg) ────────────────────────────
-    { weight: 3, arbitrary: numericArg.map((n: string) => `.slow(${n})`) },
-    { weight: 3, arbitrary: numericArg.map((n: string) => `.fast(${n})`) },
+    // ── Core time ops (slow/fast → stretchArg, chop → periodArg) ────────────
+    { weight: 3, arbitrary: stretchArg.map((n: string) => `.slow(${n})`) },
+    { weight: 3, arbitrary: stretchArg.map((n: string) => `.fast(${n})`) },
     { weight: 3, arbitrary: fc.constant(".rev()") },
-    { weight: 2, arbitrary: integerArg.map((n: string) => `.chop(${n})`) },
-    { weight: 2, arbitrary: integerArg.map((n: string) => `.chop(${n}).rev()`) },
-    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 2, arbitrary: periodArg.map((n: string) => `.chop(${n})`) },
+    { weight: 2, arbitrary: periodArg.map((n: string) => `.chop(${n}).rev()`) },
+    { weight: 2, arbitrary: fc.tuple(periodArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.every(${n}, ${fn})`) },
 
     // ── Timing offsets ────────────────────────────────────────────────────
@@ -386,8 +419,8 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
     { weight: 1, arbitrary: fc.constant(".invert()") },
 
     // ── Rotation ──────────────────────────────────────────────────────────
-    { weight: 2, arbitrary: integerArg.map((n: string) => `.iter(${n})`) },
-    { weight: 2, arbitrary: integerArg.map((n: string) => `.iterBack(${n})`) },
+    { weight: 2, arbitrary: periodArg.map((n: string) => `.iter(${n})`) },
+    { weight: 2, arbitrary: periodArg.map((n: string) => `.iterBack(${n})`) },
 
     // ── Time windows ──────────────────────────────────────────────────────
     { weight: 2, arbitrary: fc.tuple(numericArg, numericArg)
@@ -396,25 +429,25 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
         .map(([b, e]: [string, string]) => `.compress(${b}, ${e})`) },
     { weight: 1, arbitrary: fc.tuple(numericArg, numericArg)
         .map(([b, e]: [string, string]) => `.focus(${b}, ${e})`) },
-    { weight: 1, arbitrary: numericArg.map((n: string) => `.fastGap(${n})`) },
-    { weight: 1, arbitrary: numericArg.map((f: string) => `.linger(${f})`) },
+    { weight: 1, arbitrary: stretchArg.map((n: string) => `.fastGap(${n})`) },
+    { weight: 1, arbitrary: stretchArg.map((f: string) => `.linger(${f})`) },
     { weight: 1, arbitrary: fc.tuple(numericArg, numericArg)
         .map(([o, c]: [string, string]) => `.ribbon(${o}, ${c})`) },
 
     // ── Repetition ────────────────────────────────────────────────────────
-    { weight: 2, arbitrary: integerArg.map((n: string) => `.ply(${n})`) },
-    { weight: 1, arbitrary: integerArg.map((n: string) => `.repeatCycles(${n})`) },
+    { weight: 2, arbitrary: periodArg.map((n: string) => `.ply(${n})`) },
+    { weight: 1, arbitrary: periodArg.map((n: string) => `.repeatCycles(${n})`) },
 
     // ── Rhythm ────────────────────────────────────────────────────────────
-    { weight: 2, arbitrary: numericArg.map((n: string) => `.swing(${n})`) },
-    { weight: 2, arbitrary: fc.tuple(numericArg, numericArg)
+    { weight: 2, arbitrary: periodArg.map((n: string) => `.swing(${n})`) },
+    { weight: 2, arbitrary: fc.tuple(numericArg, periodArg)
         .map(([f, n]: [string, string]) => `.swingBy(${f}, ${n})`) },
-    { weight: 2, arbitrary: numericArg.map((n: string) => `.hurry(${n})`) },
+    { weight: 2, arbitrary: stretchArg.map((n: string) => `.hurry(${n})`) },
 
     // ── Conditional / periodic ────────────────────────────────────────────
-    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 2, arbitrary: fc.tuple(periodArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.firstOf(${n}, ${fn})`) },
-    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 2, arbitrary: fc.tuple(periodArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.lastOf(${n}, ${fn})`) },
     { weight: 2, arbitrary: fc.tuple(binaryPatArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([c, fn]: [string, string]) => `.when(${c}, ${fn})`) },
@@ -424,19 +457,19 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
         .map((fn: string) => `.superimpose(${fn})`) },
     { weight: 2, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([t, fn]: [string, string]) => `.off(${t}, ${fn})`) },
-    { weight: 2, arbitrary: fc.tuple(integerArg, numericArg)
+    { weight: 2, arbitrary: fc.tuple(periodArg, numericArg)
         .map(([n, t]: [string, string]) => `.echoWith(${n}, ${t}, (p, i) => p.alpha(1 - i * 0.25))`) },
-    { weight: 2, arbitrary: fc.tuple(integerArg, numericArg, numericArg)
+    { weight: 2, arbitrary: fc.tuple(periodArg, numericArg, numericArg)
         .map(([n, t, f]: [string, string, string]) => `.echo(${n}, ${t}, ${f})`) },
 
     // ── Temporal nesting ──────────────────────────────────────────────────
-    { weight: 2, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 2, arbitrary: fc.tuple(stretchArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.inside(${n}, ${fn})`) },
-    { weight: 1, arbitrary: fc.tuple(numericArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 1, arbitrary: fc.tuple(stretchArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.outside(${n}, ${fn})`) },
-    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 2, arbitrary: fc.tuple(periodArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.chunk(${n}, ${fn})`) },
-    { weight: 2, arbitrary: fc.tuple(integerArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
+    { weight: 2, arbitrary: fc.tuple(periodArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.chunkBack(${n}, ${fn})`) },
 
     // ── Binary structure ──────────────────────────────────────────────────
@@ -447,7 +480,7 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
     { weight: 1, arbitrary: binaryPatArg.map((c: string) => `.bypass(${c})`) },
 
     // ── Step ops ──────────────────────────────────────────────────────────
-    { weight: 1, arbitrary: integerArg.map((n: string) => `.pace(${n})`) },
+    { weight: 1, arbitrary: periodArg.map((n: string) => `.pace(${n})`) },
     { weight: 1, arbitrary: integerArg.map((n: string) => `.take(${n})`) },
     { weight: 1, arbitrary: integerArg.map((n: string) => `.drop(${n})`) },
     { weight: 1, arbitrary: integerArg.map((n: string) => `.shrink(${n})`) },
