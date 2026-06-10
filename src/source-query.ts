@@ -1,4 +1,4 @@
-import { SHARE_TIME_THRESHOLD } from "./config";
+import { SHARE_TIME_THRESHOLD, MAX_SOURCES_PER_FRAME, MAX_EVENTS_PER_FRAME } from "./config";
 import { getVideoBase, getImageBase } from "./server-config";
 import { eventBeginFromHap } from "./event-begin";
 import { computeExpectedFromEvent } from "./video-pool";
@@ -82,6 +82,15 @@ export function queryNeeded(
     }
 
     for (let ei = 0; ei < events.length; ei++) {
+      // Per-frame ceiling: a pathological pattern (thousands of distinct sources /
+      // tiles) would otherwise spin up thousands of <video> elements and hang the
+      // O(n²) share scan here, before the draw budget could act. Stop collecting,
+      // render what fit, and warn. Caps are far above any real pattern.
+      if (allEvents.length >= MAX_EVENTS_PER_FRAME || needed.length >= MAX_SOURCES_PER_FRAME) {
+        warn("Pattern has too many sources/tiles to render in one frame — showing a subset. Reduce the number of distinct clips or tiles.");
+        return { needed, eventMap, allEvents };
+      }
+
       const hap = events[ei];
       const ev = hap?.value;
       if (ev == null || typeof ev !== "object") continue;

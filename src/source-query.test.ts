@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { stack } from "@strudel/core";
 import { queryNeeded, type NeededSource } from "./source-query";
 import { getVideoBase, getImageBase } from "./server-config";
+import { MAX_SOURCES_PER_FRAME, MAX_EVENTS_PER_FRAME } from "./config";
+import { flushWarnings, clearWarnings } from "./warnings";
 
 const VIDEO_BASE = getVideoBase() || "http://localhost:47426/videos/";
 const IMAGE_BASE = getImageBase() || "http://localhost:47426/images/";
@@ -26,6 +28,26 @@ describe("queryNeeded", () => {
   it("returns empty list for no screens", () => {
     const { needed } = queryNeeded([], 0, 1, new Map());
     expect(needed).toHaveLength(0);
+  });
+
+  it("caps distinct sources per frame and warns (crash guard)", () => {
+    clearWarnings();
+    // Many more distinct video sources than the cap — would otherwise create a
+    // <video> element per source and crash the tab.
+    const haps = Array.from({ length: MAX_SOURCES_PER_FRAME + 200 }, (_, i) =>
+      makeHap({ _type: "video", src: `clip${i}.mp4` }));
+    const { needed } = queryNeeded([makeScreen(haps)], 0, 0.5, new Map());
+    expect(needed.length).toBeLessThanOrEqual(MAX_SOURCES_PER_FRAME);
+    expect(flushWarnings().some(m => /too many sources/i.test(m))).toBe(true);
+  });
+
+  it("caps total events per frame", () => {
+    clearWarnings();
+    const haps = Array.from({ length: MAX_EVENTS_PER_FRAME + 500 }, () =>
+      makeHap({ _type: "color", color: "red" })); // colours count toward allEvents, not needed
+    const { allEvents } = queryNeeded([makeScreen(haps)], 0, 1, new Map());
+    expect(allEvents.length).toBeLessThanOrEqual(MAX_EVENTS_PER_FRAME);
+    expect(flushWarnings().some(m => /too many/i.test(m))).toBe(true);
   });
 
   it("skips non-object events", () => {

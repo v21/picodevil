@@ -27,6 +27,18 @@ export const EVAL_TIMEOUT_MS = 2000;
 export const MAX_DRAW_TIME_MS = 100;
 
 /**
+ * Per-frame caps in the query phase, to stop a pathological pattern from hanging
+ * the tab *before* the draw budget can act. MAX_SOURCES_PER_FRAME bounds distinct
+ * NeededSources — the real crasher, since the pool spins up one <video> element
+ * per distinct source (thousands → OOM) and the share scan is O(n²) over them.
+ * MAX_EVENTS_PER_FRAME bounds the total event list. Both are far above any real
+ * pattern; past them the frame renders what fit and warns. See
+ * docs/reports/crash-patterns.md.
+ */
+export const MAX_SOURCES_PER_FRAME = 512;
+export const MAX_EVENTS_PER_FRAME = 8192;
+
+/**
  * Max size of a file we'll try to upload to the picodevil-server (1 GiB). Mirrors
  * the server's own default cap (PICODEVIL_MAX_UPLOAD_MB) — over this, the server
  * would 413, so we warn and skip the upload rather than waste a transfer. The
