@@ -7,6 +7,15 @@
 export const CYCLES_PER_SECOND = 0.5;
 
 /**
+ * Wall-clock budget for a single user-code evaluation (ms). User code runs
+ * synchronously via `new Function`, so a `while(true){}` would freeze the tab with
+ * no recovery. The transpiler injects a guard into every loop body that throws once
+ * this budget is exceeded, aborting the eval (caught by EvalController, which
+ * restores the prior pattern). 2s is far above any legitimate eval (<50ms typical).
+ */
+export const EVAL_TIMEOUT_MS = 2000;
+
+/**
  * Max size of a file we'll try to upload to the picodevil-server (1 GiB). Mirrors
  * the server's own default cap (PICODEVIL_MAX_UPLOAD_MB) — over this, the server
  * would 413, so we warn and skip the upload rather than waste a transfer. The

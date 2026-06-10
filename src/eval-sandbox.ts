@@ -44,6 +44,7 @@ import { screen, s } from "./screen-pattern";
 import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
 import { echo } from "./visual-controls";
+import { EVAL_TIMEOUT_MS } from "./config";
 
 const METHOD_GLOBALS_BLOCKLIST = new Set([
   'constructor', 'query', 'queryArc', 'queryWhole',
@@ -127,8 +128,27 @@ export function getPatternGlobals(): Record<string, unknown> {
  * Execute pre-transpiled user code with pattern globals plus any extra
  * runtime bindings (setCps, hush, loadVideo, slider, etc.) provided by main.ts.
  */
+/**
+ * Build the per-eval loop watchdog injected by the transpiler as `__pdGuard()`.
+ * It throws once the eval has run past `budgetMs`, so a runaway loop aborts
+ * instead of freezing the tab. The time check is throttled (every 16384 calls) so
+ * the per-iteration cost on legitimate loops is just an integer increment + mask.
+ */
+export function makeEvalGuard(budgetMs: number = EVAL_TIMEOUT_MS): () => void {
+  const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+  const start = now();
+  let n = 0;
+  return () => {
+    if ((++n & 0x3fff) === 0 && now() - start > budgetMs) {
+      throw new Error(
+        `Evaluation aborted: your code ran longer than ${budgetMs}ms — likely an infinite loop.`,
+      );
+    }
+  };
+}
+
 export function runTranspiled(transpiled: string, extra: Record<string, unknown> = {}): void {
-  const globals = { ...getPatternGlobals(), ...extra };
+  const globals = { ...getPatternGlobals(), ...extra, __pdGuard: makeEvalGuard() };
   const names = Object.keys(globals);
   const values = Object.values(globals);
   new Function(...names, transpiled)(...values);

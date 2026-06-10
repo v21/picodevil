@@ -69,12 +69,39 @@ function wrapInMini(node: any): any {
  * 2. Rewrites double-quoted string literals to mini() calls in-place
  * Returns the (possibly replaced) node.
  */
+// Loop statement node types whose bodies get an injected eval-timeout guard.
+const LOOP_TYPES = new Set([
+  "WhileStatement", "DoWhileStatement", "ForStatement", "ForInStatement", "ForOfStatement",
+]);
+
+// `__pdGuard();` — calls the per-eval watchdog injected at the top of every loop
+// body so a runaway loop (while(true){}) aborts instead of freezing the tab.
+function guardStatement(): any {
+  return {
+    type: "ExpressionStatement",
+    expression: {
+      type: "CallExpression",
+      callee: { type: "Identifier", name: "__pdGuard" },
+      arguments: [],
+    },
+  };
+}
+
 function walkAST(node: any, widgets: WidgetCallInfo[]): any {
   if (!node || typeof node !== "object") return node;
 
   // Double-quoted string → wrap in mini() (return a new node; caller must reassign)
   if (node.type === "Literal" && typeof node.value === "string" && node.raw?.startsWith('"')) {
     return wrapInMini(node);
+  }
+
+  // Prepend the eval-timeout guard to every loop body. Normalise a non-block body
+  // (e.g. `while (x) doThing()`) into a block first so the guard has somewhere to go.
+  if (LOOP_TYPES.has(node.type) && node.body) {
+    if (node.body.type !== "BlockStatement") {
+      node.body = { type: "BlockStatement", body: [node.body] };
+    }
+    node.body.body.unshift(guardStatement());
   }
 
   // Method-style fontPicker: expr.fontPicker('Gluten') — detected before the function-call branch
