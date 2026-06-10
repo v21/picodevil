@@ -33,7 +33,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "AGPL-3.0-or-later",
   "description": "",
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
