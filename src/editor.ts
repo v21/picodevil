@@ -137,25 +137,28 @@ export function setupEditor(
     onCodeChange?.(editorView.state.doc.toString());
   }
 
+  const runEval = (view: EditorView) => {
+    const code = view.state.doc.toString();
+    onCodeChange?.(code);
+    evalAndDecorate(view, code);
+    // flash effect
+    const lines = view.dom.querySelectorAll(".cm-line");
+    lines.forEach((el) => {
+      el.classList.remove("cm-evaluated");
+      if (el.textContent?.trim()) {
+        void (el as HTMLElement).offsetWidth;
+        el.classList.add("cm-evaluated");
+      }
+    });
+    return true;
+  };
+
+  // Bind both Ctrl-Enter and Mod-Enter. On Mac, Mod = Cmd, so Cmd-Enter works
+  // (and avoids the Ctrl=right-click collision that eats Ctrl-Enter in Firefox);
+  // on Win/Linux, Mod = Ctrl so the two coincide harmlessly.
   const evalKeymap = Prec.highest(keymap.of([
-    {
-      key: "Ctrl-Enter",
-      run(view: EditorView) {
-        const code = view.state.doc.toString();
-        onCodeChange?.(code);
-        evalAndDecorate(view, code);
-        // flash effect
-        const lines = view.dom.querySelectorAll(".cm-line");
-        lines.forEach((el) => {
-          el.classList.remove("cm-evaluated");
-          if (el.textContent?.trim()) {
-            void (el as HTMLElement).offsetWidth;
-            el.classList.add("cm-evaluated");
-          }
-        });
-        return true;
-      },
-    },
+    { key: "Ctrl-Enter", run: runEval },
+    { key: "Mod-Enter", run: runEval },
   ]));
 
   const view = new EditorView({
