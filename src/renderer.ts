@@ -1,4 +1,4 @@
-import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME } from './config';
+import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME, MAX_DRAW_TIME_MS } from './config';
 import { eventBeginFromHap } from './event-begin';
 import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
@@ -41,6 +41,8 @@ const TAU = Math.PI * 2;
 export class FrameRenderer {
   /** Total events collected in the last render() call. Exposed for metrics. */
   lastEventCount = 0;
+  /** Per-frame draw-phase budget (ms); the draw loop bails past it. Settable for tests. */
+  maxDrawTimeMs = MAX_DRAW_TIME_MS;
   /** Active video elements this frame. Exposed for metrics in main.ts. */
   readonly activeVideoEls: VideoEl[] = [];
 
@@ -107,8 +109,17 @@ export class FrameRenderer {
 
     this.renderer.beginFrame();
 
+    // Per-frame draw budget: a runaway pattern (thousands of tiles / hundreds of
+    // named FBO layers) can make one frame's draw block the main thread for
+    // seconds. Rather than a hard cap on FBOs/tiles, bail out of the draw loop once
+    // we've spent maxDrawTimeMs on it — between layer groups, so never mid-FBO —
+    // and warn. The partial frame still presents, keeping the tab responsive.
+    const drawStart = performance.now();
+    let drawAborted = false;
+
     let i = 0;
     while (i < allEvents.length) {
+      if (performance.now() - drawStart > this.maxDrawTimeMs) { drawAborted = true; break; }
       const si = allEvents[i].screenIndex;
       const groupStart = i;
       while (i < allEvents.length && allEvents[i].screenIndex === si) i++;
@@ -142,6 +153,10 @@ export class FrameRenderer {
 
     // Blit canvas → "prev" FBO for next-frame feedback
     this.renderer.captureAll();
+
+    if (drawAborted) {
+      warn(`Render stopped early to stay responsive — this pattern is too heavy to draw in one frame (too many layers/tiles). Simplify it: fewer named layers (FBOs), tiles, or feedback.`);
+    }
 
     this._endPhase('pd draw', this.metrics.phaseDraw);
 

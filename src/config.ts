@@ -16,6 +16,17 @@ export const CYCLES_PER_SECOND = 0.5;
 export const EVAL_TIMEOUT_MS = 2000;
 
 /**
+ * Per-frame wall-clock budget for the draw phase (ms). A pattern with a huge
+ * number of named layers (FBOs) or tiles can make one frame's main-thread draw
+ * take so long the whole tab stalls. There's no hard cap on FBOs/tiles; instead,
+ * if the draw loop exceeds this budget the renderer stops drawing the rest of the
+ * frame (between layer groups, never mid-FBO) and warns. The partial frame still
+ * presents, so the app stays responsive. 100ms is a visible hitch but far past any
+ * legitimate frame (stress budget is 32ms), so it only triggers on real runaways.
+ */
+export const MAX_DRAW_TIME_MS = 100;
+
+/**
  * Max size of a file we'll try to upload to the picodevil-server (1 GiB). Mirrors
  * the server's own default cap (PICODEVIL_MAX_UPLOAD_MB) — over this, the server
  * would 413, so we warn and skip the upload rather than waste a transfer. The
