@@ -132,10 +132,18 @@ window.pdCaptureStep = async (cps, nFrames, codeText) => {
   for (let i = 0; i < total; i++) {
     const cycle = startCycle + i / nFrames;               // continuous stepping
     const wall = baseWall + (i / nFrames) * durMs;
-    window.pdRenderAt(cycle, cps, wall);                 // issue seeks to exact positions
-    for (let k = 0; k < 60 && !settled(); k++) { await nextRaf(); await sleep(10); }
-    await nextRaf();                                      // let the decoded frame surface
-    window.pdRenderAt(cycle, cps, wall);                 // render the now-seeked frame
+    // Converge the pool + seeks at this cycle: re-render until a render issues no
+    // new seeks (every clip already sits at its expected position). One pass isn't
+    // enough when many elements of one clip are needed at different positions
+    // (e.g. sometimes(speed(-1)) — forward AND reverse tiles of "ducks"): the pool
+    // can reassign elements between passes, and a single render leaves one set
+    // mid-seek (frozen, and which set is random per run). The render right before
+    // the break displays the fully-settled frame, so we grab straight after.
+    for (let pass = 0; pass < 8; pass++) {
+      window.pdRenderAt(cycle, cps, wall);
+      if (settled()) break;                               // no seeks pending => converged
+      for (let k = 0; k < 80 && !settled(); k++) { await nextRaf(); await sleep(8); }
+    }
     if (i >= warmCycles * nFrames) out.push(window.__pdGrab(c, codeText));
   }
   return out;

@@ -141,6 +141,7 @@ $: s("ducks").stackN(15).rows(4).cols(4).grid()
 ```
 
 ![07-grid](readme-gifs/07-grid.gif)
+
 Or, if you want the items to repeat after they run out, you can use `gridMod`: 
 ```js
 $: s("ducks").stackN(15).rows(4).cols(4).gridMod()
@@ -271,7 +272,7 @@ $: s("canalboat").alpha(.5)
 
 ![20-layer-alpha](readme-gifs/20-layer-alpha.gif)
 
-Nice. We also have blend modes, so we could instead multiply the two feeds together:
+Nice. The ducks render first, and then the canalboat footage is layered on top of them. We also have blend modes, so we could instead multiply the two feeds together:
 ```js
 $: s("ducks")
 $: s("canalboat").blend("multiply")
@@ -279,7 +280,7 @@ $: s("canalboat").blend("multiply")
 
 ![21-blend-multiply](readme-gifs/21-blend-multiply.gif)
 
-So far so cool. Now, in Strudel, the different lines following a `$:` are stacked together behind the scenes. We also do this. But, as we said before, in Picodevil, the ordering of stacked layers is important. One way it's important is that we also have some special values you can pass to `s()`. Like `"all"`. When you pass `all`, it renders out the whole screen as rendered so far as a pattern. So, for example:
+So far so cool. Now, in Strudel, the different lines following a `$:` are stacked together behind the scenes. We also do this. But, as we said before, in Picodevil, the ordering of stacked layers is important. One way it's important is that it's the order things are drawn in. You can use this with some special values you can pass to `s()`. Like `"all"`. When you pass `all`, it renders out the whole screen as rendered so far as a pattern. So, for example:
 ```js
 $: s("ducks").stackN(9).tile()
 $: s("all").scale(0.5).grey()
