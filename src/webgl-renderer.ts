@@ -474,7 +474,12 @@ export class WebGLRenderer implements Renderer {
   private w = 0;
   private h = 0;
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false });
+    // `?pdpreserve` keeps the drawing buffer so an offscreen capture harness can
+    // read the live frame directly (no extra render that would double-advance
+    // feedback FBOs). Off by default — preserveDrawingBuffer costs perf.
+    const preserve = typeof location !== 'undefined' &&
+      new URLSearchParams(location.search).has('pdpreserve');
+    const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: preserve });
     if (!gl) throw new Error('WebGL2 not supported');
     this.gl = gl;
 

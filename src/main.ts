@@ -168,6 +168,11 @@ function frame() {
 
   frameRenderer.render(evalController.screens, evalController.namedScreens, t, cps, cycle, rafAbsNow);
 
+  // Test hook: expose the live loop's current frame coordinates so a capture
+  // harness can phase-sample the running render (re-render the exact live cycle
+  // for readback) instead of driving its own competing cycle.
+  (window as any).pdLiveFrame = { cycle, cps, wall: rafAbsNow };
+
   const frameDuration = performance.now() - rafAbsNow;
   const perfMem = (performance as any).memory;
   recordFrameMetrics(

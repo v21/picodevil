@@ -319,7 +319,13 @@ function updateVideoPlayback(
   });
   st.lastExpected = expected;
   st.lastExpectedWall = now;
-  const rateIsNative = effectiveRate > 0 && isNativeRate(effectiveRate);
+  // Test hook: `__pdStepSeek` forces every clip onto the manual-seek positioning
+  // path (below) instead of native el.play(). A capture harness can then step
+  // frame-by-frame — each render seeks to the exact `expected` position for the
+  // queried cycle — so playback is deterministic (no decode-paced drift) and an
+  // offscreen grab gets the right frame. Off in normal use.
+  const stepSeek = typeof window !== "undefined" && (window as any).__pdStepSeek;
+  const rateIsNative = !stepSeek && effectiveRate > 0 && isNativeRate(effectiveRate);
 
   if (rateIsNative) {
     // Native playback at the effective rate (which may differ from nominal speed
