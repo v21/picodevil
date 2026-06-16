@@ -1,3 +1,5 @@
+![picodevil logo](public/picodevil.png)
+
 # picodevil
 
 This is a livecoding tool that runs in the browser. It allows you to sample, cut up, and generally fuck about with videos. It's based on [Strudel](https://strudel.cc), adapting its capabilities to make more sense for visuals than for audio.
