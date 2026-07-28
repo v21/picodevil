@@ -20,7 +20,7 @@ import { setupSidebar } from "./sidebar";
 import { loadCamera, loadScreen } from "./stream-manager";
 import { fft, updateFrame as fftUpdateFrame, applyFftConfig, getFftConfig, onFftConfigChange } from "./fft-audio";
 import { WebGLRenderer } from "./webgl-renderer";
-import { showFatalOverlay } from "./fatal-overlay";
+import { showFatalOverlay, rendererFailureMessage } from "./fatal-overlay";
 import { FrameRenderer } from "./renderer";
 import type { Renderer } from "./renderer-interface";
 import { EvalController } from "./eval-controller";
@@ -39,10 +39,12 @@ let activeRenderer: Renderer;
 try {
   activeRenderer = new WebGLRenderer(canvas);
 } catch (err) {
-  showFatalOverlay(
-    "This browser can't run picodevil",
-    "picodevil needs WebGL2 with hardware acceleration. Try a recent Chrome, Edge, or Firefox, and make sure hardware acceleration is enabled in your browser settings.",
-  );
+  // The throw sites (webgl-renderer.ts) already console.error the specifics; log
+  // once more here with the error object (stack) so there's always a top-level
+  // marker even if the overlay fails to render.
+  console.error("[picodevil] renderer initialisation failed:", err);
+  const { title, message } = rendererFailureMessage(err);
+  showFatalOverlay(title, message);
   throw err;
 }
 

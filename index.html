@@ -4,6 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>picodevil</title>
+
+  <!-- Last-resort error breadcrumb. Inline + classic (not a module) so it is
+       installed BEFORE src/main.ts and its import graph evaluate — this catches
+       import-time failures that happen before main.ts's own try/catch can run,
+       turning a silent black page into at least one line in the console. -->
+  <script>
+    window.addEventListener('error', function (e) {
+      console.error('[picodevil] uncaught error:', e.error || e.message,
+        e.filename ? '(' + e.filename + ':' + e.lineno + ':' + e.colno + ')' : '');
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      console.error('[picodevil] unhandled promise rejection:', e.reason);
+    });
+  </script>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">

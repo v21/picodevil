@@ -6,6 +6,40 @@
  * explainer telling the user what's wrong and how to fix it.
  */
 
+/**
+ * Pick the user-facing title/message for a renderer startup failure.
+ *
+ * Two distinct failure modes get different advice (see the error classes in
+ * webgl-renderer.ts):
+ *   - `ShaderError` — WebGL2 is present but a shader wouldn't compile/link on this
+ *     GPU/driver (classically ANGLE→Direct3D on Windows). Advise driver/browser
+ *     update + point at the console, where the driver log + shader source were
+ *     dumped at the throw site.
+ *   - anything else (incl. `WebGL2UnavailableError`) — no usable WebGL2 context.
+ *     Advise enabling hardware acceleration.
+ *
+ * Branches on `err.name` (a string) rather than `instanceof` so this module stays
+ * decoupled from the renderer — the safety net shouldn't depend on the thing that
+ * failed.
+ */
+export function rendererFailureMessage(err: unknown): { title: string; message: string } {
+  if ((err as { name?: string } | null)?.name === "ShaderError") {
+    return {
+      title: "picodevil couldn't start on this GPU",
+      message:
+        "Your browser supports WebGL2, but its graphics shader failed to compile on " +
+        "this GPU or driver. Updating your graphics drivers (or your browser) may fix " +
+        "it. Full technical details are in the browser console.",
+    };
+  }
+  return {
+    title: "This browser can't run picodevil",
+    message:
+      "picodevil needs WebGL2 with hardware acceleration. Try a recent Chrome, Edge, " +
+      "or Firefox, and make sure hardware acceleration is enabled in your browser settings.",
+  };
+}
+
 /** Show a fatal-error overlay. Idempotent — a second call replaces the message. */
 export function showFatalOverlay(title: string, message: string): HTMLElement {
   const existing = document.getElementById("pd-fatal");

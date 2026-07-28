@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && rsync -avz --delete --exclude='test-assets/' --exclude='.DS_Store' dist/ root@acorn:/root/picodevil/dist/",
+    "deploy": "npm run build && rsync -avz --delete-after --exclude='test-assets/' --exclude='.DS_Store' dist/ root@acorn:/root/picodevil/dist/",
     "//deploy": "rsyncs the built site to acorn. but it only works for me, you're not allowed to ssh into acorn.",
     "test": "vitest run",
     "test:all": "npm run test && npm run test:monkey:replay && npm run test:url-state && npm run test:upload && npm run test:blob-playback && npm run test:stress:headless && npm run test:bench:check && npm run test:golden && npm run test:golden:examples && npm run test:monkey",

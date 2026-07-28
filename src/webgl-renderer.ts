@@ -8,6 +8,36 @@ import {
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
+// Startup failure types
+// ---------------------------------------------------------------------------
+// The renderer can fail to initialise in two distinct ways, and the user needs
+// different advice for each (see rendererFailureMessage in fatal-overlay.ts):
+//   1. No WebGL2 context at all — the GPU path isn't available.
+//   2. Context exists but a shader won't compile/link — the driver rejected our
+//      GLSL (classically ANGLE→Direct3D on Windows).
+// Both carry a distinct `.name` so the overlay can branch without importing this
+// module (keeps the fatal-overlay safety net dependency-free).
+
+/** Thrown when `canvas.getContext('webgl2')` returns null: no WebGL2 support,
+ *  hardware acceleration disabled, or a blocklisted GPU/driver. */
+export class WebGL2UnavailableError extends Error {
+  constructor(message = 'WebGL2 not supported') {
+    super(message);
+    this.name = 'WebGL2UnavailableError';
+  }
+}
+
+/** Thrown when a shader fails to compile or a program fails to link. The context
+ *  exists, but the GPU/driver couldn't build our GLSL. Message carries the driver
+ *  info-log (also dumped to console at the throw site). */
+export class ShaderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ShaderError';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -480,7 +510,15 @@ export class WebGLRenderer implements Renderer {
     const preserve = typeof location !== 'undefined' &&
       new URLSearchParams(location.search).has('pdpreserve');
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: preserve });
-    if (!gl) throw new Error('WebGL2 not supported');
+    if (!gl) {
+      console.error(
+        "[picodevil] Fatal: could not create a WebGL2 context — " +
+        "canvas.getContext('webgl2') returned null. Likely causes: WebGL2 " +
+        "unsupported, hardware acceleration disabled, or a blocklisted GPU/driver. " +
+        "Diagnose at chrome://gpu (Chromium/Edge) or about:support → Graphics (Firefox).",
+      );
+      throw new WebGL2UnavailableError();
+    }
     this.gl = gl;
 
     // Query the device limit before compiling the shader so we don't declare
@@ -986,19 +1024,25 @@ export class WebGLRenderer implements Renderer {
 // GL helpers
 // ---------------------------------------------------------------------------
 
-function compileShader(gl: WebGL2RenderingContext, type: GLenum, src: string): WebGLShader {
+export function compileShader(gl: WebGL2RenderingContext, type: GLenum, src: string): WebGLShader {
   const shader = gl.createShader(type)!;
   gl.shaderSource(shader, src);
   gl.compileShader(shader);
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const log = gl.getShaderInfoLog(shader);
     gl.deleteShader(shader);
-    throw new Error(`Shader compile error:\n${log}`);
+    const stage = type === gl.VERTEX_SHADER ? 'vertex' : 'fragment';
+    console.error(
+      `[picodevil] Fatal: ${stage} shader failed to compile. The GPU/driver ` +
+      `rejected our GLSL (e.g. ANGLE→Direct3D on Windows). Driver log:\n` +
+      `${log ?? '(no log)'}\n\n--- ${stage} shader source ---\n${src}`,
+    );
+    throw new ShaderError(`${stage} shader compile error:\n${log ?? ''}`);
   }
   return shader;
 }
 
-function createProgram(gl: WebGL2RenderingContext, vertSrc: string, fragSrc: string): WebGLProgram {
+export function createProgram(gl: WebGL2RenderingContext, vertSrc: string, fragSrc: string): WebGLProgram {
   const vert = compileShader(gl, gl.VERTEX_SHADER,   vertSrc);
   const frag = compileShader(gl, gl.FRAGMENT_SHADER, fragSrc);
   const prog = gl.createProgram()!;
@@ -1010,7 +1054,10 @@ function createProgram(gl: WebGL2RenderingContext, vertSrc: string, fragSrc: str
   if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
     const log = gl.getProgramInfoLog(prog);
     gl.deleteProgram(prog);
-    throw new Error(`Program link error:\n${log}`);
+    console.error(
+      `[picodevil] Fatal: shader program failed to link. Driver log:\n${log ?? '(no log)'}`,
+    );
+    throw new ShaderError(`Program link error:\n${log ?? ''}`);
   }
   return prog;
 }
