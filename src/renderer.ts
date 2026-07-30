@@ -1,4 +1,4 @@
-import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME, MAX_DRAW_TIME_MS } from './config';
+import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME, MAX_DRAW_TIME_MS, MAX_TEXT_CANVASES } from './config';
 import { eventBeginFromHap } from './event-begin';
 import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
@@ -52,6 +52,11 @@ export class FrameRenderer {
   /** Free image elements keyed by srcUrl. Images are lightweight and never evicted. */
   private readonly imageFreePool = new Map<string, HTMLImageElement>();
   private readonly colorCache = new Map<string, [number, number, number]>();
+  /** Rendered text canvases keyed by render inputs. Insertion-ordered for LRU. */
+  private readonly textCanvasCache = new Map<string, HTMLCanvasElement>();
+  /** Memoised @font-face lookups, invalidated when a stylesheet is added/removed. */
+  private fontSrcCache = new Map<string, string | null>();
+  private fontSrcSheetCount = -1;
   private readonly scratchCtx = document.createElement('canvas').getContext('2d')!;
   /** Assignment from NeededSource to element for the current frame. */
   private neededToEl = new Map<NeededSource, VideoEl | HTMLImageElement>();
@@ -275,6 +280,15 @@ export class FrameRenderer {
     return [1, 1, 1];
   }
 
+  /**
+   * Rendered canvas for a text tile, cached by its full render inputs.
+   *
+   * Rendering text is deterministic in (text, font, size, colours, variation), so
+   * the canvas is reusable across frames — and it must be reused: a fresh canvas
+   * each frame means a fresh GL texture each frame in TextureCache (keyed by
+   * canvas identity), and nothing ever deletes them. The cache is LRU-capped;
+   * evicted canvases go back to the backend so their texture is released.
+   */
   private getTextCanvas(ev: any): HTMLCanvasElement {
     const textStr     = typeof ev.text === 'string' ? ev.text : '';
     const family      = ev.font ?? 'sans-serif';
@@ -296,19 +310,38 @@ export class FrameRenderer {
       variation[tag] = axisSpec ? Math.min(axisSpec.max, Math.max(axisSpec.min, val)) : val;
     }
 
-    // Hosted fonts: use HarfBuzz for shaping + glyph path rendering (taint-free, full variation).
+    // Hosted fonts: use HarfBuzz for shaping + glyph path rendering (taint-free, full
+    // variation). A hosted font that hasn't finished loading falls back to Canvas 2D
+    // for this frame — the chosen path is part of the cache key, so the stand-in is
+    // superseded (not reused) once the face arrives.
     const srcUrl = this.findFontSrcUrl(family);
-    if (srcUrl) {
-      const entry = getHarfbuzzFace(srcUrl);
-      if (entry) {
-        return renderTextHarfbuzz(textStr, entry, size, variation, fontColor, fontBGColor || undefined);
-      }
-      // Font not yet loaded — fall through to Canvas 2D stand-in for this frame.
+    const entry = srcUrl ? getHarfbuzzFace(srcUrl) : null;
+
+    const varKey = Object.keys(variation).sort().map(k => `${k}=${variation[k]}`).join(',');
+    const key = `${entry ? `hb:${srcUrl}` : 'c2d'}|${fontStr}|${fontColor}|${fontBGColor}|${varKey}|${textStr}`;
+
+    const cached = this.textCanvasCache.get(key);
+    if (cached) {
+      // LRU touch: re-insert so the most-recently-drawn text sits at the tail.
+      this.textCanvasCache.delete(key);
+      this.textCanvasCache.set(key, cached);
+      return cached;
     }
 
-    // Fallback: Canvas 2D. Used for websafe fonts and while hosted font is loading.
-    // Variation axes are silently ignored (websafe fonts aren't variable).
-    return renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
+    const canvas = entry
+      ? renderTextHarfbuzz(textStr, entry, size, variation, fontColor, fontBGColor || undefined)
+      // Canvas 2D: used for websafe fonts and while a hosted font is loading.
+      // Variation axes are silently ignored (websafe fonts aren't variable).
+      : renderTextToCanvas(textStr, fontStr, fontColor, fontBGColor || undefined);
+
+    while (this.textCanvasCache.size >= MAX_TEXT_CANVASES) {
+      const oldestKey = this.textCanvasCache.keys().next().value as string;
+      const oldest = this.textCanvasCache.get(oldestKey)!;
+      this.textCanvasCache.delete(oldestKey);
+      this.renderer.releaseSource?.(oldest);
+    }
+    this.textCanvasCache.set(key, canvas);
+    return canvas;
   }
 
   /**
@@ -317,6 +350,22 @@ export class FrameRenderer {
    * natively without a browser decompressor.
    */
   private findFontSrcUrl(family: string): string | null {
+    // Scanning every @font-face rule in the document, per text tile, per frame is
+    // pure overhead — the rules only change when a stylesheet is added or removed
+    // (e.g. the local-fonts sheet appearing), so use the sheet count as the token.
+    const sheetCount = document.styleSheets.length;
+    if (sheetCount !== this.fontSrcSheetCount) {
+      this.fontSrcCache.clear();
+      this.fontSrcSheetCount = sheetCount;
+    }
+    const memo = this.fontSrcCache.get(family);
+    if (memo !== undefined) return memo;
+    const found = this.scanFontSrcUrl(family);
+    this.fontSrcCache.set(family, found);
+    return found;
+  }
+
+  private scanFontSrcUrl(family: string): string | null {
     const familyLc = family.toLowerCase();
     for (const sheet of Array.from(document.styleSheets)) {
       try {

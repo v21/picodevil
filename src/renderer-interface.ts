@@ -92,8 +92,9 @@ export interface Renderer {
   /** Release GPU/canvas resources. */
   dispose(): void;
   /**
-   * Release the cached GPU texture for a media element the video pool has
-   * permanently discarded. Optional — backends without a texture cache omit it.
+   * Release the cached GPU texture for a source the frame renderer has permanently
+   * discarded — a media element evicted by the video pool, or a text canvas evicted
+   * from the text cache. Optional — backends without a texture cache omit it.
    */
-  releaseSource?(el: HTMLVideoElement | HTMLImageElement): void;
+  releaseSource?(el: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement): void;
 }

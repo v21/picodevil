@@ -45,6 +45,16 @@ export const MAX_EVENTS_PER_FRAME = 8192;
  * dropped file still plays locally from its blob URL; it just isn't persisted.
  */
 export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
+/**
+ * Max rendered text canvases held by FrameRenderer's LRU cache. Each entry is a
+ * <canvas> plus the GL texture the backend uploaded from it, so an uncapped cache
+ * grows without bound for text driven by a pattern (a counter, a clock, FFT-derived
+ * strings). Evicted canvases are handed to `Renderer.releaseSource` so the texture
+ * is deleted rather than orphaned. 256 distinct simultaneous text tiles is far past
+ * any real pattern, so the cap never bites a static tile — it only bounds the churn.
+ */
+export const MAX_TEXT_CANVASES = 256;
+
 /** How far ahead to query patterns for video prewarming, in milliseconds. */
 export const PREWARM_LOOKAHEAD_MS = 500;
 

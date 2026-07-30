@@ -41,6 +41,22 @@ describe("TextureCache.release", () => {
     expect(tex2).toBeTruthy();
     expect(tex2).not.toBe(tex1); // fresh handle, not the released one
   });
+
+  it("deletes a text canvas's texture when the text cache evicts it", () => {
+    const gl = makeGL();
+    const cache = new TextureCache(gl);
+    const canvas = document.createElement("canvas");
+    canvas.width = 4; canvas.height = 4;
+    const source: TileSource = { kind: "text", canvas };
+
+    const tex1 = cache.get(source);
+    expect(gl.isTexture(tex1!)).toBe(true);
+    expect(cache.get(source)).toBe(tex1); // cached by canvas identity
+
+    cache.release(canvas);
+    expect(gl.isTexture(tex1!)).toBe(false);
+    expect(cache.get(source)).not.toBe(tex1);
+  });
 });
 
 describe("makeCopyCanvas (screen-capture OffscreenCanvas fallback)", () => {

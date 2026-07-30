@@ -114,11 +114,19 @@ export class TextureCache {
   }
 
   /**
-   * Release the texture for a single media element. Call when the video pool
-   * permanently discards the element (eviction) so its GL texture is freed and the
-   * element is dropped from the cache — otherwise both leak for the session.
+   * Release the texture for a single source. Call when the frame renderer
+   * permanently discards it — a media element evicted by the video pool, or a text
+   * canvas evicted from the text cache — so its GL texture is freed and the source
+   * is dropped from the cache. Otherwise both leak for the session.
    */
-  release(el: SourceElement): void {
+  release(el: SourceElement | HTMLCanvasElement): void {
+    if (el instanceof HTMLCanvasElement) {
+      const canvasTex = this.canvasTextures.get(el);
+      if (canvasTex) this.gl.deleteTexture(canvasTex);
+      this.canvasTextures.delete(el);
+      this.uploadedCanvases.delete(el);
+      return;
+    }
     const tex = this.elementTextures.get(el);
     // Skip the GL delete if the context is lost — the texture died with it, and
     // deleting a dead-generation handle throws INVALID_OPERATION.
