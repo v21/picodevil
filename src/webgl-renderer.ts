@@ -572,6 +572,8 @@ export class WebGLRenderer implements Renderer {
   private gpuInfo = '(unknown)';
   /** Invoked when the context is lost too many times, or can't be restored. */
   private readonly onUnrecoverable?: () => void;
+  /** Set by dispose(). Suppresses the loss/restore handlers for a deliberate teardown. */
+  private disposed = false;
 
   constructor(canvas: HTMLCanvasElement, opts: { onUnrecoverable?: () => void } = {}) {
     this.onUnrecoverable = opts.onUnrecoverable;
@@ -621,7 +623,12 @@ export class WebGLRenderer implements Renderer {
     // the browser fire 'restored', where we rebuild the program/buffers/VAO/UBO and
     // drop the now-dead FBO + texture caches so they re-create lazily. Without this
     // the canvas stays black until a full page reload.
+    // dispose() releases the context on purpose (via WEBGL_lose_context), which
+    // fires the same events — that's a teardown, not a GPU fault, so both handlers
+    // no-op once disposed: no user-facing warning, and no rebuilding GL resources
+    // for a renderer nobody holds any more.
     canvas.addEventListener('webglcontextlost', (e) => {
+      if (this.disposed) return;
       // preventDefault is what lets the browser fire 'restored'.
       e.preventDefault();
       this.contextLossCount++;
@@ -641,6 +648,7 @@ export class WebGLRenderer implements Renderer {
       }
     });
     canvas.addEventListener('webglcontextrestored', () => {
+      if (this.disposed) return;
       try {
         this.restoreContext();
         console.log(
@@ -1079,13 +1087,24 @@ export class WebGLRenderer implements Renderer {
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
   }
 
-  /** Free the cached texture for an element the video pool has discarded. */
-  releaseSource(el: HTMLVideoElement | HTMLImageElement): void {
+  /** Free the cached texture for a discarded source: a pool-evicted media element, or an evicted text canvas. */
+  releaseSource(el: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement): void {
     this.texCache.release(el);
   }
 
+  /**
+   * Release every GPU resource this renderer owns, including the WebGL context.
+   *
+   * Deleting the GL objects isn't enough: the context itself is a scarce per-page
+   * resource (Chrome keeps ~16 alive, then starts killing the oldest — after which
+   * `getContext('webgl2')` can return null and the *next* renderer fails to
+   * construct at all). Dropping our reference doesn't help either, since the canvas
+   * holds the context and release would wait on GC. WEBGL_lose_context hands it
+   * back immediately.
+   */
   dispose(): void {
     const { gl } = this;
+    this.disposed = true;
     this.texCache.clear();
     // A lost context has already freed every handle; deleting them now would throw
     // INVALID_OPERATION. Just drop our references and let GC handle the wrappers.
@@ -1104,6 +1123,7 @@ export class WebGLRenderer implements Renderer {
       gl.deleteBuffer(this.opsUBO);
     }
     this.fbos.clear();
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 
   /** Allocate a fresh RGBA8 texture + framebuffer sized to the canvas. */

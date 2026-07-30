@@ -1,6 +1,6 @@
 /**
  * Shared helpers for WebGL unit tests.
- * Import makeTile / renderTiles / readPixel into each webgl-*.test.ts file.
+ * Import makeTile / renderTiles / withRenderer / readPixel into each webgl-*.test.ts file.
  */
 import { WebGLRenderer } from "./webgl-renderer";
 import type { TileParams } from "./renderer-interface";
@@ -27,22 +27,53 @@ export function makeTile(overrides: Partial<TileParams> = {}): TileParams {
   };
 }
 
-/** Render one or more tiles to a 100×100 WebGL canvas and return it. */
-export function renderTiles(tiles: TileParams[]): HTMLCanvasElement {
+function makeCanvas(): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
-  const renderer = new WebGLRenderer(canvas);
-  renderer.resize(W, H);
-  renderer.beginFrame();
-  for (const tile of tiles) renderer.drawTile(tile);
-  renderer.endFrame();
-  renderer.dispose();
   return canvas;
+}
+
+// One renderer (and therefore one WebGL context) shared by every renderTiles()
+// call in a test file. A context per call would blow through the browser's live-
+// context budget (~16) within a single describe block, after which getContext
+// returns null and every remaining test in the file dies with "WebGL2 not
+// supported". beginFrame() clears, so tests still start from a blank canvas.
+// Tests that need pristine FBO state (feedback, snapshots) use withRenderer().
+let sharedCanvas: HTMLCanvasElement | null = null;
+let sharedRenderer: WebGLRenderer | null = null;
+
+/** Render one or more tiles to a shared 100×100 WebGL canvas and return it. */
+export function renderTiles(tiles: TileParams[]): HTMLCanvasElement {
+  if (!sharedRenderer) {
+    sharedCanvas = makeCanvas();
+    sharedRenderer = new WebGLRenderer(sharedCanvas);
+  }
+  sharedRenderer.resize(W, H);
+  sharedRenderer.beginFrame();
+  for (const tile of tiles) sharedRenderer.drawTile(tile);
+  sharedRenderer.endFrame();
+  return sharedCanvas!;
 }
 
 /** Convenience wrapper for a single tile. */
 export function renderTile(params: TileParams): HTMLCanvasElement {
   return renderTiles([params]);
+}
+
+/**
+ * Run `fn` against a freshly constructed renderer (empty FBO state), disposing it
+ * — and releasing its GL context — afterwards. Read pixels *inside* fn: the
+ * context is gone by the time it returns.
+ */
+export function withRenderer<T>(fn: (renderer: WebGLRenderer, canvas: HTMLCanvasElement) => T): T {
+  const canvas = makeCanvas();
+  const renderer = new WebGLRenderer(canvas);
+  renderer.resize(W, H);
+  try {
+    return fn(renderer, canvas);
+  } finally {
+    renderer.dispose();
+  }
 }
 
 /**
