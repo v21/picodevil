@@ -41,9 +41,57 @@ export class ShaderError extends Error {
 // Constants
 // ---------------------------------------------------------------------------
 
-// Default upper bound for sampler slots. The actual count is clamped to
+// Upper bound for sampler slots. The actual count is clamped to
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
-const MAX_TEX_UNITS = 64;
+//
+// 15, NOT 16, and not the device maximum — this works around an ANGLE/D3D11 bug
+// that killed picodevil on every Windows machine. A fragment shader that declares
+// BOTH a sampler array of exactly MAX_TEXTURE_IMAGE_UNITS (16 on all D3D11 feature
+// levels >= 11.0) AND a std140 block whose single field is an array of >= 50
+// elements (our Effects block: vec4 ops[1024]) loses the WebGL2 context after 2-3
+// frames, with no GL error. Chrome then blocks the origin — "Web page caused
+// context loss and was blocked" — after which getContext('webgl2') returns null
+// browser-wide until the browser is fully restarted, not just the tab.
+//
+// Why the two interact: at >= 50 elements ANGLE translates the block from an HLSL
+// cbuffer to a StructuredBuffer on a `t` register (kMinArraySizeUseStructuredBuffer
+// in RecordUniformBlocksWithLargeArrayMember.cpp), and samplers share that register
+// counter (mSRVRegister, ResourcesHLSL.cpp) — so 16 samplers push it to t16, one
+// past ANGLE's own 16-entry SRV cache. Dropping to 15 leaves it a slot.
+//
+// Measured on GTX 1660 SUPER / driver 32.0.15.9186 / Windows 11: 15 samplers
+// survives, 16 dies, and vec4[49] survives where vec4[50] dies — both boundaries
+// exact and deterministic. To re-derive: declare u_tex[16] + a std140 block with
+// one array field of >= 50 elements, reference both, draw a quad; the context
+// dies in 2-3 frames. Costs us almost nothing — only ~15% of devices report more
+// than 16 units anyway (Web3D Survey), so this is marginally more draw calls.
+export const MAX_TEX_UNITS = 15;
+
+/**
+ * Build the diagnostic for a failed `getContext('webgl2')`.
+ *
+ * `statusMessage` is the browser's own explanation, captured from the
+ * 'webglcontextcreationerror' event. `hasWebGL1` is the key discriminator: if
+ * WebGL1 is dead too, GPU acceleration is off wholesale (hardware acceleration
+ * disabled, or Chrome retired the GPU process after repeated crashes — which is
+ * what a run of context losses eventually escalates to). If WebGL1 works and only
+ * WebGL2 was refused, it really is a WebGL2 capability/blocklist problem.
+ */
+export function describeContextCreationFailure(statusMessage: string, hasWebGL1: boolean): string {
+  const cause = hasWebGL1
+    ? 'WebGL1 still works, so the GPU is present and WebGL2 was refused specifically. ' +
+      'The usual cause is NOT an old GPU: Chrome disables GPU-backed WebGL2 browser-wide ' +
+      'after roughly three GPU-process crashes, and it stays disabled until the browser ' +
+      'is fully restarted (reloading the tab will not clear it). If picodevil crashed the ' +
+      'GPU earlier in this browser session, that is what you are seeing.'
+    : 'WebGL1 is unavailable too, so this is not a WebGL2-specific problem: hardware ' +
+      'acceleration is off entirely, or the GPU process is unusable.';
+  return (
+    "could not create a WebGL2 context — canvas.getContext('webgl2') returned null. " +
+    `Browser reason: "${statusMessage || '(none)'}". ${cause} ` +
+    'Diagnose at chrome://gpu (Chromium/Edge) or about:support → Graphics (Firefox).'
+  );
+}
 
 // Give up on automatic context-loss recovery after this many losses in a session
 // and surface the fatal overlay — a Windows GPU stuck in a TDR reset loop would
@@ -550,14 +598,22 @@ export class WebGLRenderer implements Renderer {
     // feedback FBOs). Off by default — preserveDrawingBuffer costs perf.
     const preserve = typeof location !== 'undefined' &&
       new URLSearchParams(location.search).has('pdpreserve');
+    // The browser explains *why* creation failed via 'webglcontextcreationerror',
+    // but only to a listener attached before getContext. Without this all we ever
+    // learn is "returned null", which is the same symptom for a dozen causes.
+    let creationStatus = '';
+    const onCreationError = (e: Event) => {
+      creationStatus = (e as WebGLContextEvent).statusMessage || '';
+    };
+    canvas.addEventListener('webglcontextcreationerror', onCreationError);
     const gl = canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: preserve });
+    canvas.removeEventListener('webglcontextcreationerror', onCreationError);
     if (!gl) {
-      console.error(
-        "[picodevil] Fatal: could not create a WebGL2 context — " +
-        "canvas.getContext('webgl2') returned null. Likely causes: WebGL2 " +
-        "unsupported, hardware acceleration disabled, or a blocklisted GPU/driver. " +
-        "Diagnose at chrome://gpu (Chromium/Edge) or about:support → Graphics (Firefox).",
-      );
+      // Probe WebGL1 on a *fresh* canvas — a canvas that's already been asked for
+      // one context type won't hand out another, so reusing `canvas` here would
+      // always report "no WebGL1" and slander a healthy GPU.
+      const hasWebGL1 = !!document.createElement('canvas').getContext('webgl');
+      console.error(`[picodevil] Fatal: ${describeContextCreationFailure(creationStatus, hasWebGL1)}`);
       throw new WebGL2UnavailableError();
     }
     this.gl = gl;

@@ -39,7 +39,11 @@ describe("renderer startup failure classification", () => {
     // A canvas whose getContext returns null == no WebGL2 (hw accel off / blocklisted).
     const deadCanvas = {
       getContext: () => null,
+      // Both are needed: the renderer attaches a 'webglcontextcreationerror'
+      // listener before getContext (to capture the browser's own reason) and
+      // detaches it immediately after.
       addEventListener: () => {},
+      removeEventListener: () => {},
     } as unknown as HTMLCanvasElement;
 
     expect(() => new WebGLRenderer(deadCanvas)).toThrow(WebGL2UnavailableError);
