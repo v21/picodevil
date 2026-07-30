@@ -120,24 +120,38 @@ export class TextureCache {
    */
   release(el: SourceElement): void {
     const tex = this.elementTextures.get(el);
-    if (tex) this.gl.deleteTexture(tex);
+    // Skip the GL delete if the context is lost — the texture died with it, and
+    // deleting a dead-generation handle throws INVALID_OPERATION.
+    if (tex && !this.gl.isContextLost()) this.gl.deleteTexture(tex);
     this.elementTextures.delete(el);
     this.uploaded.delete(el);
   }
 
-  /** Release all GL resources (call on context loss or disposal). */
-  clear(): void {
-    const { gl } = this;
-    for (const tex of this.colorTextures.values()) gl.deleteTexture(tex);
+  /**
+   * Drop all cached textures WITHOUT issuing GL deletes. Use on context loss /
+   * restore: the underlying GL objects died with the old context, and deleting
+   * them on the restored context throws INVALID_OPERATION ("object does not belong
+   * to this context"). The next upload re-creates everything on fresh handles.
+   */
+  forget(): void {
     this.colorTextures.clear();
     // elementTextures/uploaded are Weak (can't iterate to delete) — individual GL
     // textures are freed by release() during normal churn; here we just swap in
-    // fresh collections. On context loss the old textures are dead anyway; on
-    // dispose the context is going away. Same trade-off as the canvas caches.
+    // fresh collections.
     this.elementTextures = new WeakMap();
     this.uploaded = new WeakSet();
     this.canvasTextures = new WeakMap();
     this.uploadedCanvases = new WeakSet();
+  }
+
+  /** Release all GL resources (call on disposal, while the context is still valid).
+   *  Deletes the cached colour textures, then forgets everything. */
+  clear(): void {
+    const { gl } = this;
+    if (!gl.isContextLost()) {
+      for (const tex of this.colorTextures.values()) gl.deleteTexture(tex);
+    }
+    this.forget();
   }
 
   private getColor(r: number, g: number, b: number): WebGLTexture {

@@ -37,7 +37,16 @@ const canvas = document.getElementById("c") as HTMLCanvasElement;
 // editor (the throw would otherwise abort the whole module).
 let activeRenderer: Renderer;
 try {
-  activeRenderer = new WebGLRenderer(canvas);
+  activeRenderer = new WebGLRenderer(canvas, {
+    // Repeated unrecoverable context loss (e.g. a Windows GPU stuck resetting) —
+    // stop flashing black and tell the user what to try.
+    onUnrecoverable: () => showFatalOverlay(
+      "picodevil lost the graphics context",
+      "The GPU repeatedly dropped picodevil's graphics context and it couldn't recover. " +
+      "This is usually an out-of-date graphics driver or the GPU running out of memory — " +
+      "try updating your drivers, a simpler pattern, or a smaller window, then reload.",
+    ),
+  });
 } catch (err) {
   // The throw sites (webgl-renderer.ts) already console.error the specifics; log
   // once more here with the error object (stack) so there's always a top-level
@@ -160,6 +169,9 @@ let rafPaused = false;
 
 function frame() {
   if (rafPaused) { requestAnimationFrame(frame); return; }
+  // Skip rendering while the GPU context is lost — issuing GL calls into a dead
+  // context spews errors and can starve the browser's chance to restore it.
+  if (activeRenderer.isContextLost?.()) { requestAnimationFrame(frame); return; }
   const rafAbsNow = performance.now();
   const interFrameGap = rafAbsNow - lastRafAbsTime;
   lastRafAbsTime = rafAbsNow;

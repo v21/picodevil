@@ -86,6 +86,9 @@ export interface Renderer {
   snapshotSoFar(): void;
   /** Blit the current canvas output to the "prev" FBO for next-frame feedback. */
   captureAll(): void;
+  /** True while the backing GPU context is lost (WebGL only). Optional — backends
+   *  that can't lose a context omit it. The render loop skips frames while it holds. */
+  isContextLost?(): boolean;
   /** Release GPU/canvas resources. */
   dispose(): void;
   /**

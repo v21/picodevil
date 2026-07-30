@@ -7,13 +7,15 @@
  * loss with the WEBGL_lose_context extension and assert the renderer renders a
  * correct frame afterward.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { WebGLRenderer } from "./webgl-renderer";
 import { makeTile, readPixel, W, H } from "./webgl-test-helpers";
 
 // loseContext()/restoreContext() fire the canvas events synchronously in Chromium,
 // but allow a tick in case the implementation defers the 'restored' event.
 function tick() { return new Promise(r => setTimeout(r, 0)); }
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("WebGL context loss recovery", () => {
   it("recreates GL resources and renders again after a loss+restore", async () => {
@@ -52,6 +54,60 @@ describe("WebGL context loss recovery", () => {
     expect(r).toBeLessThan(60);
     expect(b).toBeLessThan(60);
 
+    // Restore must NOT delete objects from the dead context generation — that
+    // throws INVALID_OPERATION ("object does not belong to this context"). The
+    // pre-loss red frame created a colour texture, so a clean error state here
+    // proves we forgot it instead of deleting it.
+    expect(gl.getError()).toBe(gl.NO_ERROR);
+
+    renderer.dispose();
+  });
+
+  it("reports isContextLost() across a loss + restore (so the render loop can skip)", async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    const gl = canvas.getContext("webgl2") as WebGL2RenderingContext;
+    const ext = gl.getExtension("WEBGL_lose_context")!;
+
+    expect(renderer.isContextLost()).toBe(false);
+    ext.loseContext();
+    await tick();
+    expect(renderer.isContextLost()).toBe(true);
+    ext.restoreContext();
+    await tick();
+    expect(renderer.isContextLost()).toBe(false);
+
+    renderer.dispose();
+  });
+
+  it("invokes onUnrecoverable after too many repeated losses instead of retrying forever", async () => {
+    // The renderer logs loudly on every loss/restore — silence it for a clean run.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const onUnrecoverable = vi.fn();
+    const renderer = new WebGLRenderer(canvas, { onUnrecoverable });
+    const gl = canvas.getContext("webgl2") as WebGL2RenderingContext;
+    const ext = gl.getExtension("WEBGL_lose_context")!;
+
+    // First two loss+restore cycles recover fine and must NOT give up (MAX = 3).
+    for (let i = 0; i < 2; i++) {
+      ext.loseContext();
+      await tick();
+      expect(onUnrecoverable).not.toHaveBeenCalled();
+      ext.restoreContext();
+      await tick();
+    }
+    // Third loss trips the give-up threshold.
+    ext.loseContext();
+    await tick();
+    expect(onUnrecoverable).toHaveBeenCalled();
+
+    ext.restoreContext();
+    await tick();
     renderer.dispose();
   });
 });

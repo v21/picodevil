@@ -45,6 +45,15 @@ export class ShaderError extends Error {
 // gl.MAX_TEXTURE_IMAGE_UNITS at runtime and the shader is compiled with that value.
 const MAX_TEX_UNITS = 64;
 
+// Give up on automatic context-loss recovery after this many losses in a session
+// and surface the fatal overlay — a Windows GPU stuck in a TDR reset loop would
+// otherwise just flash black forever.
+const MAX_CONTEXT_LOSSES = 3;
+
+// Log the GPU identity only once (production has a single renderer; this just keeps
+// the test suite, which builds many, from repeating the line).
+let gpuInfoLogged = false;
+
 // Per-instance Float32Array layout (26 floats = 104 bytes):
 //   [0..1]   destOffset   (vec2)
 //   [2..3]   destSize     (vec2)
@@ -104,12 +113,32 @@ void main() {
 }`;
 
 // Build the fragment shader source for a given number of texture units.
-function buildFragSrc(n: number): string {
+// `safe` (from ?pdsafeshader) returns a stripped-down diagnostic shader — see below.
+export function buildFragSrc(n: number, safe = false): string {
   // SAMPLE op dispatches to one of N texture units via an if/else chain
   // (GLSL can't dynamically index sampler arrays).
   const sampleChain = Array.from({ length: n }, (_, i) =>
     `${i === 0 ? 'if' : 'else if'} (texIdx == ${i}) color = texture(u_tex[${i}], uv);`
   ).join('\n        ');
+
+  // Diagnostic (?pdsafeshader): a minimal shader with NO ops loop and NO dynamic
+  // UBO indexing — the ANGLE→D3D11 construct we suspect crashes some Windows GPU
+  // drivers (works fine on Metal). u_tex[0] and ops[0] stay statically referenced
+  // so the renderer's existing sampler + UBO bindings still resolve. Visuals are
+  // wrong (it only ever samples unit 0, no effects); the point is purely whether
+  // the GPU survives the draw. If a colour quad renders with this but crashes
+  // without, the ops loop / dynamic UBO indexing is the culprit.
+  if (safe) {
+    return /* glsl */`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex[${n}];
+layout(std140) uniform Effects { vec4 ops[${UBO_VEC4_CAPACITY}]; };
+in vec2 v_uv;
+out vec4 fragColor;
+void main() {
+  fragColor = texture(u_tex[0], v_uv) + ops[0] * 0.0;
+}`;
+  }
 
   return /* glsl */`#version 300 es
 precision mediump float;
@@ -503,7 +532,19 @@ export class WebGLRenderer implements Renderer {
 
   private w = 0;
   private h = 0;
-  constructor(canvas: HTMLCanvasElement) {
+
+  /** How many times the GPU has dropped our context this session (Windows TDR / OOM). */
+  private contextLossCount = 0;
+  /** GPU vendor/renderer string, captured at startup for loss diagnostics. */
+  private gpuInfo = '(unknown)';
+  /** Invoked when the context is lost too many times, or can't be restored. */
+  private readonly onUnrecoverable?: () => void;
+  /** ?pdsafeshader — swap in a minimal fragment shader (no ops loop / dynamic UBO
+   *  indexing) to test whether that construct crashes a Windows GPU driver. */
+  private readonly safeShader: boolean;
+
+  constructor(canvas: HTMLCanvasElement, opts: { onUnrecoverable?: () => void } = {}) {
+    this.onUnrecoverable = opts.onUnrecoverable;
     // `?pdpreserve` keeps the drawing buffer so an offscreen capture harness can
     // read the live frame directly (no extra render that would double-advance
     // feedback FBOs). Off by default — preserveDrawingBuffer costs perf.
@@ -521,6 +562,20 @@ export class WebGLRenderer implements Renderer {
     }
     this.gl = gl;
 
+    // Capture the GPU identity once, up front — it's the single most useful datum
+    // for diagnosing a later context loss (which vendor/driver reset).
+    this.gpuInfo = queryGpuInfo(gl);
+    if (!gpuInfoLogged) {
+      console.log('[picodevil] WebGL2 ready — GPU:', this.gpuInfo);
+      gpuInfoLogged = true;
+    }
+
+    this.safeShader = typeof location !== 'undefined' &&
+      new URLSearchParams(location.search).has('pdsafeshader');
+    if (this.safeShader) {
+      console.warn('[picodevil] ?pdsafeshader active — using the minimal diagnostic fragment shader (no ops loop / dynamic UBO indexing). Visuals will be wrong; this only tests whether that shader crashes the GPU.');
+    }
+
     // Query the device limit before compiling the shader so we don't declare
     // more samplers than the hardware supports (causes a link error on some GPUs).
     this.maxTexUnits = Math.min(MAX_TEX_UNITS, gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) as number);
@@ -533,11 +588,32 @@ export class WebGLRenderer implements Renderer {
     // drop the now-dead FBO + texture caches so they re-create lazily. Without this
     // the canvas stays black until a full page reload.
     canvas.addEventListener('webglcontextlost', (e) => {
+      // preventDefault is what lets the browser fire 'restored'.
       e.preventDefault();
+      this.contextLossCount++;
+      const statusMessage = (e as WebGLContextEvent).statusMessage || '(none)';
+      console.error(
+        `[picodevil] WebGL context lost (#${this.contextLossCount}) — statusMessage: ` +
+        `"${statusMessage}". GPU: ${this.gpuInfo}. On Windows this is usually a GPU ` +
+        `driver reset (TDR) or the GPU running out of memory. Attempting to recover…`,
+      );
       warn('Graphics context lost — attempting to recover. If the screen stays black, reload the page.');
+      if (this.contextLossCount >= MAX_CONTEXT_LOSSES) {
+        console.error(
+          `[picodevil] context lost ${this.contextLossCount}× this session — giving up on ` +
+          `automatic recovery. Update your graphics drivers, or try a simpler pattern / smaller window.`,
+        );
+        this.onUnrecoverable?.();
+      }
     });
     canvas.addEventListener('webglcontextrestored', () => {
-      this.restoreContext();
+      try {
+        this.restoreContext();
+        console.log(`[picodevil] WebGL context restored — recovered (after loss #${this.contextLossCount}).`);
+      } catch (err) {
+        console.error('[picodevil] WebGL context restore FAILED — the canvas will stay black:', err);
+        this.onUnrecoverable?.();
+      }
     });
   }
 
@@ -548,7 +624,7 @@ export class WebGLRenderer implements Renderer {
    */
   private initGLResources(): void {
     const { gl } = this;
-    this.program     = createProgram(gl, VERT_SRC, buildFragSrc(this.maxTexUnits));
+    this.program     = createProgram(gl, VERT_SRC, buildFragSrc(this.maxTexUnits, this.safeShader));
     this.instanceVBO = gl.createBuffer()!;
     this.opsUBO      = gl.createBuffer()!;
     this.vao         = createVAO(gl, this.instanceVBO);
@@ -578,10 +654,19 @@ export class WebGLRenderer implements Renderer {
     this.fbos.clear();
     this.currentFBO = null;
     this.offscreenName = null;
-    // Drop cached textures so the next frame re-uploads onto fresh handles.
-    this.texCache.clear();
+    // Drop cached textures so the next frame re-uploads onto fresh handles. Use
+    // forget() not clear(): the old textures died with the lost context, and
+    // deleting them on the restored context throws INVALID_OPERATION.
+    this.texCache.forget();
     // Reapply the viewport for the restored context.
     if (this.w && this.h) this.gl.viewport(0, 0, this.w, this.h);
+  }
+
+  /** True while the GPU context is lost (between 'lost' and 'restored'). The render
+   *  loop skips frames while this holds — GL calls on a dead context error out and
+   *  can starve the browser's chance to restore it. */
+  isContextLost(): boolean {
+    return this.gl.isContextLost();
   }
 
   resize(w: number, h: number): void {
@@ -962,19 +1047,23 @@ export class WebGLRenderer implements Renderer {
   dispose(): void {
     const { gl } = this;
     this.texCache.clear();
-    for (const entry of this.fbos.values()) {
-      gl.deleteFramebuffer(entry.fbo);
-      gl.deleteTexture(entry.tex);
-      if (entry.back) {
-        gl.deleteFramebuffer(entry.back.fbo);
-        gl.deleteTexture(entry.back.tex);
+    // A lost context has already freed every handle; deleting them now would throw
+    // INVALID_OPERATION. Just drop our references and let GC handle the wrappers.
+    if (!gl.isContextLost()) {
+      for (const entry of this.fbos.values()) {
+        gl.deleteFramebuffer(entry.fbo);
+        gl.deleteTexture(entry.tex);
+        if (entry.back) {
+          gl.deleteFramebuffer(entry.back.fbo);
+          gl.deleteTexture(entry.back.tex);
+        }
       }
+      gl.deleteProgram(this.program);
+      gl.deleteVertexArray(this.vao);
+      gl.deleteBuffer(this.instanceVBO);
+      gl.deleteBuffer(this.opsUBO);
     }
     this.fbos.clear();
-    gl.deleteProgram(this.program);
-    gl.deleteVertexArray(this.vao);
-    gl.deleteBuffer(this.instanceVBO);
-    gl.deleteBuffer(this.opsUBO);
   }
 
   /** Allocate a fresh RGBA8 texture + framebuffer sized to the canvas. */
@@ -1023,6 +1112,19 @@ export class WebGLRenderer implements Renderer {
 // ---------------------------------------------------------------------------
 // GL helpers
 // ---------------------------------------------------------------------------
+
+/** Read the GPU vendor/renderer for diagnostics. Uses the unmasked strings when
+ *  WEBGL_debug_renderer_info is available, else the (often generic) masked ones. */
+function queryGpuInfo(gl: WebGL2RenderingContext): string {
+  try {
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const vendor   = gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL   : gl.VENDOR);
+    const renderer = gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER);
+    return `${vendor} / ${renderer}`;
+  } catch {
+    return '(unknown)';
+  }
+}
 
 export function compileShader(gl: WebGL2RenderingContext, type: GLenum, src: string): WebGLShader {
   const shader = gl.createShader(type)!;
