@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && rsync -avz --delete-after --exclude='test-assets/' --exclude='.DS_Store' dist/ root@acorn:/root/picodevil/dist/",
     "//deploy": "rsyncs the built site to acorn. but it only works for me, you're not allowed to ssh into acorn.",
+    "pretest": "playwright install chromium",
+    "//pretest": "browser binaries aren't fetched by npm install. pretest (not postinstall) because postinstall also fires on --omit=dev installs, where playwright isn't present and the whole install would fail.",
     "test": "vitest run",
     "test:all": "npm run test && npm run test:monkey:replay && npm run test:url-state && npm run test:upload && npm run test:blob-playback && npm run test:stress:headless && npm run test:bench:check && npm run test:golden && npm run test:golden:examples && npm run test:monkey",
     "test:blob-playback": "tsx test/blob-playback-test.ts --headless",
