@@ -63,6 +63,36 @@ describe("WebGL context loss recovery", () => {
     renderer.dispose();
   });
 
+  it("logs which frame the loss happened on", async () => {
+    // "died on frame 3" vs "died on frame 40000" is the single most useful
+    // discriminator between a bad shader/resource configuration (fails almost
+    // immediately, every time) and gradual resource exhaustion. Without it we
+    // had to build a harness to learn something the console could have said.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const renderer = new WebGLRenderer(canvas);
+    renderer.resize(W, H);
+
+    for (let i = 0; i < 3; i++) {
+      renderer.beginFrame();
+      renderer.drawTile(makeTile({ source: { kind: "color", r: 1, g: 0, b: 0 } }));
+      renderer.endFrame();
+    }
+
+    const gl = canvas.getContext("webgl2") as WebGL2RenderingContext;
+    gl.getExtension("WEBGL_lose_context")!.loseContext();
+    await tick();
+
+    const logged = errSpy.mock.calls.flat().join(" ");
+    expect(logged).toMatch(/frame/i);
+    expect(logged).toMatch(/\b3\b/);
+
+    renderer.dispose();
+  });
+
   it("reports isContextLost() across a loss + restore (so the render loop can skip)", async () => {
     const canvas = document.createElement("canvas");
     canvas.width = W; canvas.height = H;
