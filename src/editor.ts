@@ -1,14 +1,35 @@
 import {
   EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightSpecialChars,
   drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine,
+  type Command,
 } from "@codemirror/view";
 import { EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import { javascriptLanguage } from "@codemirror/lang-javascript";
 import { indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
-import { history, defaultKeymap, historyKeymap, indentWithTab, historyField } from "@codemirror/commands";
+import { history, defaultKeymap, historyKeymap, historyField, indentMore, indentLess } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
+
+// Tab handler (bound in the keymap below). Deliberately diverges from CM's
+// default `indentWithTab` (which inserts spaces and always block-indents a
+// selection) to match the requested behaviour:
+//   - no selection             → insert a literal tab character at the caret
+//   - selection on one line     → replace the selected text with a tab
+//   - selection spanning lines  → indent the block (indentMore)
+// Applied per range, so it does the sensible thing with multiple cursors too.
+// Shift-Tab always dedents (indentLess).
+export const tabIndentsOrInserts: Command = (view) => {
+  const { state } = view;
+  const multiline = state.selection.ranges.some(
+    (r) => state.doc.lineAt(r.from).number !== state.doc.lineAt(r.to).number,
+  );
+  if (multiline) return indentMore(view);
+  view.dispatch(
+    state.update(state.replaceSelection("\t"), { scrollIntoView: true, userEvent: "input" }),
+  );
+  return true;
+};
 
 // Reconstruction of codemirror's `basicSetup` WITHOUT code folding — picodevil
 // has no fold support, so foldGutter()/foldKeymap are dropped (the fold gutter
@@ -36,10 +57,10 @@ const basicSetup: Extension = [
     ...searchKeymap,
     ...historyKeymap,
     ...lintKeymap,
-    // Tab indents (Shift-Tab dedents) instead of moving focus. CM6 leaves Tab
-    // unbound by default for accessibility; we opt in. Placed last so real
-    // bindings (autocomplete accept, etc.) win over the blanket Tab handler.
-    indentWithTab,
+    // Tab: literal tab at the caret / over a single-line selection, block-indent
+    // when the selection spans lines; Shift-Tab dedents. CM6 leaves Tab unbound
+    // for a11y; we opt in. Last so real bindings win over the blanket handler.
+    { key: "Tab", run: tabIndentsOrInserts, shift: indentLess },
   ]),
 ];
 import { onWarnings, warn } from "./warnings";
