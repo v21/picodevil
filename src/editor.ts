@@ -5,9 +5,9 @@ import {
 import { EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import { javascriptLanguage } from "@codemirror/lang-javascript";
 import { indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import { history, defaultKeymap, historyKeymap, indentWithTab, historyField } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
-import { closeBrackets, autocompletion, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
+import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
 
 // Reconstruction of codemirror's `basicSetup` WITHOUT code folding — picodevil
@@ -26,7 +26,6 @@ const basicSetup: Extension = [
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   bracketMatching(),
   closeBrackets(),
-  autocompletion(),
   rectangularSelection(),
   crosshairCursor(),
   highlightActiveLine(),
@@ -36,8 +35,11 @@ const basicSetup: Extension = [
     ...defaultKeymap,
     ...searchKeymap,
     ...historyKeymap,
-    ...completionKeymap,
     ...lintKeymap,
+    // Tab indents (Shift-Tab dedents) instead of moving focus. CM6 leaves Tab
+    // unbound by default for accessibility; we opt in. Placed last so real
+    // bindings (autocomplete accept, etc.) win over the blanket Tab handler.
+    indentWithTab,
   ]),
 ];
 import { onWarnings, warn } from "./warnings";
@@ -51,6 +53,67 @@ declare global {
     pdEval: (code: string) => { error: string | null; widgets: WidgetCallInfo[] };
     pdSetCode: (code: string, evaluate?: boolean) => void;
   }
+}
+
+// --- editor session persistence (undo history + scroll, across reloads) ---
+// The document text already persists via the URL hash (url-state.ts). This layer
+// restores only the undo *history* and *scroll position* that a plain reload
+// would otherwise drop. History is restored ONLY when the persisted doc is byte-
+// identical to the code we're opening with — otherwise (a shared link, a fresh
+// random example, a cleared session) the change records wouldn't line up with the
+// text and undo could corrupt/throw, so we start with clean history instead.
+const SESSION_KEY = "picodevil-editor-session";
+const persistFields = { history: historyField };
+
+export interface PersistedSession {
+  state: unknown; // EditorState.toJSON(persistFields): { doc, selection, history }
+  scrollTop: number;
+}
+
+function loadSession(): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? (JSON.parse(raw) as PersistedSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(view: EditorView): void {
+  try {
+    const session: PersistedSession = {
+      state: view.state.toJSON(persistFields),
+      scrollTop: view.scrollDOM.scrollTop,
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Storage disabled / over quota — persistence is best-effort, never fatal.
+  }
+}
+
+/** True iff a saved session exists whose doc matches the code we're loading. */
+export function canRestoreSession(initialCode: string, saved: PersistedSession | null): boolean {
+  return !!saved && (saved.state as { doc?: unknown })?.doc === initialCode;
+}
+
+/**
+ * Build the editor's starting state: restore the prior session (doc + selection +
+ * undo history) when its doc matches `initialCode`, else a clean state on the doc.
+ * Corrupt persisted state falls back to a clean doc rather than throwing.
+ */
+export function buildInitialState(
+  initialCode: string,
+  saved: PersistedSession | null,
+  extensions: Extension,
+): EditorState {
+  if (canRestoreSession(initialCode, saved)) {
+    try {
+      return EditorState.fromJSON(saved!.state, { extensions }, persistFields);
+    } catch {
+      // fall through to a clean doc
+    }
+  }
+  return EditorState.create({ doc: initialCode, extensions });
 }
 
 export const defaultCode = ``;
@@ -154,6 +217,16 @@ export function setupEditor(
     }
   });
 
+  // Debounced persistence of undo history + scroll (see buildInitialState above).
+  let persistTimer: ReturnType<typeof setTimeout> | null = null;
+  function schedulePersist(editorView: EditorView) {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(() => saveSession(editorView), 400);
+  }
+  const persistListener: Extension = EditorView.updateListener.of((update) => {
+    if (update.docChanged || update.selectionSet) schedulePersist(update.view);
+  });
+
   /** Eval code and push widget decorations into the editor. */
   function evalAndDecorate(editorView: EditorView, code: string) {
     const result = window.pdEval(code);
@@ -222,14 +295,31 @@ export function setupEditor(
     { key: "Mod-Enter", run: runEval },
   ]));
 
+  // lineWrapping: long lines flow onto the next visual line instead of scrolling
+  // sideways (which is awkward on touch / narrow screens).
+  const extensions: Extension = [
+    basicSetup, EditorView.lineWrapping, javascriptLanguage, pdHighlight,
+    evalKeymap, widgets, changeListener, persistListener,
+  ];
+  const saved = loadSession();
   const view = new EditorView({
     parent,
-    state: EditorState.create({
-      doc: initialCode,
-      // lineWrapping: long lines flow onto the next visual line instead of
-      // scrolling sideways (which is awkward on touch / narrow screens).
-      extensions: [basicSetup, EditorView.lineWrapping, javascriptLanguage, pdHighlight, evalKeymap, widgets, changeListener],
-    }),
+    state: buildInitialState(initialCode, saved, extensions),
+  });
+
+  // Restore scroll after CM's first layout (scrollHeight isn't final until then,
+  // or the offset just clamps to 0). Only when the session actually matched.
+  if (canRestoreSession(initialCode, saved)) {
+    view.requestMeasure({
+      read: () => saved!.scrollTop,
+      write: (top) => { view.scrollDOM.scrollTop = top; },
+    });
+  }
+  // Flush the latest history+scroll on tab close/hide (pagehide covers bfcache &
+  // mobile where beforeunload is unreliable) — the debounce may not have fired.
+  window.addEventListener("pagehide", () => saveSession(view));
+  window.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveSession(view);
   });
 
   // Round evaluate button (bottom-left). Lives on <body> so it isn't clipped by
