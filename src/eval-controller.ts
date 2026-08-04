@@ -1,4 +1,4 @@
-import { silence } from "@strudel/core";
+import { silence, Pattern } from "@strudel/core";
 import { transpile, type WidgetCallInfo } from "./transpiler";
 import { runTranspiled, buildNormMap } from "./eval-sandbox";
 import { resetWidgetCounter } from "./widgets";
@@ -69,11 +69,20 @@ export class EvalController<CpsSnap> {
     resetRegistry();
     resetWidgetCounter();
     try {
-      runTranspiled(transpiled, {
+      const result = runTranspiled(transpiled, {
         ...this.deps.globals,
         hush: () => this.hush(),
       });
-      const pScreens = collectScreens();
+      // Strudel-style: if the user registered nothing explicitly (no `$:`/named
+      // label called `.p()`), a lone trailing pattern is the anonymous screen —
+      // so you can drop the label when there's just one thing. `silence` is
+      // excluded so `hush()` (which returns silence) still clears rather than
+      // resurrecting an empty screen.
+      let pScreens = collectScreens();
+      if (pScreens.length === 0 && result instanceof Pattern && result !== silence) {
+        (result as any).p("$");
+        pScreens = collectScreens();
+      }
       this.namedScreens = getNamedScreenIndices();
       if (pScreens.length > 0) {
         this.screens = [...this.screens, ...pScreens];

@@ -34,6 +34,14 @@ $: color("red blue")
 $: video("clip.mp4")
 ```
 
+If you're only rendering **one** pattern, you can drop the `$:` — a lone expression is registered automatically:
+
+```js
+color("red blue")
+```
+
+The label is only needed to stack several patterns together or to name them (below).
+
 You can also use named labels. Names are unique (last write wins), while `$:` lines stack:
 
 ```js

@@ -106,6 +106,32 @@ describe("EvalController", () => {
     });
   });
 
+  describe("bare expression (Strudel-style completion value)", () => {
+    it("registers a lone unlabelled expression as an anonymous screen", () => {
+      const result = ctrl.eval('color("red")');
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1);
+    });
+
+    it("registers the trailing expression even after setup statements", () => {
+      const result = ctrl.eval('let c = "blue"; color(c)');
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1);
+    });
+
+    it("does not register (or throw) when the completion value is not a pattern", () => {
+      const result = ctrl.eval("1 + 1");
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(0);
+    });
+
+    it("an explicit label wins — the trailing bare expression is not auto-added", () => {
+      const result = ctrl.eval('$: color("red"); color("blue")');
+      expect(result.error).toBeNull();
+      expect(ctrl.screens).toHaveLength(1); // only the labelled one; blue is ignored
+    });
+  });
+
   describe("hush()", () => {
     it("clears screens and namedScreens", () => {
       ctrl.eval('$: color("red")');

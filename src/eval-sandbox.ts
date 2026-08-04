@@ -147,9 +147,13 @@ export function makeEvalGuard(budgetMs: number = EVAL_TIMEOUT_MS): () => void {
   };
 }
 
-export function runTranspiled(transpiled: string, extra: Record<string, unknown> = {}): void {
+export function runTranspiled(transpiled: string, extra: Record<string, unknown> = {}): unknown {
   const globals = { ...getPatternGlobals(), ...extra, __pdGuard: makeEvalGuard() };
   const names = Object.keys(globals);
   const values = Object.values(globals);
-  new Function(...names, transpiled)(...values);
+  // Direct eval inside the Function body sees the injected globals (they're the
+  // function's params) *and* yields the completion value of the last expression —
+  // which a plain function body would discard. The Strudel-style caller uses that
+  // value to auto-register a lone unlabelled pattern (see EvalController.eval).
+  return new Function(...names, `return eval(${JSON.stringify(transpiled)});`)(...values);
 }
