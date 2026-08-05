@@ -7,7 +7,8 @@ import { recoverFromDrawError } from './taint-recovery';
 import { getStreamVideoEl } from './stream-manager';
 import { queryNeeded, type FrameEvent, type NeededSource } from './source-query';
 import { matchSources, type FreePool } from './source-matcher';
-import type { Renderer, TileParams, TileSource, Screen } from './renderer-interface';
+import { AUTO_MOD_PREFIX, type Renderer, type TileParams, type TileSource, type Screen } from './renderer-interface';
+import { consumerFootprint, requiredModRes, type ModPlan } from './modulate-sizing';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
@@ -64,6 +65,14 @@ export class FrameRenderer {
   private feToNeeded = new Map<string, NeededSource>();
   /** Wall-clock time of last frame, for forward prediction in matchSources. */
   private lastFrameWall = performance.now();
+  /** Auto-modulator FBOs skipped this frame (no visible consumer) — their
+   *  consumers' modulate op is dropped so a wrong skip can never sample stale
+   *  content. Rebuilt each frame. */
+  private readonly skippedModulators = new Set<string>();
+  /** Canvas dims used for this frame's modulator plans (null = no auto-sizing). */
+  private modPlanVp: { w: number; h: number } | null = null;
+  /** Cumulative count of skip-guard violations (footprint logic bugs). */
+  modSkipViolations = 0;
 
   /** Debug instrumentation (gated behind window.pdDebug). */
   private dbgSeekReasons: Record<string, number> = {};
@@ -112,6 +121,12 @@ export class FrameRenderer {
     const videoFrameProcessed = new Set<VideoEl>();
     const namedByIndex = new Map(namedScreens.map(n => [n.screenIndex, n.name]));
 
+    // Auto-modulator pass plans: consumer dest rects are all known before any
+    // FBO pass renders (query-everything-then-draw), so each auto FBO can be
+    // rendered at the resolution its consumers actually need — or skipped
+    // entirely when nobody visible reads it.
+    const modPlans = this.planModPasses(allEvents, namedScreens);
+
     this.renderer.beginFrame();
 
     // Per-frame draw budget: a runaway pattern (thousands of tiles / hundreds of
@@ -132,6 +147,13 @@ export class FrameRenderer {
 
       const fboName = namedByIndex.get(si);
       if (fboName !== undefined) {
+        // Zero-footprint skip (auto modulators only): no visible consumer reads
+        // this FBO, so don't render its pass at all. Safe because auto
+        // modulators are stateless and their only read path is the (dropped)
+        // consumer op. Source lifecycle is untouched — queryNeeded already
+        // walked these events.
+        const plan = modPlans.get(fboName);
+        if (plan?.skip) continue;
         // Named pattern: render to its FBO inline at declaration position.
         // beginOffscreen() flushes any pending main-canvas draws before switching.
         const isHOnly = group.some(fe => fe.ev._fboOnly);
@@ -139,7 +161,7 @@ export class FrameRenderer {
         // GL feedback loop. Detect it here and ask the backend to double-buffer so
         // the self-read returns the previous frame (per-FBO feedback).
         const selfRef = group.some(fe => fe.ev._type === 'pattern' && String(fe.ev.src) === fboName);
-        this.renderer.beginOffscreen(fboName, selfRef);
+        this.renderer.beginOffscreen(fboName, selfRef, plan?.reqW, plan?.reqH);
         this.renderer.beginFrame();
         this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, false);
         this.renderer.endFrame();
@@ -158,6 +180,9 @@ export class FrameRenderer {
 
     // Blit canvas → "prev" FBO for next-frame feedback
     this.renderer.captureAll();
+
+    // Recycle auto-modulator FBOs that went stale this frame (re-eval renumbering)
+    this.renderer.sweepAutoFBOs?.();
 
     if (drawAborted) {
       warn(`Render stopped early to stay responsive — this pattern is too heavy to draw in one frame (too many layers/tiles). Simplify it: fewer named layers (FBOs), tiles, or feedback.`);
@@ -240,6 +265,40 @@ export class FrameRenderer {
     });
     // eslint-disable-next-line no-console
     console.log(`[pdscreens] cyc=${t.toFixed(3)} n=${allEvents.length} | ${parts.join(' ')}`);
+  }
+
+  /**
+   * Build the per-auto-FBO render plans for this frame: required resolution
+   * from the consumers' footprints, or skip when none are visible. Also
+   * rebuilds `skippedModulators` so buildTileParams drops the matching ops.
+   * Only `__auto_mod_*` layers are planned — user-named layers are never
+   * skipped or downsized (they can be stateful; see modulate-sizing.ts).
+   */
+  private planModPasses(
+    allEvents: FrameEvent[],
+    namedScreens: { name: string; screenIndex: number }[],
+  ): Map<string, ModPlan> {
+    this.skippedModulators.clear();
+    const plans = new Map<string, ModPlan>();
+    const vps = this.renderer.getViewportSize?.();
+    this.modPlanVp = vps && vps.w > 0 && vps.h > 0 ? vps : null;
+    if (!this.modPlanVp) return plans;
+
+    const autoNames = namedScreens.filter(n => n.name.startsWith(AUTO_MOD_PREFIX)).map(n => n.name);
+    if (autoNames.length === 0) return plans;
+
+    const consumers = new Map<string, any[]>(autoNames.map(n => [n, []]));
+    for (const fe of allEvents) {
+      const m = fe.ev?.modSrc;
+      if (m === undefined) continue;
+      consumers.get(String(m))?.push(fe.ev);
+    }
+    for (const name of autoNames) {
+      const plan = requiredModRes(consumers.get(name)!, this.modPlanVp.w, this.modPlanVp.h);
+      plans.set(name, plan);
+      if (plan.skip) this.skippedModulators.add(name);
+    }
+    return plans;
   }
 
   /** Measure from the last 'pd-phase-start' mark, push duration to arr, clear entries. */
@@ -542,6 +601,26 @@ export class FrameRenderer {
       alpha = 1;
     }
 
+    // Modulate amount: NaN → 0 (draw unmodulated rather than a NaN'd UV).
+    let modAmt = ev.modAmt !== undefined ? Number(ev.modAmt) : undefined;
+    if (modAmt !== undefined && isNaN(modAmt)) {
+      warn(`screen ${screenIndex} event ${eventIndex}: NaN modulate amount (raw=${ev.modAmt})`);
+      modAmt = 0;
+    }
+
+    // Skipped modulator (zero-footprint): drop the op so it can never sample
+    // stale content. The skip decision and this tile derive from the same
+    // events, so a visible consumer here means the footprint logic is wrong —
+    // guard-warn and count it, then draw unmodulated.
+    let modSrc = ev.modSrc !== undefined ? String(ev.modSrc) : undefined;
+    if (modSrc !== undefined && this.skippedModulators.has(modSrc)) {
+      if (this.modPlanVp && consumerFootprint(ev, this.modPlanVp.w, this.modPlanVp.h).visible) {
+        this.modSkipViolations++;
+        warn(`internal: modulator "${modSrc}" was skipped but its consumer (screen ${screenIndex} event ${eventIndex}) is visible — footprint bug; tile drawn unmodulated`);
+      }
+      modSrc = undefined;
+    }
+
     // Rotation
     let rotateZ = ev.rotateZ !== undefined ? Number(ev.rotateZ) : 0;
     let rotateXScale = 1;
@@ -617,6 +696,9 @@ export class FrameRenderer {
       tintHue:       ev.tintHue       !== undefined ? Number(ev.tintHue)       : 0,
       tintStrength:  ev.tintStrength  !== undefined ? Number(ev.tintStrength)  : 0,
       barrel:        ev.barrel        !== undefined ? Number(ev.barrel)        : 0,
+      modSrc,
+      modAmt,
+      modSpace:      ev.modSpace      !== undefined ? String(ev.modSpace) as TileParams['modSpace'] : undefined,
     };
   }
 

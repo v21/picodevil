@@ -3,7 +3,8 @@ import {
   compile,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_FLOATS,
+  OP_MODULATE,
+  OP_FLOATS, MAX_OPS,
   type EffectInputs,
 } from "./effect-compiler";
 
@@ -22,6 +23,11 @@ function defaults(): EffectInputs {
     cropOffX: 0, cropOffY: 0,
     cropSizeX: 1, cropSizeY: 1,
     tileMode: 0,
+    modTexIndex: -1,
+    modAmt: 0,
+    modSpace: 0,
+    modUVScaleX: 1, modUVScaleY: 1,
+    modYDown: 1,
   };
 }
 
@@ -145,6 +151,69 @@ describe("effect-compiler", () => {
       expect(ops[oklabIdx + 2]).toBeCloseTo(0.6);
       expect(ops[oklabIdx + 3]).toBeCloseTo(0.7);
       expect(ops[oklabIdx + 4]).toBeCloseTo(0.3);
+    });
+  });
+
+  describe("MODULATE", () => {
+    it("not emitted when modTexIndex = -1", () => {
+      expect(kinds(compile(defaults()))).not.toContain(OP_MODULATE);
+    });
+
+    it("emitted whenever modTexIndex >= 0, even at modAmt = 0 (no amt gating)", () => {
+      expect(kinds(compile({ ...defaults(), modTexIndex: 2, modAmt: 0 }))).toContain(OP_MODULATE);
+    });
+
+    it("slot: after BARREL, before PIXELATE", () => {
+      const e = { ...defaults(), barrel: 0.2, pixUVStepX: 0.1, pixUVStepY: 0.1, modTexIndex: 1, modAmt: 0.1 };
+      expect(kinds(compile(e))).toEqual([
+        OP_BARREL, OP_MODULATE, OP_PIXELATE, OP_WRAP, OP_SAMPLE, OP_ALPHA,
+      ]);
+    });
+
+    it("first op when no BARREL", () => {
+      const e = { ...defaults(), modTexIndex: 1, modAmt: 0.1 };
+      expect(kinds(compile(e))).toEqual([OP_MODULATE, OP_WRAP, OP_SAMPLE, OP_ALPHA]);
+    });
+
+    it("packs [texIdx, amt, space, uvScaleX, uvScaleY, yDown]", () => {
+      const e = {
+        ...defaults(),
+        modTexIndex: 3, modAmt: 0.25, modSpace: 2,
+        modUVScaleX: 0.5, modUVScaleY: 0.75, modYDown: 0,
+      };
+      const ops = compile(e);
+      expect(ops[0]).toBe(OP_MODULATE);
+      expect(ops[1]).toBe(3);
+      expect(ops[2]).toBeCloseTo(0.25);
+      expect(ops[3]).toBe(2);
+      expect(ops[4]).toBeCloseTo(0.5);
+      expect(ops[5]).toBeCloseTo(0.75);
+      expect(ops[6]).toBe(0);
+    });
+
+    it("MAX_OPS covers the fully-loaded chain including MODULATE", () => {
+      const e: EffectInputs = {
+        texIndex: 2,
+        alpha: 0.5,
+        grey: 0.4,
+        hueRot: 0.2,
+        pixUVStepX: 0.1, pixUVStepY: 0.1,
+        contrast: 1.5,
+        brightness: 0.2,
+        tintHue: 0.3, tintStrength: 0.6,
+        barrel: 0.2,
+        cropOffX: 0.1, cropOffY: 0.1,
+        cropSizeX: 0.8, cropSizeY: 0.8,
+        tileMode: 1,
+        modTexIndex: 1, modAmt: 0.1, modSpace: 0,
+        modUVScaleX: 1, modUVScaleY: 1, modYDown: 1,
+      };
+      const ks = kinds(compile(e));
+      expect(ks).toEqual([
+        OP_BARREL, OP_MODULATE, OP_PIXELATE, OP_WRAP, OP_SAMPLE,
+        OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
+      ]);
+      expect(ks.length).toBe(MAX_OPS);
     });
   });
 

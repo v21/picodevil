@@ -545,6 +545,21 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
 const videoChain: fc.Arbitrary<string> = fc.array(videoMethod, { minLength: 0, maxLength: 5 })
   .map(ms => ms.map(m => m.code).join(""));
 
+/**
+ * Inline modulator patterns for `.modulate(...)`. Always a pattern expression
+ * — string args are invalid by design (they throw a teaching error), so the
+ * grammar never generates them.
+ */
+const MODULATOR_TOKENS = [...COLORS.slice(0, 4), ...VIDEO_REGISTRY_NAMES.slice(0, 2), "prev"];
+const modulatorExpr: fc.Arbitrary<string> = fc.oneof(
+  { weight: 4, arbitrary: miniArb(MODULATOR_TOKENS, 2).map(p => `s("${p}")`) },
+  { weight: 2, arbitrary: fc.tuple(miniArb(MODULATOR_TOKENS, 1), scaleArg).map(([p, sc]) => `s("${p}").scale(${sc})`) },
+  // nested modulate
+  { weight: 1, arbitrary: miniArb(MODULATOR_TOKENS, 1).map(p => `s("${p}").modulate(s("red"), 0.2)`) },
+);
+const modAmtArg = fc.constantFrom("0.05", "0.1", "0.3", "-0.2", "sine", "rand");
+const modSpaceArg = fc.constantFrom("'uv'", "'tile'", "'screen'", '"uv screen"', '"tile screen"');
+
 const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
   alphaArg.map(a => ({ code: `.opacity(${a})` })),
@@ -567,6 +582,10 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
+  // texture modulation — inline pattern arg, optionally with a lookup space
+  fc.tuple(modulatorExpr, modAmtArg).map(([src, amt]) => ({ code: `.modulate(${src}, ${amt})` })),
+  fc.tuple(modulatorExpr, modAmtArg, modSpaceArg)
+    .map(([src, amt, sp]) => ({ code: `.modulate(${src}, ${amt}).modspace(${sp})` })),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),

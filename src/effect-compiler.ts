@@ -5,13 +5,14 @@
  * Canonical op order — reproduces the static-flag fragment shader behaviour
  * 1:1 (verified by the golden harness):
  *   1. BARREL    (UV warp, optional clip-out-of-bounds)
- *   2. PIXELATE  (UV quantisation)
- *   3. WRAP      (tile/non-tile UV wrap)
- *   4. SAMPLE    (texture lookup; required for every tile)
- *   5. CONTRAST  (centred contrast)
- *   6. BRIGHTNESS (additive offset)
- *   7. COLOR_OKLAB (grey + tint + huerot, one OKLab round-trip)
- *   8. ALPHA     (final multiply; always emitted)
+ *   2. MODULATE  (UV displacement from a modulator texture)
+ *   3. PIXELATE  (UV quantisation)
+ *   4. WRAP      (tile/non-tile UV wrap)
+ *   5. SAMPLE    (texture lookup; required for every tile)
+ *   6. CONTRAST  (centred contrast)
+ *   7. BRIGHTNESS (additive offset)
+ *   8. COLOR_OKLAB (grey + tint + huerot, one OKLab round-trip)
+ *   9. ALPHA     (final multiply; always emitted)
  *
  * Op layout: every op is exactly 8 floats (2 vec4s in std140), packed:
  *   [0] kind
@@ -34,9 +35,15 @@ export const OP_CONTRAST    = 4;
 export const OP_BRIGHTNESS  = 5;
 export const OP_COLOR_OKLAB = 6;
 export const OP_ALPHA       = 7;
+export const OP_MODULATE    = 8;
 
 /** Number of floats per op (one kind + 7 args). */
 export const OP_FLOATS = 8;
+
+/** Maximum ops one tile can compile to (the fully-loaded chain). Sizes every
+ *  scratch buffer that holds a single chain — compile(), the renderer's
+ *  opsScratch, and the UBO-overflow retry all rely on it. */
+export const MAX_OPS = 9;
 
 /**
  * Inputs the compiler needs from a DrawCommand. Mirrors the fields the
@@ -60,6 +67,20 @@ export interface EffectInputs {
   cropSizeY:    number;
   /** 1 = tile/tilecenter (wrap via fract within crop subregion), 0 = clip out-of-bounds. */
   tileMode:     number;
+  /** Texture unit of the modulator FBO texture; -1 = no modulate op. */
+  modTexIndex:  number;
+  /** Displacement amount in source-crop UV units (centred: mid-grey = no move). */
+  modAmt:       number;
+  /** Lookup space: 0 = uv (working UV at this slot), 1 = tile (v_local), 2 = screen (gl_FragCoord). */
+  modSpace:     number;
+  /** Modulator lookup scale (auto-sizing sub-viewport: view/tex). 1 = full texture. */
+  modUVScaleX:  number;
+  modUVScaleY:  number;
+  /** 1 when the consumer's working UV space is y-down (element-texture source),
+   *  0 for FBO-source consumers (y-up). Controls the uv-space lookup mirror and
+   *  the visual-Y displacement sign so green > 0.5 displaces visually the same
+   *  way for both consumer kinds. */
+  modYDown:     number;
 }
 
 /**
@@ -72,16 +93,15 @@ export interface EffectInputs {
  * to avoid allocation can reuse a scratch array via compileInto.
  */
 export function compile(e: EffectInputs): Float32Array {
-  // Worst case: BARREL + PIXELATE + WRAP + SAMPLE + CONTRAST + BRIGHTNESS + COLOR_OKLAB + ALPHA = 8
-  const scratch = new Float32Array(8 * OP_FLOATS);
+  const scratch = new Float32Array(MAX_OPS * OP_FLOATS);
   const count = compileInto(e, scratch, 0);
   return scratch.subarray(0, count * OP_FLOATS);
 }
 
 /**
  * Compile into a caller-supplied buffer at the given offset. Returns the
- * number of ops written. The buffer must have at least 8 * OP_FLOATS free
- * slots at `offset`.
+ * number of ops written. The buffer must have at least MAX_OPS * OP_FLOATS
+ * free slots at `offset`.
  */
 export function compileInto(e: EffectInputs, out: Float32Array, offset: number): number {
   let i = offset;
@@ -94,6 +114,23 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
     out[i + 1] = e.barrel;
     out[i + 2] = e.tileMode;
     out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+    i += OP_FLOATS;
+    count++;
+  }
+
+  // MODULATE: emit whenever a modulator texture is bound — NOT gated on amt.
+  // A patterned amt crossing zero must not toggle the op in and out (it would
+  // churn the UBO chain identity); a zero-amt read is a cheap no-op.
+  // The 0.5 displacement bias is hardcoded in the shader branch, not packed.
+  if (e.modTexIndex >= 0) {
+    out[i] = OP_MODULATE;
+    out[i + 1] = e.modTexIndex;
+    out[i + 2] = e.modAmt;
+    out[i + 3] = e.modSpace;
+    out[i + 4] = e.modUVScaleX;
+    out[i + 5] = e.modUVScaleY;
+    out[i + 6] = e.modYDown;
+    out[i + 7] = 0;
     i += OP_FLOATS;
     count++;
   }

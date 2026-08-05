@@ -1,5 +1,13 @@
 export type FitMode = "cover" | "contain" | "fill" | "none" | "tile" | "tilecenter";
 
+/**
+ * Name prefix for the hidden FBO layers `.modulate()` auto-registers.
+ * The prefix IS the marker: the pattern registry exempts these from solo
+ * filtering, and the renderer's stale sweep / auto-sizing key off it. Users
+ * can never mint one — a leading underscore mutes `.p()` registrations.
+ */
+export const AUTO_MOD_PREFIX = '__auto_mod_';
+
 /** Minimal interface for a registered screen pattern. */
 export type Screen = { queryArc(begin: number, end: number): any[] };
 
@@ -58,6 +66,12 @@ export interface TileParams {
   tintStrength: number;
   /** Barrel (>0) / pincushion (<0) distortion coefficient. 0 = off (default). */
   barrel: number;
+  /** Name of the FBO whose pixels displace this tile's UV lookup (`.modulate`). */
+  modSrc?: string;
+  /** Modulate displacement amount in source-crop UV units. */
+  modAmt?: number;
+  /** Where the modulator is sampled: working UV (default), tile-local 0..1, or canvas space. */
+  modSpace?: 'uv' | 'tile' | 'screen';
 }
 
 /**
@@ -78,14 +92,25 @@ export interface Renderer {
    * tile that samples this same FBO reads the previous frame's content (a
    * self-referential feedback effect) instead of triggering a GL feedback loop.
    * The extra texture is allocated only for FBOs that reference themselves.
+   * `reqW`/`reqH` (auto-modulator passes only) request a reduced render
+   * resolution — the backend renders into a sub-viewport of a ladder-sized
+   * texture and modulate lookups scale accordingly.
    */
-  beginOffscreen(name: string, doubleBuffer?: boolean): void;
+  beginOffscreen(name: string, doubleBuffer?: boolean, reqW?: number, reqH?: number): void;
   /** Restore the default (canvas) framebuffer. */
   endOffscreen(): void;
   /** Flush pending draws and blit current canvas state to the "all" FBO for mid-frame compositing. */
   snapshotSoFar(): void;
   /** Blit the current canvas output to the "prev" FBO for next-frame feedback. */
   captureAll(): void;
+  /** Frame-end maintenance: recycle stale auto-modulator FBOs. Optional —
+   *  backends without FBOs omit it. Called after captureAll each frame. */
+  sweepAutoFBOs?(): void;
+  /** Auto-modulator FBO stats for the perf panel (hidden-allocation visibility). */
+  getAutoFBOStats?(): { count: number; bytes: number; pooled: number };
+  /** Current render-target pixel dims (canvas). Optional — used by the frame
+   *  renderer to plan auto-modulator pass sizing; absent = no auto-sizing. */
+  getViewportSize?(): { w: number; h: number };
   /** True while the backing GPU context is lost (WebGL only). Optional — backends
    *  that can't lose a context omit it. The render loop skips frames while it holds. */
   isContextLost?(): boolean;

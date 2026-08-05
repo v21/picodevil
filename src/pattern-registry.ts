@@ -1,7 +1,9 @@
 import { Pattern, silence } from "@strudel/core";
+import { AUTO_MOD_PREFIX } from "./renderer-interface";
 
 let pPatterns: Record<string, Pattern> = {};
 let anonymousIndex = 0;
+let autoModIndex = 0;
 let eachFn: ((p: Pattern) => Pattern) | undefined;
 let allFns: ((p: Pattern) => Pattern)[] = [];
 let lastNamedIndices: { name: string; screenIndex: number }[] = [];
@@ -68,9 +70,30 @@ export function initRegistry(): void {
 export function resetRegistry(): void {
   pPatterns = {};
   anonymousIndex = 0;
+  autoModIndex = 0;
   eachFn = undefined;
   allFns = [];
   lastNamedIndices = [];
+}
+
+/**
+ * Mint the next auto-modulator FBO name. Construction order is deterministic
+ * top-to-bottom within an eval, so names are stable per call site across
+ * re-evals until the code above them changes. Reset with the registry each
+ * eval; a failed eval's registrations are discarded by the snapshot restore.
+ */
+export function nextAutoModName(): string {
+  return `${AUTO_MOD_PREFIX}${autoModIndex++}`;
+}
+
+/**
+ * Register a `.modulate()` argument pattern as a hidden FBO-only layer (the
+ * `.hide()` path). Stored directly — `.p()` would mute the underscore prefix.
+ * Insertion order guarantees the layer registers (and therefore renders)
+ * before its consumer's `.p()` runs, recursively for nested modulates.
+ */
+export function registerAutoHidden(name: string, pat: Pattern): void {
+  pPatterns[name] = (pat as any).withValue((v: any) => ({ ...v, _fboOnly: true }));
 }
 
 export function snapshotRegistry(): RegistrySnapshot {
@@ -116,11 +139,16 @@ export function collectScreens(): Pattern[] {
 
   for (const [key, pat] of Object.entries(pPatterns)) {
     const isSoloed = key.length > 1 && key.startsWith('S');
+    const isAutoMod = key.startsWith(AUTO_MOD_PREFIX);
     if (isSoloed && !soloActive) {
+      // Solo exemption: keep auto-modulator layers — soloing a line must not
+      // kill its own inline modulator.
+      const kept = pairs.filter(([k]) => k.startsWith(AUTO_MOD_PREFIX));
       pairs.length = 0;
+      pairs.push(...kept);
       soloActive = true;
     }
-    if (!soloActive || isSoloed) {
+    if (!soloActive || isSoloed || isAutoMod) {
       pairs.push([key, pat]);
     }
   }

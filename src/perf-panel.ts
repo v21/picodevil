@@ -34,6 +34,7 @@ export function setupPerfPanel(container: HTMLElement) {
         <div class="perf-head">render</div>
         <div class="perf-row"><span class="perf-label">screens</span><span class="perf-value" id="perf-screens">—</span></div>
         <div class="perf-row"><span class="perf-label">events/frame</span><span class="perf-value" id="perf-events">—</span></div>
+        <div class="perf-row"><span class="perf-label">auto FBOs</span><span class="perf-value" id="perf-autofbos">—</span></div>
       </div>
     </div>
   `;
@@ -244,6 +245,10 @@ export function setupPerfPanel(container: HTMLElement) {
       (container.querySelector("#perf-drift-seeks-300f") as HTMLElement).textContent = String(info.driftSeeksPer300f);
       (container.querySelector("#perf-screens") as HTMLElement).textContent = String(info.screensCount);
       (container.querySelector("#perf-events") as HTMLElement).textContent = String(info.eventsPerFrame);
+      (container.querySelector("#perf-autofbos") as HTMLElement).textContent =
+        (info.autoFBOCount > 0 || info.autoFBOBytes > 0
+          ? `${info.autoFBOCount} (${fmtBytes(info.autoFBOBytes)})`
+          : "0") + (info.modSkipViolations > 0 ? ` ⚠${info.modSkipViolations}` : "");
     }
   }
 

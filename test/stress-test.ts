@@ -143,6 +143,12 @@ const CASES: StressCase[] = [
     maxAvgSeeksAfterWarmup: 1,
     seekWarmupFrames: 30,
   },
+  {
+    // Shared-modulator semantics: 25 stacked instances share ONE auto FBO —
+    // one extra pass total, no per-instance cliff.
+    name: "stackN(25) shared inline modulator",
+    code: `$: s("red.mp4").urlBase('/test-assets/').stackN(25).modulate(s("blue.mp4").urlBase('/test-assets/').scale(.5), .1).tile()`,
+  },
 ];
 
 interface CaseResult {

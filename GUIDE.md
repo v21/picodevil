@@ -381,6 +381,40 @@ $: color("red").blend("screen lighter")   // alternates per cycle
 
 Unrecognised mode names fall back to `"source-over"` with a console warning.
 
+### Texture modulation
+
+`.modulate(source, amount?)` displaces one pattern's texture lookup using another pattern's rendered pixels — Hydra-style texture modulation. Where the modulator is brighter or darker than mid-grey, the reading pattern's sampling point is pushed around, so a moving or noisy modulator smears, ripples, or warps the image it drives.
+
+The modulator is **always a pattern** — reference a named layer, media, `s("prev")`, colours, anything, by wrapping it in `s(...)`. There is no string form: `.modulate("mylayer")` throws a teaching error pointing you at `.modulate(s("mylayer"), amt)`. The modulator renders to a hidden auto framebuffer behind the scenes; you never name it.
+
+```js
+$: s("clip.mp4").modulate(s("clip.mp4").scale(0.5), 0.1)  // displace a clip with a scaled copy of itself
+$: s("clip.mp4").modulate(s("mylayer"), 0.2)              // a named layer as the modulator
+$: s("clip.mp4").modulate(s("prev"), fft.bass)            // audio-driven feedback warp
+```
+
+**Displacement is centred**: the modulator's red and green channels drive the horizontal and vertical shift, with **mid-grey (0.5) meaning "don't move"**. Opaque white and black push in opposite directions by `±amount/2`; transparent regions of the modulator displace nothing. `amount` defaults to `0.1`, is in source-UV units, is fully patternable, and negative values mirror the displacement. Because the origin is centred, a modulator that swings smoothly through grey sweeps the displacement through zero cleanly.
+
+`.modspace('uv' | 'tile' | 'screen')` chooses where the modulator is sampled (default `'uv'`):
+
+| Space      | Meaning                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------------- |
+| `'uv'`     | The tile's working UV — carries crop/scroll and prior warps (the Hydra-like default)        |
+| `'tile'`   | 0–1 across each tile — the whole modulator squeezed into every tile regardless of crop      |
+| `'screen'` | Fixed to the canvas — each tile reads the region of the modulator that sits under it        |
+
+`.modspace` is a consumer-side, patternable control (`.modspace("uv screen")` alternates per cycle), which is what lets stacked instances differ positionally.
+
+**Shared semantics — one written call = one modulator.** A `.modulate(...)` on a stack of instances renders **one** shared modulator FBO, not one per instance:
+
+```js
+$: s("clip.mp4").stackN(25).modulate(s("clip.mp4").scale(rand), .1).tile()
+```
+
+produces 25 identically-modulated tiles under the default `'uv'` space — the `rand` inside the modulator resolves once, not per instance. Use `.modspace('screen')` to differentiate them positionally (each tile then reads the region of the shared field under itself). Per-instance modulators are a planned follow-up.
+
+Only `.modulate` (UV displacement) exists today; the wider modulation vocabulary (`.modulateScale`, `.lumaMask`, generated `noise()`/`osc()` sources, …) is planned.
+
 ### Scale
 
 ```js

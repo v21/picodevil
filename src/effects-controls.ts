@@ -4,6 +4,7 @@
  */
 import { Pattern } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
+import { nextAutoModName, registerAutoHidden } from "./pattern-registry";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -195,4 +196,78 @@ export const barrel = createMixParam("barrel");
 PatternProto.barrel = function (value?: any) {
   if (value === undefined) value = 0.5;
   return barrel(value, this);
+};
+
+// Internal mix params for .modulate — ev.modSrc always carries an auto-FBO
+// name minted by .modulate; there is no user-facing string form.
+const _modSrc = createMixParam("modSrc");
+const _modAmt = createMixParam("modAmt");
+const _modSpace = createMixParam("modSpace");
+
+/**
+ * Validation only — every valid argument takes the auto-FBO path. Throws the
+ * teaching error for a JS string, a non-Pattern, or a string-valued pattern
+ * (a double-quoted arg arrives as mini(...) via the transpiler — the likeliest
+ * mistake). An empty/unprobeable pattern passes and fails soft later as a
+ * blank modulator.
+ */
+function assertScreenPattern(src: any, fnName: string): void {
+  const teach = `${fnName} takes a pattern — wrap the name: .${fnName}(s('mylayer'), amt)`;
+  if (typeof src === 'string' || !(src instanceof Pattern)) throw new Error(teach);
+  let firstValue: unknown;
+  try {
+    firstValue = (src as any).queryArc(0, 1)[0]?.value;
+  } catch {
+    return; // unprobeable → pass
+  }
+  if (typeof firstValue === 'string') throw new Error(teach);
+}
+
+/**
+ * Displaces this pattern's texture lookup with another pattern's rendered
+ * pixels (Hydra-style texture modulation). The modulator renders to a hidden
+ * auto framebuffer; its red/green channels push the sampling point around:
+ * mid-grey means "don't move", white/black displace by ±amount/2, and
+ * transparent regions displace nothing. One written call = one shared
+ * modulator, even across stacked instances.
+ *
+ * @param {Pattern} source modulator pattern — always a pattern; wrap names in s(): .modulate(s('mylayer'), 0.1)
+ * @param {number | string | Pattern} [amount=0.1] displacement in source-UV units; patternable, negative mirrors
+ * @returns {Pattern} pattern with modulation applied
+ * @example
+ * // displace a clip with a scaled copy of itself
+ * $: s("clip.mp4").modulate(s("clip.mp4").scale(0.5), 0.1)
+ *
+ * // named layer as modulator
+ * Hnoise: s("noise.mp4")
+ * $: s("clip.mp4").modulate(s("noise"), 0.2)
+ *
+ * // audio-driven feedback warp
+ * $: s("clip.mp4").modulate(s("prev"), fft.bass)
+ */
+PatternProto.modulate = function (src: any, amt: any = 0.1) {
+  assertScreenPattern(src, 'modulate');
+  const name = nextAutoModName();
+  registerAutoHidden(name, src);
+  return _modAmt(amt, _modSrc(name, this));
+};
+
+/**
+ * Sets where a `.modulate` modulator is sampled. Default `'uv'` follows the
+ * tile's working UV (crop/scroll and prior warps included — the Hydra-like
+ * default); `'tile'` squeezes the modulator into each tile; `'screen'` fixes
+ * the modulator to the canvas so each tile reads the region under itself
+ * (differentiates stacked copies; the natural pairing for `s("prev")`).
+ *
+ * @param {string | Pattern} value 'uv' | 'tile' | 'screen' — patternable
+ * @returns {Pattern} pattern with the lookup space applied
+ * @example
+ * // scene-field look: each grid cell reads its own region
+ * $: s("clip.mp4").stackN(9).rowscols(3).gridMod().modulate(s("prev"), .2).modspace('screen')
+ *
+ * // alternate spaces per cycle
+ * $: s("clip.mp4").modulate(s("clip.mp4").scale(.5), .1).modspace("uv screen")
+ */
+PatternProto.modspace = function (value: any) {
+  return _modSpace(value, this);
 };

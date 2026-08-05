@@ -69,6 +69,7 @@ resize();
 const pdMetrics = createMetrics();
 (window as any).pdMetrics = pdMetrics;
 (window as any).pdPerfInfo = () => {
+  const autoFBO = activeRenderer.getAutoFBOStats?.() ?? { count: 0, bytes: 0, pooled: 0 };
   return {
     naturalCount: pdMetrics.naturalCount,
     seekCount: pdMetrics.seekModeCount,
@@ -77,6 +78,11 @@ const pdMetrics = createMetrics();
     seeksThisFrame: pdMetrics.seeksThisFrame,
     seeksPer300f: pdMetrics.seeksHistory.reduce((a, b) => a + b, 0),
     driftSeeksPer300f: pdMetrics.driftSeeksHistory.reduce((a, b) => a + b, 0),
+    autoFBOCount: autoFBO.count,
+    autoFBOBytes: autoFBO.bytes,
+    // Cumulative zero-footprint-skip guard violations (internal footprint bugs).
+    // frameRenderer is defined below; pdPerfInfo only runs after module init.
+    modSkipViolations: frameRenderer.modSkipViolations,
   };
 };
 

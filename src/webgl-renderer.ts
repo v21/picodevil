@@ -1,10 +1,12 @@
-import type { Renderer, TileParams, TileSource } from './renderer-interface';
+import { AUTO_MOD_PREFIX, type Renderer, type TileParams, type TileSource } from './renderer-interface';
+import { ladderStep } from './modulate-sizing';
 import { TextureCache } from './texture-cache';
 import { warn } from './warnings';
 import {
-  compileInto, OP_FLOATS,
+  compileInto, OP_FLOATS, MAX_OPS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
+  OP_MODULATE,
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
@@ -147,9 +149,11 @@ layout(location = 10) in vec2 a_effects;  // x=effectStart, y=effectCount
 flat out int v_effectStart;
 flat out int v_effectCount;
 out vec2 v_uv;
+out vec2 v_local;
 
 void main() {
   v_uv = a_uvOffset + a_uv * a_uvSize;
+  v_local = a_uv;
   v_effectStart = int(a_effects.x);
   v_effectCount = int(a_effects.y);
 
@@ -162,16 +166,20 @@ void main() {
 
 // Build the fragment shader source for a given number of texture units.
 export function buildFragSrc(n: number): string {
-  // SAMPLE op dispatches to one of N texture units via an if/else chain
-  // (GLSL can't dynamically index sampler arrays).
+  // sampleAny dispatches to one of N texture units via an if/else chain
+  // (GLSL can't dynamically index sampler arrays; constant indexing inside a
+  // function is legal in ES 3.0). Shared by OP_SAMPLE and OP_MODULATE.
   const sampleChain = Array.from({ length: n }, (_, i) =>
-    `${i === 0 ? 'if' : 'else if'} (texIdx == ${i}) color = texture(u_tex[${i}], uv);`
-  ).join('\n        ');
+    `if (texIdx == ${i}) return texture(u_tex[${i}], uv);`
+  ).join('\n  ');
 
   return /* glsl */`#version 300 es
 precision mediump float;
 
 uniform sampler2D u_tex[${n}];
+// Pixel dims of the ACTIVE render target (canvas or FBO pass), not a canvas
+// constant — screen-space modulate lookups must be 0..1 across the current target.
+uniform vec2 u_resolution;
 
 layout(std140) uniform Effects {
   // Packed ops: each op is 2 consecutive vec4s.
@@ -183,6 +191,7 @@ layout(std140) uniform Effects {
 flat in int v_effectStart;
 flat in int v_effectCount;
 in vec2 v_uv;
+in vec2 v_local;
 out vec4 fragColor;
 
 #define OP_SAMPLE      ${OP_SAMPLE}
@@ -193,6 +202,12 @@ out vec4 fragColor;
 #define OP_BRIGHTNESS  ${OP_BRIGHTNESS}
 #define OP_COLOR_OKLAB ${OP_COLOR_OKLAB}
 #define OP_ALPHA       ${OP_ALPHA}
+#define OP_MODULATE    ${OP_MODULATE}
+
+vec4 sampleAny(int texIdx, vec2 uv) {
+  ${sampleChain}
+  return texture(u_tex[0], uv);
+}
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
 // extreme contrast/tint without NaN from negative pow().
@@ -274,10 +289,35 @@ void main() {
       } else {
         uv = fract(uv);
       }
+    } else if (kind == OP_MODULATE) {
+      // UV displacement driven by a modulator texture (always an FBO: y-up texels).
+      // a.y = texIdx, a.z = amt, a.w = space (0 uv / 1 tile / 2 screen)
+      // b.xy = lookup scale (auto-sizing sub-viewport), b.z = consumer-UV-y-down flag
+      vec2 L;
+      if (a.w > 1.5) {
+        // screen: gl_FragCoord and FBO texels are both y-up — no flip.
+        L = gl_FragCoord.xy / u_resolution;
+      } else if (a.w > 0.5) {
+        // tile: v_local is y-down across the quad; mirror into y-up texels.
+        L = vec2(v_local.x, 1.0 - v_local.y);
+      } else {
+        // uv: the working UV at this slot. Element-source consumers carry y-down
+        // UVs — mirror them; FBO-source consumers are already y-up. fract gives
+        // tile-wrap semantics (CLAMP_TO_EDGE would smear at crop-tiled edges).
+        L = uv;
+        if (b.z > 0.5) L.y = 1.0 - L.y;
+        L = fract(L);
+      }
+      L *= b.xy;
+      vec4 m = sampleAny(int(a.y), L);
+      // Centred displacement: mid-grey = no move (the 0.5 bias is fixed here by
+      // design); alpha-weighted so empty FBO regions displace nothing.
+      vec2 disp = (m.rg - 0.5) * a.z * m.a;
+      // Green > 0.5 samples visually downward for both consumer UV handednesses.
+      if (b.z < 0.5) disp.y = -disp.y;
+      uv += disp;
     } else if (kind == OP_SAMPLE) {
-      int texIdx = int(a.y);
-      ${sampleChain}
-      else color = texture(u_tex[0], uv);
+      color = sampleAny(int(a.y), uv);
     } else if (kind == OP_CONTRAST) {
       // Contrast centred at 0.5.
       color.rgb = (color.rgb - 0.5) * a.y + 0.5;
@@ -505,6 +545,13 @@ interface DrawCommand {
   cropSizeX:    number;
   cropSizeY:    number;
   tileMode:     number; // 1 = tile/tilecenter (wrap via fract), 0 = clip out-of-bounds
+  // Modulate: second sampled texture (an FBO tex) + op args. null = no modulate.
+  modTexture:   WebGLTexture | null;
+  modAmt:       number;
+  modSpace:     number; // 0 uv / 1 tile / 2 screen
+  modUVScaleX:  number;
+  modUVScaleY:  number;
+  modYDown:     number; // 1 = element-source consumer (y-down UVs), 0 = FBO-source
   transform:    Float32Array; // 16 floats, column-major
 }
 
@@ -531,7 +578,26 @@ interface DrawCommand {
 // `back` is the ping-pong partner, allocated only for self-referencing FBOs.
 // While such an FBO renders, `back` is bound as the write target and `tex`
 // (the front) holds the previous frame for self-reads; endOffscreen() swaps them.
-interface FBOEntry { fbo: WebGLFramebuffer; tex: WebGLTexture; w: number; h: number; back?: FBOEntry; }
+// `touched` marks per-frame liveness for auto-modulator FBOs: set when the FBO
+// is rendered or resolved as a modulator, cleared by sweepAutoFBOs().
+// `viewW`/`viewH` are the rendered sub-viewport dims (≤ w/h); modulate lookups
+// scale by view/tex. Full-size for everything but auto-modulator passes.
+interface FBOEntry {
+  fbo: WebGLFramebuffer; tex: WebGLTexture;
+  w: number; h: number;
+  viewW: number; viewH: number;
+  back?: FBOEntry;
+  touched?: boolean;
+  /** Consecutive frames the requested ladder size was below the allocated one. */
+  shrinkFrames?: number;
+}
+
+// Recycled auto-FBO entries kept beyond this count are deleted for real.
+const FBO_POOL_CAP = 4;
+
+// Shrink an auto FBO's ladder allocation only after this many consecutive
+// frames below half use — no realloc churn under size(sine).
+const FBO_SHRINK_FRAMES = 30;
 
 export class WebGLRenderer implements Renderer {
   private readonly gl: WebGL2RenderingContext;
@@ -544,12 +610,18 @@ export class WebGLRenderer implements Renderer {
   private readonly texCache: TextureCache;
   private readonly maxTexUnits: number;
   private readonly fbos = new Map<string, FBOEntry>();
+  /** Recycled auto-modulator FBO entries. Re-eval renumbers auto FBOs (name
+   *  churn); popping a same-size entry here makes that a Map move instead of a
+   *  multi-MB texImage2D realloc — no eval-time hitch. */
+  private readonly fboFreePool: FBOEntry[] = [];
 
   private instanceData = new Float32Array(256 * INSTANCE_FLOATS);
   // Per-batch ops buffer. UBO_VEC4_CAPACITY vec4 slots × 4 floats = the upload size.
   private readonly opsBuffer = new Float32Array(UBO_VEC4_CAPACITY * 4);
   // Scratch buffer for compileInto so we don't allocate per-tile.
-  private readonly opsScratch = new Float32Array(8 * OP_FLOATS);
+  private readonly opsScratch = new Float32Array(MAX_OPS * OP_FLOATS);
+  /** u_resolution location; re-queried on context restore. */
+  private uResolutionLoc: WebGLUniformLocation | null = null;
 
   private readonly pendingDraws: DrawCommand[] = [];
   /** The currently bound offscreen FBO (null = default canvas framebuffer). */
@@ -682,6 +754,10 @@ export class WebGLRenderer implements Renderer {
       const loc = gl.getUniformLocation(this.program, `u_tex[${i}]`);
       if (loc) gl.uniform1i(loc, i);
     }
+    // Per-pass resolution for screen-space modulate lookups. Re-established here
+    // so a context restore (the classically forgotten site) gets it too.
+    this.uResolutionLoc = gl.getUniformLocation(this.program, 'u_resolution');
+    this.setResolution(this.w, this.h);
 
     // Set up the Effects UBO: allocate, bind to point 0, link program block to point 0.
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.opsUBO);
@@ -699,6 +775,7 @@ export class WebGLRenderer implements Renderer {
     // FBO handles are dead too; drop the map so getOrCreateFBO rebuilds them at the
     // current size on next use. (No deleteFramebuffer — the old context is gone.)
     this.fbos.clear();
+    this.fboFreePool.length = 0;
     this.currentFBO = null;
     this.offscreenName = null;
     // Drop cached textures so the next frame re-uploads onto fresh handles. Use
@@ -716,22 +793,49 @@ export class WebGLRenderer implements Renderer {
     return this.gl.isContextLost();
   }
 
+  /** Canvas pixel dims — the frame renderer plans auto-modulator sizing from these. */
+  getViewportSize(): { w: number; h: number } {
+    return { w: this.w, h: this.h };
+  }
+
+  /** Set u_resolution to the active render target's viewport dims. Must track
+   *  every target switch — screen-space modulate lookups divide by it. */
+  private setResolution(w: number, h: number): void {
+    const { gl } = this;
+    gl.useProgram(this.program);
+    gl.uniform2f(this.uResolutionLoc, Math.max(1, w), Math.max(1, h));
+  }
+
   resize(w: number, h: number): void {
     this.w = w;
     this.h = h;
     this.gl.viewport(0, 0, w, h);
+    this.setResolution(w, h);
     // Resize existing FBOs to match new canvas dimensions
     const { gl } = this;
     const resizeEntry = (entry: FBOEntry) => {
       entry.w = w; entry.h = h;
+      entry.viewW = w; entry.viewH = h;
       gl.bindTexture(gl.TEXTURE_2D, entry.tex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.bindTexture(gl.TEXTURE_2D, null);
     };
-    for (const entry of this.fbos.values()) {
+    for (const [name, entry] of this.fbos) {
+      // Auto-modulator FBOs live on a canvas-relative ladder — their old sizes
+      // are meaningless now. They're stateless: drop them and let the next
+      // frame's pass recreate them at the right ladder step.
+      if (name.startsWith(AUTO_MOD_PREFIX)) {
+        this.fbos.delete(name);
+        this.deleteFBOEntry(entry);
+        continue;
+      }
       resizeEntry(entry);
       if (entry.back) resizeEntry(entry.back);
     }
+    // Pooled auto-FBO entries are now the wrong size — drop them rather than
+    // resizing textures nothing references.
+    for (const entry of this.fboFreePool) this.deleteFBOEntry(entry);
+    this.fboFreePool.length = 0;
   }
 
   beginFrame(): void {
@@ -773,6 +877,30 @@ export class WebGLRenderer implements Renderer {
     const cellW = p.w * this.w;
     const cellH = p.h * this.h;
 
+    // Modulator resolution. A miss is impossible by construction (the auto FBO
+    // registers and renders before its consumer in the same frame), as is the
+    // modulator being the current render target (auto FBOs are never consumers'
+    // targets) — both are internal bugs: warn + draw unmodulated, never drop
+    // the tile. Deduped by message in warn().
+    let modTexture: WebGLTexture | null = null;
+    let modUVScaleX = 1, modUVScaleY = 1;
+    if (p.modSrc !== undefined) {
+      const modEntry = this.fbos.get(p.modSrc);
+      if (!modEntry) {
+        warn(`internal: modulator FBO "${p.modSrc}" missing at draw time — tile drawn unmodulated`);
+      } else if (modEntry.fbo === this.currentFBO) {
+        warn(`internal: modulator FBO "${p.modSrc}" is the current render target — tile drawn unmodulated`);
+      } else {
+        modTexture = modEntry.tex;
+        modEntry.touched = true; // liveness for the auto-FBO sweep
+        modUVScaleX = modEntry.viewW / modEntry.w;
+        modUVScaleY = modEntry.viewH / modEntry.h;
+      }
+    }
+    const modAmt    = p.modAmt ?? 0.1;
+    const modSpace  = p.modSpace === 'screen' ? 2 : p.modSpace === 'tile' ? 1 : 0;
+    const modYDown  = fboSource ? 0 : 1;
+
     // contain / none: shrink dest rect to the display area, UV covers the crop window.
     // The area outside the dest rect is simply not drawn → transparent letterbox.
     if (p.fit === 'contain' || p.fit === 'none') {
@@ -810,6 +938,8 @@ export class WebGLRenderer implements Renderer {
         barrel:       p.barrel       ?? 0,
         cropOffX: 0, cropOffY: 0, cropSizeX: 1, cropSizeY: 1,
         tileMode:     0,
+        modTexture, modAmt, modSpace,
+        modUVScaleX, modUVScaleY, modYDown,
         transform:    buildTransform(p),
       });
       return;
@@ -859,6 +989,8 @@ export class WebGLRenderer implements Renderer {
       barrel:       p.barrel       ?? 0,
       cropOffX, cropOffY, cropSizeX, cropSizeY,
       tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
+      modTexture, modAmt, modSpace,
+      modUVScaleX, modUVScaleY, modYDown,
       transform:    buildTransform(p),
     });
   }
@@ -941,10 +1073,10 @@ export class WebGLRenderer implements Renderer {
       }
     };
 
-    /** Compile cmd's effects with the supplied texIdx, dedup against this
-     *  batch's ops buffer, and write the result's (offset, count) into the
+    /** Compile cmd's effects with the supplied texIdx/modTexIdx, dedup against
+     *  this batch's ops buffer, and write the result's (offset, count) into the
      *  per-instance arrays. Returns false if ops would overflow the UBO. */
-    const tryCompileForBatch = (i: number, cmd: DrawCommand, texIdx: number): boolean => {
+    const tryCompileForBatch = (i: number, cmd: DrawCommand, texIdx: number, modTexIdx: number): boolean => {
       // Compile into scratch with the batch-local texIdx.
       const opCount = compileInto({
         texIndex:     texIdx,
@@ -963,6 +1095,12 @@ export class WebGLRenderer implements Renderer {
         cropSizeX:    cmd.cropSizeX,
         cropSizeY:    cmd.cropSizeY,
         tileMode:     cmd.tileMode,
+        modTexIndex:  modTexIdx,
+        modAmt:       cmd.modAmt,
+        modSpace:     cmd.modSpace,
+        modUVScaleX:  cmd.modUVScaleX,
+        modUVScaleY:  cmd.modUVScaleY,
+        modYDown:     cmd.modYDown,
       }, this.opsScratch, 0);
 
       // Build dedup key. Float-array join is allocation-y but cheap enough for
@@ -995,7 +1133,12 @@ export class WebGLRenderer implements Renderer {
     for (let i = 0; i < draws.length; i++) {
       const cmd = draws[i];
       const blendChange  = cmd.blend !== blendMode;
-      const needsNewUnit = !texUnits.has(cmd.texture) && texUnits.size === this.maxTexUnits;
+      // A modulated tile needs TWO units (source + modulator) — count how many
+      // of them are new to this batch before deciding whether they still fit.
+      const newUnits =
+        (texUnits.has(cmd.texture) ? 0 : 1) +
+        (cmd.modTexture && cmd.modTexture !== cmd.texture && !texUnits.has(cmd.modTexture) ? 1 : 0);
+      const needsNewUnit = texUnits.size + newUnits > this.maxTexUnits;
 
       if (blendChange || needsNewUnit) {
         flush(i);
@@ -1009,22 +1152,31 @@ export class WebGLRenderer implements Renderer {
       if (!texUnits.has(cmd.texture)) {
         texUnits.set(cmd.texture, texUnits.size);
       }
+      if (cmd.modTexture && !texUnits.has(cmd.modTexture)) {
+        texUnits.set(cmd.modTexture, texUnits.size);
+      }
       const texIdx = texUnits.get(cmd.texture)!;
+      const modTexIdx = cmd.modTexture ? texUnits.get(cmd.modTexture)! : -1;
 
       // Try to compile this command's ops into the current batch's UBO.
       // If it overflows, flush the batch and retry with a fresh ops buffer.
-      if (!tryCompileForBatch(i, cmd, texIdx)) {
+      if (!tryCompileForBatch(i, cmd, texIdx, modTexIdx)) {
         flush(i);
         batchStart = i;
         texUnits   = new Map();
         blendMode  = cmd.blend;
         opsLen     = 0;
         opsDedup   = new Map();
+        // Seed the fresh batch with BOTH of this tile's textures.
         texUnits.set(cmd.texture, 0);
+        if (cmd.modTexture && !texUnits.has(cmd.modTexture)) {
+          texUnits.set(cmd.modTexture, texUnits.size);
+        }
         const retryTexIdx = texUnits.get(cmd.texture)!;
+        const retryModTexIdx = cmd.modTexture ? texUnits.get(cmd.modTexture)! : -1;
         // Should always succeed on retry — a single tile can produce at most
-        // 8 ops = 16 vec4s, far under UBO_VEC4_CAPACITY=1024.
-        tryCompileForBatch(i, cmd, retryTexIdx);
+        // MAX_OPS ops = 2·MAX_OPS vec4s, far under UBO_VEC4_CAPACITY=1024.
+        tryCompileForBatch(i, cmd, retryTexIdx, retryModTexIdx);
       }
     }
 
@@ -1032,18 +1184,62 @@ export class WebGLRenderer implements Renderer {
     draws.length = 0;
   }
 
-  beginOffscreen(name: string, doubleBuffer = false): void {
+  beginOffscreen(name: string, doubleBuffer = false, reqW?: number, reqH?: number): void {
     const { gl } = this;
     this.flushPending(); // commit any pending draws to the current framebuffer before switching
-    const entry = this.getOrCreateFBO(name);
+
+    // Reduced-resolution auto-modulator pass: allocate the texture on the
+    // quantised ladder, render into a sub-viewport of it. Fill cost scales
+    // with viewport, not texture size, so the ladder avoids realloc churn.
+    let entry: FBOEntry;
+    if (reqW !== undefined && reqH !== undefined) {
+      const canvasW = this.w || 1, canvasH = this.h || 1;
+      const viewW = Math.max(1, Math.min(Math.round(reqW), canvasW));
+      const viewH = Math.max(1, Math.min(Math.round(reqH), canvasH));
+      const wantW = ladderStep(viewW, canvasW);
+      const wantH = ladderStep(viewH, canvasH);
+      entry = this.getOrCreateFBO(name, wantW, wantH);
+      if (wantW > entry.w || wantH > entry.h) {
+        // Grow immediately — an under-sized modulator is visibly blurry.
+        this.resizeFBOTexture(entry, Math.max(wantW, entry.w), Math.max(wantH, entry.h));
+        entry.shrinkFrames = 0;
+      } else if (wantW < entry.w || wantH < entry.h) {
+        // Shrink only after sustained low use (hysteresis).
+        entry.shrinkFrames = (entry.shrinkFrames ?? 0) + 1;
+        if (entry.shrinkFrames >= FBO_SHRINK_FRAMES) {
+          this.resizeFBOTexture(entry, wantW, wantH);
+          entry.shrinkFrames = 0;
+        }
+      } else {
+        entry.shrinkFrames = 0;
+      }
+      entry.viewW = Math.min(viewW, entry.w);
+      entry.viewH = Math.min(viewH, entry.h);
+    } else {
+      entry = this.getOrCreateFBO(name);
+      entry.viewW = entry.w;
+      entry.viewH = entry.h;
+    }
+    entry.touched = true; // liveness for the auto-FBO sweep
+
     // For a self-referencing FBO, render into the back buffer while the front
     // (entry.fbo/tex) stays readable as the previous frame. endOffscreen swaps.
     const target = doubleBuffer ? this.getOrCreateBack(entry) : entry;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
-    gl.viewport(0, 0, target.w, target.h);
+    gl.viewport(0, 0, target === entry ? entry.viewW : target.w, target === entry ? entry.viewH : target.h);
+    this.setResolution(entry.viewW, entry.viewH);
     this.currentFBO = target.fbo;
     this.offscreenName = name;
     this.offscreenDoubleBuffered = doubleBuffer;
+  }
+
+  /** Reallocate an FBO entry's texture storage at new ladder dims. */
+  private resizeFBOTexture(entry: FBOEntry, w: number, h: number): void {
+    const { gl } = this;
+    entry.w = w; entry.h = h;
+    gl.bindTexture(gl.TEXTURE_2D, entry.tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
   }
 
   endOffscreen(): void {
@@ -1062,6 +1258,7 @@ export class WebGLRenderer implements Renderer {
     this.offscreenDoubleBuffered = false;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.w, this.h);
+    this.setResolution(this.w, this.h);
     this.currentFBO = null;
   }
 
@@ -1085,6 +1282,55 @@ export class WebGLRenderer implements Renderer {
     gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  }
+
+  /**
+   * Frame-end maintenance: recycle auto-modulator FBOs that were neither
+   * rendered nor resolved as a modulator this frame (stale after a re-eval
+   * renumbered their call site). User-named FBOs are never swept. Safe because
+   * auto FBOs are stateless — recreating one gets correct content the first
+   * frame it's referenced.
+   */
+  sweepAutoFBOs(): void {
+    for (const [name, entry] of this.fbos) {
+      if (!name.startsWith(AUTO_MOD_PREFIX)) continue;
+      if (entry.touched) { entry.touched = false; continue; }
+      this.fbos.delete(name);
+      this.recycleFBOEntry(entry);
+    }
+  }
+
+  /** Auto-modulator FBO visibility for the perf panel: active count and VRAM
+   *  bytes held by auto FBOs, including the recycled pool. */
+  getAutoFBOStats(): { count: number; bytes: number; pooled: number } {
+    let count = 0, bytes = 0;
+    for (const [name, e] of this.fbos) {
+      if (!name.startsWith(AUTO_MOD_PREFIX)) continue;
+      count++;
+      bytes += e.w * e.h * 4;
+    }
+    for (const e of this.fboFreePool) bytes += e.w * e.h * 4;
+    return { count, bytes, pooled: this.fboFreePool.length };
+  }
+
+  /** Return a swept auto-FBO entry to the free pool; past the cap, delete it. */
+  private recycleFBOEntry(entry: FBOEntry): void {
+    if (this.fboFreePool.length < FBO_POOL_CAP) {
+      this.fboFreePool.push(entry);
+      return;
+    }
+    this.deleteFBOEntry(entry);
+  }
+
+  private deleteFBOEntry(entry: FBOEntry): void {
+    const { gl } = this;
+    if (gl.isContextLost()) return; // handles already dead; deleting would throw
+    gl.deleteFramebuffer(entry.fbo);
+    gl.deleteTexture(entry.tex);
+    if (entry.back) {
+      gl.deleteFramebuffer(entry.back.fbo);
+      gl.deleteTexture(entry.back.tex);
+    }
   }
 
   /** Free the cached texture for a discarded source: a pool-evicted media element, or an evicted text canvas. */
@@ -1117,21 +1363,23 @@ export class WebGLRenderer implements Renderer {
           gl.deleteTexture(entry.back.tex);
         }
       }
+      for (const entry of this.fboFreePool) this.deleteFBOEntry(entry);
       gl.deleteProgram(this.program);
       gl.deleteVertexArray(this.vao);
       gl.deleteBuffer(this.instanceVBO);
       gl.deleteBuffer(this.opsUBO);
     }
     this.fbos.clear();
+    this.fboFreePool.length = 0;
     gl.getExtension('WEBGL_lose_context')?.loseContext();
   }
 
-  /** Allocate a fresh RGBA8 texture + framebuffer sized to the canvas. */
-  private createFBOEntry(): FBOEntry {
-    const { gl, w, h } = this;
+  /** Allocate a fresh RGBA8 texture + framebuffer (canvas-sized by default). */
+  private createFBOEntry(texW = this.w || 1, texH = this.h || 1): FBOEntry {
+    const { gl } = this;
     const tex = gl.createTexture()!;
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w || 1, h || 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, texW, texH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1141,13 +1389,22 @@ export class WebGLRenderer implements Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    return { fbo, tex, w: w || 1, h: h || 1 };
+    return { fbo, tex, w: texW, h: texH, viewW: texW, viewH: texH };
   }
 
-  private getOrCreateFBO(name: string): FBOEntry {
+  private getOrCreateFBO(name: string, texW = this.w || 1, texH = this.h || 1): FBOEntry {
     let entry = this.fbos.get(name);
     if (entry) return entry;
-    entry = this.createFBOEntry();
+    // Auto-modulator FBOs prefer a recycled same-size entry over allocating.
+    if (name.startsWith(AUTO_MOD_PREFIX)) {
+      const idx = this.fboFreePool.findIndex(e => e.w === texW && e.h === texH);
+      if (idx >= 0) {
+        entry = this.fboFreePool.splice(idx, 1)[0];
+        this.fbos.set(name, entry);
+        return entry;
+      }
+    }
+    entry = this.createFBOEntry(texW, texH);
     this.fbos.set(name, entry);
     return entry;
   }
