@@ -779,20 +779,35 @@ export class FrameRenderer {
     const cw = vp?.w ?? 0, ch = vp?.h ?? 0;
     const ev = fe.ev;
 
-    // On-screen footprint (bbox incl. scale + rotation). Skip entirely if the
-    // tile isn't visible — nothing reads the bake.
+    // Skip entirely if the tile isn't visible — nothing reads the bake.
     const fp = cw > 0 && ch > 0 ? consumerFootprint(ev, cw, ch) : null;
     if (fp && !fp.visible) return;
+
+    // Tile placement + unrotated footprint size (rotation is applied at the
+    // final draw, so the bake FBO is sized to the un-rotated tile and the
+    // rotation is exact, not a bounding-box approximation).
     const cx = ev.x !== undefined ? Number(ev.x) : 0.5;
     const cy = ev.y !== undefined ? Number(ev.y) : 0.5;
-    const fw = fp ? Math.min(1, Math.max(1 / Math.max(cw, 1), fp.wPx / cw)) : 1;
-    const fh = fp ? Math.min(1, Math.max(1 / Math.max(ch, 1), fp.hPx / ch)) : 1;
+    const wFrac = Math.abs((ev.width  !== undefined ? Number(ev.width)  : 1) *
+                           (ev.scaleX !== undefined ? Number(ev.scaleX) : 1)) || 1e-4;
+    const hFrac = Math.abs((ev.height !== undefined ? Number(ev.height) : 1) *
+                           (ev.scaleY !== undefined ? Number(ev.scaleY) : 1)) || 1e-4;
+    // Requested FBO resolution = the footprint in pixels (ladder-quantised by
+    // the renderer). undefined when we can't size (no viewport) → full canvas.
+    const reqW = cw > 0 ? Math.max(1, Math.min(cw, Math.round(wFrac * cw))) : undefined;
+    const reqH = ch > 0 ? Math.max(1, Math.min(ch, Math.round(hFrac * ch))) : undefined;
 
+    // Base source, geometry stripped so it FILLS the footprint-sized FBO (the
+    // FBO represents just the tile's frame, at the tile's aspect).
     const { rest } = splitEffects(ev);
-    delete (rest as any)._bakeSegments;
+    const baseRest: Record<string, any> = { ...rest };
+    for (const k of ['_bakeSegments', 'x', 'y', 'width', 'height', 'scaleX', 'scaleY',
+                     'rotateZ', 'rotateX', 'rotateY', 'rotate', 'rotateAxis']) {
+      delete baseRest[k];
+    }
 
     const drawInto = (name: string, buildEv: () => any) => {
-      this.renderer.beginOffscreen(name);
+      this.renderer.beginOffscreen(name, false, reqW, reqH);
       this.renderer.clearTarget?.();
       const p = this.buildTileParams({ ...fe, ev: buildEv() }, t, cps, wall, videoFrameProcessed);
       if (p) this.renderer.drawTile(p);
@@ -800,37 +815,38 @@ export class FrameRenderer {
       this.renderer.endOffscreen();
     };
 
-    // pass 0: base source (geometry + source crop kept) with seg0's effects.
+    // pass 0: base source filling the footprint FBO, with seg0's effects.
     drawInto(segs[0].name, () => ({
-      ...rest, ...segs[0].effects, alpha: 1, blend: 'source-over',
+      ...baseRest, x: 0.5, y: 0.5, width: 1, height: 1,
+      ...segs[0].effects, alpha: 1, blend: 'source-over',
     }));
 
-    // passes 1..n: sample the previous FBO's footprint, redraw at geometry.
+    // passes 1..n: sample the previous FBO (full — drawTile scales to its
+    // rendered region), fill this FBO, with seg_i's effects.
     for (let i = 1; i < segs.length; i++) {
       const prev = segs[i - 1].name;
       drawInto(segs[i].name, () => ({
         _type: 'pattern', src: prev,
-        x: cx, y: cy, width: fw, height: fh,
-        cropx: cx, cropy: cy, cropw: fw, croph: fh,
+        x: 0.5, y: 0.5, width: 1, height: 1,
         objectfit: 'fill', alpha: 1, blend: 'source-over',
         ...segs[i].effects,
       }));
     }
 
-    // final: place the baked tile with the top (post-last-boundary) effects.
+    // final: place the baked tile at its footprint, applying scale-as-size,
+    // rotation, and the top (post-last-boundary) effects + compositing.
     const { effects: topEffects } = splitEffects(ev);
     const last = segs[segs.length - 1].name;
-    const finalParams = this.buildTileParams({
-      ...fe,
-      ev: {
-        _type: 'pattern', src: last,
-        x: cx, y: cy, width: fw, height: fh,
-        cropx: cx, cropy: cy, cropw: fw, croph: fh,
-        objectfit: 'fill',
-        alpha: ev.alpha, blend: ev.blend,
-        ...topEffects,
-      },
-    }, t, cps, wall, videoFrameProcessed);
+    const finalEv: Record<string, any> = {
+      _type: 'pattern', src: last,
+      x: cx, y: cy, width: wFrac, height: hFrac,
+      objectfit: 'fill',
+      alpha: ev.alpha, blend: ev.blend,
+      ...topEffects,
+    };
+    if (ev.rotateZ !== undefined) finalEv.rotateZ = ev.rotateZ;
+    if (ev.rotate !== undefined) { finalEv.rotate = ev.rotate; finalEv.rotateAxis = ev.rotateAxis; }
+    const finalParams = this.buildTileParams({ ...fe, ev: finalEv }, t, cps, wall, videoFrameProcessed);
     if (finalParams) {
       try {
         this.renderer.drawTile(finalParams);

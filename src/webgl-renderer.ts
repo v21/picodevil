@@ -923,6 +923,10 @@ export class WebGLRenderer implements Renderer {
     let srcW: number, srcH: number;
     let fboSource = false;
 
+    // For a sub-viewport FBO source (a footprint-sized `.render()` bake), the
+    // rendered content occupies only [0,viewW]×[0,viewH] of the texture's
+    // bottom-left. Scale the sampled UV by view/tex so we read that region.
+    let fboUVScaleX = 1, fboUVScaleY = 1;
     if (p.source.kind === 'pattern') {
       const entry = this.fbos.get(p.source.name);
       if (!entry) return;
@@ -938,6 +942,9 @@ export class WebGLRenderer implements Renderer {
       tex = entry.tex;
       srcW = this.w; srcH = this.h;
       fboSource = true;
+      entry.touched = true; // liveness (also keeps a sampled render bake alive)
+      fboUVScaleX = entry.viewW / entry.w;
+      fboUVScaleY = entry.viewH / entry.h;
     } else {
       tex = this.texCache.get(p.source);
       if (!tex) return;
@@ -1002,7 +1009,11 @@ export class WebGLRenderer implements Renderer {
       let uvSzX  = p.cropw >= 0 ? absCropw          : -absCropw;
       let uvOffY = p.croph >= 0 ? cropTop           : cropTop + absCroph;
       let uvSzY  = p.croph >= 0 ? absCroph          : -absCroph;
-      if (fboSource) { uvOffY = 1 - uvOffY; uvSzY = -uvSzY; }
+      if (fboSource) {
+        uvOffY = 1 - uvOffY; uvSzY = -uvSzY;
+        uvOffX *= fboUVScaleX; uvSzX *= fboUVScaleX;
+        uvOffY *= fboUVScaleY; uvSzY *= fboUVScaleY;
+      }
       this.pendingDraws.push({
         texture: tex, blend: p.blend ?? 'source-over',
         destOffsetX: p.x, destOffsetY: p.y,
@@ -1037,7 +1048,12 @@ export class WebGLRenderer implements Renderer {
     // mirror (1 - V), not a within-window flip (uvOffsetY + uvSizeY) — the latter
     // is only correct for a full-frame / V=0.5-centred window and samples the
     // wrong half for off-centre crops (e.g. cropStack tiles).
-    if (fboSource) { uvOffsetY = 1 - uvOffsetY; uvSizeY = -uvSizeY; }
+    if (fboSource) {
+      uvOffsetY = 1 - uvOffsetY; uvSizeY = -uvSizeY;
+      // Restrict to the rendered sub-viewport region (footprint-sized bakes).
+      uvOffsetX *= fboUVScaleX; uvSizeX *= fboUVScaleX;
+      uvOffsetY *= fboUVScaleY; uvSizeY *= fboUVScaleY;
+    }
 
     const isTile = p.fit === 'tile' || p.fit === 'tilecenter';
     const tileAw = Math.abs(p.cropw), tileAh = Math.abs(p.croph);

@@ -146,6 +146,34 @@ describe("render pipeline (meta-effect)", () => {
     expect(flushWarnings()).toEqual([]);
   });
 
+  it("auto-sizes the bake FBO to the tile footprint, not the canvas", () => {
+    // 0.25×0.25 tile on a 100×100 canvas → 25px footprint → ladder step 25.
+    (color("white") as any).width(0.25).height(0.25).grey(1).render().p("$");
+    const screens = collectScreens();
+    const named = getNamedScreenIndices();
+    withRenderer((renderer) => {
+      const fr = new FrameRenderer(renderer, makePool() as any, createMetrics());
+      fr.render(screens as any, named, 0, 1, 0);
+      // 25×25×4 = 2500 bytes, vs 40000 for a canvas-sized bake.
+      expect(renderer.getAutoFBOStats().bytes).toBe(25 * 25 * 4);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
+  it("sub-viewport (fractional su) still places + confines correctly", () => {
+    // 0.3 footprint → 30px req → ladder 50 → viewport 30 inside a 50 texture,
+    // su = 0.6. Positioned off-centre to also exercise placement + orientation.
+    (color("white") as any).x(0.3).y(0.3).width(0.3).height(0.3).render().smear(0, 8).p("$");
+    renderOnce((canvas, renderer) => {
+      // content sits at (0.3,0.3) → pixel (30,30) opaque; opposite corner empty
+      expect(readPixel(canvas, 30, 30)[3]).toBeGreaterThan(150);
+      expect(transparent(readPixel(canvas, 80, 80)[3])).toBe(true);
+      // ladder allocation is 50×50 (not exact 30, not canvas 100)
+      expect(renderer.getAutoFBOStats().bytes).toBe(50 * 50 * 4);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
   it("baked FBOs are swept when the render line disappears", () => {
     (color("red") as any).grey(1).render().p("$");
     const s1 = collectScreens();
