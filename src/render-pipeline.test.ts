@@ -19,6 +19,7 @@ import {
 import { withRenderer, readPixel } from "./webgl-test-helpers";
 import { flushWarnings, clearWarnings } from "./warnings";
 import "./visual-controls";
+import "./pattern-extensions";
 
 const makePool = () => createVideoPoolManager({ resolveMediaUrl: (name: string) => name });
 
@@ -211,5 +212,53 @@ describe("render pipeline (meta-effect)", () => {
       expect(stats.count).toBe(0);
       expect(stats.pooled).toBe(1);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Crop is a bake-ordered stage: a crop AFTER a .render() crops the *baked*
+// result (warp-whole-frame-then-slice); a crop BEFORE it is baked (crop then
+// warp the cropped cell). Without a boundary it's just the cell frame, as ever.
+// ---------------------------------------------------------------------------
+
+describe("crop as a bake-ordered stage", () => {
+  const opaque = (a: number) => a > 200;
+  const transparent = (a: number) => a < 40;
+
+  it("barrel().render().crop(right half): whole-frame warp, THEN cropped → asymmetric", () => {
+    // Bake barrels the whole frame (centred), then the crop samples its RIGHT
+    // half: the tile's left edge is the frame centre (undistorted → opaque), its
+    // right edge is the frame edge (blown out → transparent). The old per-tile
+    // path warped the cropped cell → both corners symmetric; this must not.
+    (color("white") as any).barrel(6).render().cropx(0.75).cropw(0.5).p("$");
+    renderOnce((c) => {
+      expect(opaque(readPixel(c, 3, 4)[3])).toBe(true);       // left = frame centre
+      expect(transparent(readPixel(c, 96, 4)[3])).toBe(true); // right = frame edge
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
+  it("crop(right half).render().barrel(): crop first, THEN warp the cell → symmetric", () => {
+    // Regression: crop before the boundary is baked, barrel warps the cropped
+    // cell around its own centre → both corners clip alike. (Same as no render.)
+    (color("white") as any).cropx(0.75).cropw(0.5).render().barrel(6).p("$");
+    renderOnce((c) => {
+      const l = readPixel(c, 3, 4)[3], r = readPixel(c, 96, 4)[3];
+      expect(transparent(l)).toBe(true);
+      expect(transparent(r)).toBe(true);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
+  it("barrel().render().cropStack(1,2): whole-frame warp, then sliced across tiles", () => {
+    // Left tile shows the frame's LEFT half of the barrelled bake: outer edge
+    // (frame corner) clips, inner edge (frame centre) stays opaque. Per-tile
+    // warping would clip both edges of the tile.
+    (color("white") as any).barrel(6).render().cropStack(1, 2).tile().p("$");
+    renderOnce((c) => {
+      expect(transparent(readPixel(c, 3, 4)[3])).toBe(true); // left tile, outer edge
+      expect(opaque(readPixel(c, 46, 4)[3])).toBe(true);     // left tile, inner edge (seam)
+    });
+    expect(flushWarnings()).toEqual([]);
   });
 });

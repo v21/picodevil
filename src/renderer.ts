@@ -792,14 +792,30 @@ export class FrameRenderer {
                            (ev.scaleX !== undefined ? Number(ev.scaleX) : 1)) || 1e-4;
     const hFrac = Math.abs((ev.height !== undefined ? Number(ev.height) : 1) *
                            (ev.scaleY !== undefined ? Number(ev.scaleY) : 1)) || 1e-4;
-    // Requested FBO resolution = the footprint in pixels (ladder-quantised by
-    // the renderer). undefined when we can't size (no viewport) → full canvas.
-    const reqW = cw > 0 ? Math.max(1, Math.min(cw, Math.round(wFrac * cw))) : undefined;
-    const reqH = ch > 0 ? Math.max(1, Math.min(ch, Math.round(hFrac * ch))) : undefined;
+    // Split effects/rest once: `rest` (source/geometry/playback) seeds the base
+    // draw; `topEffects` are the post-last-boundary effects applied at the final
+    // placement.
+    const { effects: topEffects, rest } = splitEffects(ev);
 
-    // Base source, geometry stripped so it FILLS the footprint-sized FBO (the
-    // FBO represents just the tile's frame, at the tile's aspect).
-    const { rest } = splitEffects(ev);
+    // A crop that lands AFTER pass 0 — in the top effects, or a later segment —
+    // samples an already-baked FBO, so that FBO must hold the whole uncropped
+    // frame at full resolution (footprint-sizing would under-resolve the slice
+    // the crop reads). Bake at canvas resolution in that case.
+    // NOTE: with a fan-out (cropStack after render) this bakes the same full
+    // frame once per tile; sharing one bake across the fan-out is a follow-up.
+    const cropKeys = ['cropx', 'cropy', 'cropw', 'croph'];
+    const hasCrop = (e: Record<string, any> | undefined) =>
+      !!e && cropKeys.some((k) => e[k] !== undefined);
+    const postBakeCrop = hasCrop(topEffects) || segs.slice(1).some((s) => hasCrop(s.effects));
+
+    // Requested FBO resolution = the footprint in pixels (ladder-quantised by
+    // the renderer), or the full canvas when a downstream crop samples the bake.
+    // undefined when we can't size (no viewport) → full canvas.
+    const reqW = cw > 0 ? (postBakeCrop ? cw : Math.max(1, Math.min(cw, Math.round(wFrac * cw)))) : undefined;
+    const reqH = ch > 0 ? (postBakeCrop ? ch : Math.max(1, Math.min(ch, Math.round(hFrac * ch)))) : undefined;
+
+    // Base source, geometry stripped so it FILLS the FBO (which represents the
+    // tile's frame — or the whole frame when a post-bake crop will slice it).
     const baseRest: Record<string, any> = { ...rest };
     for (const k of ['_bakeSegments', 'x', 'y', 'width', 'height', 'scaleX', 'scaleY',
                      'rotateZ', 'rotateX', 'rotateY', 'rotate', 'rotateAxis']) {
@@ -835,7 +851,8 @@ export class FrameRenderer {
 
     // final: place the baked tile at its footprint, applying scale-as-size,
     // rotation, and the top (post-last-boundary) effects + compositing.
-    const { effects: topEffects } = splitEffects(ev);
+    // `topEffects` (computed above) includes any post-bake crop, so drawTile
+    // crops the baked FBO here rather than the source.
     const last = segs[segs.length - 1].name;
     const finalEv: Record<string, any> = {
       _type: 'pattern', src: last,

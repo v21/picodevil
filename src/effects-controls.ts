@@ -183,10 +183,11 @@ PatternProto.tint = function (hue: any, strength: any = 1) {
  *
  * Barrel (like every UV effect) works in the drawn cell's own [0,1] frame: it is
  * centred on and scaled to the visible cell, so on a crop — `.cropStack()`, or a
- * `.crop*()`/`.scroll*()` window — each tile warps around its own centre. (`.render()`
- * does not change this — it bakes per-tile too.) To warp the whole source *before*
- * it is sliced, bake it to a named FBO first, then crop that:
- * `Hbaked: s("clip.mp4").barrel(k)` then `$: s("baked").cropStack(...)`.
+ * `.crop*()`/`.scroll*()` window — each tile warps around its own centre. To warp
+ * the whole source *before* it is sliced, put a `.render()` between the effect and
+ * the crop — crop is a bake-ordered stage, so a crop after `.render()` crops the
+ * already-warped frame: `.barrel(k).render().cropStack(3,3)` = whole-frame warp,
+ * then sliced.
  *
  * @param {number | string | Pattern} [value=0.5] distortion coefficient: >0 = barrel, <0 = pincushion
  * @returns {Pattern} pattern with lens distortion applied
@@ -327,12 +328,15 @@ PatternProto.modspace = function (value: any) {
  * bakes the smeared half-size ducks, then the second smear stays inside the .5×.5
  * frame (it can't blur into the surrounding canvas).
  *
- * This buys three things the fixed-slot effect order can't:
+ * This buys four things the fixed-slot effect order can't:
  * - **Repeated effects** — `.barrel(.3).render().barrel(.3)` is two barrel
  *   passes; without the boundary the two calls would collapse to one.
  * - **Colour-then-UV order** — normally UV warps (barrel/pixelate) always run
  *   before colour ops; a `.render()` between them flips that for the second half.
  * - **Confined effects** — a smear/barrel after `.render()` respects the tile edges.
+ * - **Warp-then-crop** — crop is an ordered stage, so a crop *after* `.render()`
+ *   crops the baked (warped) frame: `.barrel(k).render().cropStack(3,3)` warps the
+ *   whole frame then slices it, vs `.cropStack(3,3).barrel(k)` which warps per-tile.
  *
  * `.render()` is a **meta-effect**: it doesn't render immediately, it marks that
  * an intermediate framebuffer is needed here. Effects are baked into that FBO;

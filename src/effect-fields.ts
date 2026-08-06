@@ -6,8 +6,15 @@
  * clears them, so effects written before and after a `.render()` boundary become
  * separate rendered passes instead of colliding on one field. Everything NOT in
  * this set — source identity, playback (speed/begin/end/sync), geometry
- * (x/y/w/h/scale/rotate), crop, fit, alpha, blend — stays on the one tile value
- * and is therefore transparent to `.render()` ordering.
+ * (x/y/w/h/scale/rotate), fit, alpha, blend — stays on the one tile value and is
+ * therefore transparent to `.render()` ordering.
+ *
+ * **Crop is included** (cropx/cropy/cropw/croph): it's a UV-window stage of the
+ * chain, so a crop written *before* a `.render()` is baked (crop the source, then
+ * bake) while a crop *after* one crops the baked result (warp-the-whole-frame-
+ * then-slice). Without a boundary it's just the cell frame the cell-local effects
+ * sit in, as before. See `renderBakeChain` (it canvas-sizes the bake when a crop
+ * samples it downstream).
  *
  * Alpha and blend are deliberately excluded: they are *compositing*, applied when
  * the final tile lands on the canvas, not baked into the intermediate texture.
@@ -27,6 +34,10 @@ export const EFFECT_FIELDS: ReadonlySet<string> = new Set([
   'modSrc',
   'modAmt',
   'modSpace',
+  'cropx',
+  'cropy',
+  'cropw',
+  'croph',
 ]);
 
 /** One baked effect pass: the FBO it renders into and the effect fields applied. */
