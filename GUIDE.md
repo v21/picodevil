@@ -349,6 +349,8 @@ These two effects warp the image in UV space, *before* the texture is sampled, s
 
 `.barrel(k)` applies lens distortion: `k > 0` bows the image outward (the classic CRT curved-screen look, corners clipped to transparent), `k < 0` is pincushion. No argument defaults to 0.5; subtle CRT looks live around 0.3–0.5.
 
+Both warp in the drawn tile's **own** `[0,1]` frame — so on a crop (a `.crop*()`/`.scroll*()` window, or a `.cropStack()` tile) each tile bows or pixelates around its **own** centre, not the source's. To warp the whole source *before* it's sliced, bake it to a named layer (an `s("name")` source, below) first and crop **that** — `.render()` won't do it, since it also bakes per-tile.
+
 ```js
 $: video("clip.mp4").pixelate(20)                  // chunky mosaic
 $: video("clip.mp4").pixelate(sine.range(1, 40))   // animated block size
@@ -356,6 +358,9 @@ $: video("clip.mp4").pixelate(10).rotateZ(0.25)    // grid rotates with the tile
 $: s("all").barrel(0.4)                            // CRT warp the whole composition
 $: video("clip.mp4").objectfit("fill").barrel(0.5) // barrel on a single video
 $: s("all").barrel(sine.range(0, 0.6))             // pulsing warp
+$: s("clip.mp4").cropStack(3,3).tile().barrel(0.5) // per-tile: each cell warps on its own centre
+Hbaked: s("clip.mp4").barrel(0.5)                  // whole-frame warp, then sliced:
+$: s("baked").cropStack(3,3).tile()                //   bake the frame, crop the baked result
 ```
 
 ### Smear
@@ -451,6 +456,13 @@ Without the boundary, the second `.barrel` / `.smear` would just overwrite the f
 
 ```js
 $: s("ducks").w(.5).h(.5).smear(A).render().smear(0, B)   // second smear stays inside the .5×.5 frame
+```
+
+`.render()` bakes **per-tile**, so it does *not* let you warp a whole frame and then slice it: `.barrel(k).render().cropStack(...)` and `.cropStack(...).render().barrel(k)` both warp each tile independently. For a whole-frame-then-slice look, bake to a named layer and crop that instead:
+
+```js
+Hbaked: s("clip.mp4").barrel(0.5)     // full-frame warp into an offscreen layer
+$: s("baked").cropStack(3,3).tile()   // slice the baked (already-warped) frame
 ```
 
 **Only effects are baked.** `.render()` is transparent to everything that isn't a pixel effect — source, playback (`speed`/`begin`/…) and geometry (`x`/`y`/`w`/`h`) stay on the one tile, so it doesn't matter which side of `.render()` you write them:

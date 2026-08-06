@@ -183,8 +183,10 @@ PatternProto.tint = function (hue: any, strength: any = 1) {
  *
  * Barrel (like every UV effect) works in the drawn cell's own [0,1] frame: it is
  * centred on and scaled to the visible cell, so on a crop — `.cropStack()`, or a
- * `.crop*()`/`.scroll*()` window — each tile warps around its own centre. To warp
- * the whole source *before* it is sliced instead, bake it first: `.barrel(k).render().cropStack(...)`.
+ * `.crop*()`/`.scroll*()` window — each tile warps around its own centre. (`.render()`
+ * does not change this — it bakes per-tile too.) To warp the whole source *before*
+ * it is sliced, bake it to a named FBO first, then crop that:
+ * `Hbaked: s("clip.mp4").barrel(k)` then `$: s("baked").cropStack(...)`.
  *
  * @param {number | string | Pattern} [value=0.5] distortion coefficient: >0 = barrel, <0 = pincushion
  * @returns {Pattern} pattern with lens distortion applied
