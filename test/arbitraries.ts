@@ -531,6 +531,8 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
+  fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
+    .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),
@@ -582,6 +584,8 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
+  fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
+    .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
   // texture modulation — inline pattern arg, optionally with a lookup space
   fc.tuple(modulatorExpr, modAmtArg).map(([src, amt]) => ({ code: `.modulate(${src}, ${amt})` })),
   fc.tuple(modulatorExpr, modAmtArg, modSpaceArg)

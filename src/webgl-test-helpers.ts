@@ -23,6 +23,7 @@ export function makeTile(overrides: Partial<TileParams> = {}): TileParams {
     huerot: 0, contrast: 1, brightness: 0,
     tintHue: 0, tintStrength: 0,
     barrel: 0,
+    smear: 0, smearAngle: 0, smearJitter: 0.1,
     ...overrides,
   };
 }

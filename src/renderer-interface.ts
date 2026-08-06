@@ -66,6 +66,12 @@ export interface TileParams {
   tintStrength: number;
   /** Barrel (>0) / pincushion (<0) distortion coefficient. 0 = off (default). */
   barrel: number;
+  /** Directional smear radius in screen pixels (5-tap Gaussian). 0 = off (default). */
+  smear: number;
+  /** smear direction in turns (0 = horizontal, 0.25 = vertical). */
+  smearAngle: number;
+  /** smear per-tap positional jitter factor (0.1 ≈ ±0.1·step); dithers wide-offset aliasing. */
+  smearJitter: number;
   /** Name of the FBO whose pixels displace this tile's UV lookup (`.modulate`). */
   modSrc?: string;
   /** Modulate displacement amount in source-crop UV units. */

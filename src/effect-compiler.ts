@@ -36,13 +36,18 @@ export const OP_BRIGHTNESS  = 5;
 export const OP_COLOR_OKLAB = 6;
 export const OP_ALPHA       = 7;
 export const OP_MODULATE    = 8;
+/** Directional smear: a multi-tap sample that replaces SAMPLE in the pivot slot
+ *  when smear is active (a tile has exactly one sampling op, so this never
+ *  coexists with SAMPLE). */
+export const OP_SMEAR       = 9;
 
 /** Number of floats per op (one kind + 7 args). */
 export const OP_FLOATS = 8;
 
 /** Maximum ops one tile can compile to (the fully-loaded chain). Sizes every
  *  scratch buffer that holds a single chain — compile(), the renderer's
- *  opsScratch, and the UBO-overflow retry all rely on it. */
+ *  opsScratch, and the UBO-overflow retry all rely on it. SMEAR occupies the
+ *  SAMPLE slot rather than adding one, so the ceiling is unchanged. */
 export const MAX_OPS = 9;
 
 /**
@@ -81,6 +86,12 @@ export interface EffectInputs {
    *  the visual-Y displacement sign so green > 0.5 displaces visually the same
    *  way for both consumer kinds. */
   modYDown:     number;
+  // Smear (source UV units, computed CPU-side from screen pixels).
+  /** Directional smear per-tap offset vector (dir × step). 0,0 = no smear. */
+  smearOffX?:   number;
+  smearOffY?:   number;
+  /** Per-tap positional jitter factor (0.1 ≈ ±0.1·step) — dithers wide-offset aliasing into noise. */
+  smearJitter?: number;
 }
 
 /**
@@ -161,10 +172,24 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
   i += OP_FLOATS;
   count++;
 
-  // SAMPLE: always emit. Carries the texture-unit index.
-  out[i] = OP_SAMPLE;
-  out[i + 1] = e.texIndex;
-  out[i + 2] = 0; out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+  // SAMPLE / SMEAR: exactly one sampling op per tile. When smear is active, emit
+  // OP_SMEAR (a directional multi-tap read) in the same pivot slot instead of the
+  // single-tap OP_SAMPLE — so the chain length (and MAX_OPS) is unchanged and the
+  // common path stays a single tap. `|| 0` guards partial test inputs where these
+  // fields are undefined.
+  const sx = e.smearOffX || 0, sy = e.smearOffY || 0;
+  if (sx !== 0 || sy !== 0) {
+    out[i] = OP_SMEAR;
+    out[i + 1] = e.texIndex;
+    out[i + 2] = sx;
+    out[i + 3] = sy;
+    out[i + 4] = e.smearJitter || 0;
+    out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+  } else {
+    out[i] = OP_SAMPLE;
+    out[i + 1] = e.texIndex;
+    out[i + 2] = 0; out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+  }
   i += OP_FLOATS;
   count++;
 

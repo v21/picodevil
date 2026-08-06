@@ -384,6 +384,47 @@ describe("barrel", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Smear (5-tap directional Gaussian with per-sample positional jitter)
+// ---------------------------------------------------------------------------
+
+/** 100×100 canvas: left half white, right half black — a vertical hard edge at x=50. */
+function edgeCanvas(): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = 100; c.height = 100;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 50, 100);
+  ctx.fillStyle = "#000000"; ctx.fillRect(50, 0, 50, 100);
+  return c;
+}
+
+describe("smear", () => {
+  it("no smear: the hard edge stays sharp", () => {
+    const canvas = renderTile(makeTile({ source: { kind: 'text', canvas: edgeCanvas() }, fit: 'fill' }));
+    expect(readPixel(canvas, 35, 50)[0]).toBeGreaterThan(240); // white side
+    expect(readPixel(canvas, 65, 50)[0]).toBeLessThan(15);     // black side
+  });
+
+  it("smear horizontal softens a vertical edge (white darkens, black lightens)", () => {
+    const canvas = renderTile(makeTile({
+      source: { kind: 'text', canvas: edgeCanvas() }, fit: 'fill',
+      smear: 15, smearAngle: 0,
+    }));
+    expect(readPixel(canvas, 35, 50)[0]).toBeLessThan(240);    // was 255
+    expect(readPixel(canvas, 65, 50)[0]).toBeGreaterThan(15);  // was 0
+  });
+
+  it("smear vertical (angle .25) leaves a vertical edge sharp — streak is perpendicular", () => {
+    const canvas = renderTile(makeTile({
+      source: { kind: 'text', canvas: edgeCanvas() }, fit: 'fill',
+      smear: 15, smearAngle: 0.25,
+    }));
+    expect(readPixel(canvas, 35, 50)[0]).toBeGreaterThan(240);
+    expect(readPixel(canvas, 65, 50)[0]).toBeLessThan(15);
+  });
+
+});
+
 describe("snapshotSoFar / s('all') mid-frame compositing", () => {
   it("captures rendered content and exposes it as pattern:all", () => {
     withRenderer((renderer, canvas) => {

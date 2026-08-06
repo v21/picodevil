@@ -6,7 +6,7 @@ import {
   compileInto, OP_FLOATS, MAX_OPS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE,
+  OP_MODULATE, OP_SMEAR,
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
@@ -203,10 +203,50 @@ out vec4 fragColor;
 #define OP_COLOR_OKLAB ${OP_COLOR_OKLAB}
 #define OP_ALPHA       ${OP_ALPHA}
 #define OP_MODULATE    ${OP_MODULATE}
+#define OP_SMEAR       ${OP_SMEAR}
 
 vec4 sampleAny(int texIdx, vec2 uv) {
   ${sampleChain}
   return texture(u_tex[0], uv);
+}
+
+// Per-pixel hash → [0,1). Jitters smear sample positions so wide offsets dither
+// into noise instead of aliasing. From
+// http://amindforeverprogramming.blogspot.com/2013/07/random-floats-in-glsl-330.html
+uint pdHash(uint x) {
+  x += (x << 10u); x ^= (x >> 6u); x += (x << 3u); x ^= (x >> 11u); x += (x << 15u);
+  return x;
+}
+uint pdHash(uvec2 v) { return pdHash(v.x ^ pdHash(v.y)); }
+float pdRandom(highp vec2 v) {
+  uint h = pdHash(floatBitsToUint(v));
+  h &= 0x007FFFFFu; h |= 0x3F800000u;
+  return uintBitsToFloat(h) - 1.0;
+}
+// Two decorrelated draws → a random point in the unit square.
+vec2 pdRandom2(highp vec2 v) { return vec2(pdRandom(v), pdRandom(v + 19.19)); }
+// Per-(fragment,tap) x/y displacement of half-extent amp. k is a running tap
+// counter; the irrational multipliers avoid axis/diagonal seed collisions
+// between neighbouring fragments.
+vec2 pdJit(vec2 fc, float k, vec2 amp) {
+  return (pdRandom2(fc + vec2(k * 0.7548, k * 1.3821)) - 0.5) * amp;
+}
+
+// Directional smear: a 5-tap 1-D Gaussian [1 4 6 4 1]/16 along d1. Every
+// sampling point — the centre included — is displaced by its own random x/y
+// jitter of half-extent j·|d1|, so the jitter is weighted by strength and turns
+// wide-offset aliasing into noise. Each tap wraps via fract.
+//   d1 = smear per-tap UV offset (taps at -2..2 · d1)
+vec4 smearSample(int texIdx, vec2 uv, vec2 d1, float j) {
+  if (d1.x == 0.0 && d1.y == 0.0) return sampleAny(texIdx, uv);
+
+  vec2 fc = gl_FragCoord.xy;
+  vec2 amp = vec2(j * length(d1));   // isotropic jitter half-extent
+  float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
+  vec4 s = vec4(0.0);
+  for (int t = 0; t < 5; ++t)
+    s += sampleAny(texIdx, fract(uv + d1 * float(t - 2) + pdJit(fc, float(t), amp))) * w5[t];
+  return s / 16.0;
 }
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -318,6 +358,9 @@ void main() {
       uv += disp;
     } else if (kind == OP_SAMPLE) {
       color = sampleAny(int(a.y), uv);
+    } else if (kind == OP_SMEAR) {
+      // a.y = texIdx, a.zw = smear offset, b.x = smear jitter.
+      color = smearSample(int(a.y), uv, a.zw, b.x);
     } else if (kind == OP_CONTRAST) {
       // Contrast centred at 0.5.
       color.rgb = (color.rgb - 0.5) * a.y + 0.5;
@@ -552,6 +595,10 @@ interface DrawCommand {
   modUVScaleX:  number;
   modUVScaleY:  number;
   modYDown:     number; // 1 = element-source consumer (y-down UVs), 0 = FBO-source
+  // Smear (source UV units, converted from screen pixels in drawTile).
+  smearOffX:    number;
+  smearOffY:    number;
+  smearJitter:  number;
   transform:    Float32Array; // 16 floats, column-major
 }
 
@@ -901,6 +948,19 @@ export class WebGLRenderer implements Renderer {
     const modSpace  = p.modSpace === 'screen' ? 2 : p.modSpace === 'tile' ? 1 : 0;
     const modYDown  = fboSource ? 0 : 1;
 
+    // Smear: convert the screen-pixel radius to a source-UV per-tap offset. The
+    // px→UV scale differs per fit branch (below), so this closure takes it as an
+    // argument. The angle is in turns (0 = horizontal, .25 = vertical). Same
+    // convention as `pixelate` (screen pixels, texture space).
+    const smear = p.smear ?? 0;
+    const smearAng = (smear > 0 ? (p.smearAngle ?? 0) : 0) * 2 * Math.PI;
+    const smearCos = Math.cos(smearAng), smearSin = Math.sin(smearAng);
+    const smearFields = (uvPerPxX: number, uvPerPxY: number) => ({
+      smearOffX:   smear > 0 ? smear * smearCos * uvPerPxX : 0,
+      smearOffY:   smear > 0 ? smear * smearSin * uvPerPxY : 0,
+      smearJitter: p.smearJitter ?? 0.1,
+    });
+
     // contain / none: shrink dest rect to the display area, UV covers the crop window.
     // The area outside the dest rect is simply not drawn → transparent letterbox.
     if (p.fit === 'contain' || p.fit === 'none') {
@@ -940,6 +1000,7 @@ export class WebGLRenderer implements Renderer {
         tileMode:     0,
         modTexture, modAmt, modSpace,
         modUVScaleX, modUVScaleY, modYDown,
+        ...smearFields(absCropw / dispW, absCroph / dispH),
         transform:    buildTransform(p),
       });
       return;
@@ -991,6 +1052,7 @@ export class WebGLRenderer implements Renderer {
       tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
       modTexture, modAmt, modSpace,
       modUVScaleX, modUVScaleY, modYDown,
+      ...smearFields(Math.abs(uvSizeX) / cellW, Math.abs(uvSizeY) / cellH),
       transform:    buildTransform(p),
     });
   }
@@ -1101,6 +1163,9 @@ export class WebGLRenderer implements Renderer {
         modUVScaleX:  cmd.modUVScaleX,
         modUVScaleY:  cmd.modUVScaleY,
         modYDown:     cmd.modYDown,
+        smearOffX:    cmd.smearOffX,
+        smearOffY:    cmd.smearOffY,
+        smearJitter:  cmd.smearJitter,
       }, this.opsScratch, 0);
 
       // Build dedup key. Float-array join is allocation-y but cheap enough for

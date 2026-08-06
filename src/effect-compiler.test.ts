@@ -3,7 +3,7 @@ import {
   compile,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE,
+  OP_MODULATE, OP_SMEAR,
   OP_FLOATS, MAX_OPS,
   type EffectInputs,
 } from "./effect-compiler";
@@ -214,6 +214,56 @@ describe("effect-compiler", () => {
         OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
       ]);
       expect(ks.length).toBe(MAX_OPS);
+    });
+  });
+
+  describe("SMEAR", () => {
+    it("not emitted with no smear params — plain SAMPLE stays", () => {
+      const ks = kinds(compile(defaults()));
+      expect(ks).toContain(OP_SAMPLE);
+      expect(ks).not.toContain(OP_SMEAR);
+    });
+
+    it("directional smear replaces SAMPLE with SMEAR", () => {
+      const ks = kinds(compile({ ...defaults(), smearOffX: 0.05, smearOffY: 0 }));
+      expect(ks).toContain(OP_SMEAR);
+      expect(ks).not.toContain(OP_SAMPLE);
+    });
+
+    it("SMEAR sits at the SAMPLE pivot — after WRAP, before colour ops", () => {
+      const e = { ...defaults(), smearOffX: 0.05, smearOffY: 0.05, contrast: 1.5 };
+      const ks = kinds(compile(e));
+      const smearIdx = ks.indexOf(OP_SMEAR);
+      expect(ks[smearIdx - 1]).toBe(OP_WRAP);
+      expect(ks[smearIdx + 1]).toBe(OP_CONTRAST);
+    });
+
+    it("packs [texIdx, smearOffX, smearOffY, smearJitter]", () => {
+      const e = {
+        ...defaults(), texIndex: 2,
+        smearOffX: 0.01, smearOffY: 0.02, smearJitter: 0.2,
+      };
+      const ops = compile(e);
+      const o = OP_FLOATS; // WRAP is op 0, SMEAR is op 1
+      expect(ops[o]).toBe(OP_SMEAR);
+      expect(ops[o + 1]).toBe(2);
+      expect(ops[o + 2]).toBeCloseTo(0.01);
+      expect(ops[o + 3]).toBeCloseTo(0.02);
+      expect(ops[o + 4]).toBeCloseTo(0.2);
+    });
+
+    it("MAX_OPS still covers the fully-loaded chain with SMEAR in the SAMPLE slot", () => {
+      const e = {
+        ...defaults(),
+        barrel: 0.2, modTexIndex: 1, modAmt: 0.1,
+        pixUVStepX: 0.1, pixUVStepY: 0.1,
+        smearOffX: 0.05, smearOffY: 0.05,
+        contrast: 1.5, brightness: 0.2, grey: 0.4,
+      };
+      const ks = kinds(compile(e));
+      expect(ks).toContain(OP_SMEAR);
+      expect(ks).not.toContain(OP_SAMPLE);
+      expect(ks.length).toBeLessThanOrEqual(MAX_OPS);
     });
   });
 

@@ -358,6 +358,21 @@ $: video("clip.mp4").objectfit("fill").barrel(0.5) // barrel on a single video
 $: s("all").barrel(sine.range(0, 0.6))             // pulsing warp
 ```
 
+### Smear
+
+`.smear(angle, pixels)` is a directional (1-D) Gaussian blur — a motion-blur streak along `angle`, given in **turns** (0 = horizontal, 0.25 = vertical). The angle is patternable, so the streak can rotate. `pixels` is the radius in **screen pixels** (no argument defaults to 8); cost is **fixed regardless of radius**, so animate it freely.
+
+An optional trailing `jitter` (default `0.1`) gives **every sample point** (the centre included) its own small random x/y displacement, scaled by the smear strength, so that at wide radii the discrete taps dither into fine noise instead of showing as faint ghost copies. Pass `0` for crisp, un-dithered taps.
+
+Smear runs in texture space (like `.pixelate`), so it rotates with `.rotateZ()` and smears whatever earlier UV warps (crop, barrel, modulate) produced.
+
+```js
+$: video("clip.mp4").smear(0, 30)                  // horizontal smear
+$: video("clip.mp4").smear(sine, 30)               // rotating streak
+$: video("clip.mp4").smear(0.25, 20)               // vertical motion blur
+$: video("clip.mp4").smear(0, fft.bass.range(0, 40)) // smear pulsing to the beat
+```
+
 ### Blending
 
 `.blend(mode)` sets how a pattern composites onto whatever is already on the canvas. The default is `"source-over"` (normal alpha compositing). Supported modes:

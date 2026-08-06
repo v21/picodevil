@@ -198,6 +198,35 @@ PatternProto.barrel = function (value?: any) {
   return barrel(value, this);
 };
 
+const _smear = createMixParam("smear");
+const _smearAngle = createMixParam("smearAngle");
+const _smearJitter = createMixParam("smearJitter");
+
+/**
+ * Directional (1-D) Gaussian blur — a 5-tap motion-blur streak along `angle`.
+ * `angle` is in turns (0 = horizontal, 0.25 = vertical) and is patternable, so
+ * the streak can sweep. `pixels` is the radius in screen pixels; `jitter`
+ * randomises each sample point's position (weighted by strength) to dither
+ * aliasing into noise.
+ *
+ * @param {number | string | Pattern} [angle=0] streak direction in turns (0 = horizontal, 0.25 = vertical)
+ * @param {number | string | Pattern} [pixels=8] smear radius in screen pixels; 0 = off
+ * @param {number | string | Pattern} [jitter=0.1] per-sample positional jitter (fraction of tap step)
+ * @returns {Pattern} pattern with directional smear applied
+ * @example
+ * // horizontal smear
+ * $: video("clip.mp4").smear(0, 30)
+ *
+ * // rotating streak
+ * $: video("clip.mp4").smear(sine, 30)
+ *
+ * // vertical motion blur
+ * $: video("clip.mp4").smear(0.25, 20)
+ */
+PatternProto.smear = function (angle: any = 0, pixels: any = 8, jitter: any = 0.1) {
+  return _smearJitter(jitter, _smearAngle(angle, _smear(pixels, this)));
+};
+
 // Internal mix params for .modulate — ev.modSrc always carries an auto-FBO
 // name minted by .modulate; there is no user-facing string form.
 const _modSrc = createMixParam("modSrc");
