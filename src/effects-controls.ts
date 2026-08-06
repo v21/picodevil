@@ -124,7 +124,7 @@ export const huerot = createMixParam("huerot");
 export const contrast = createMixParam("contrast");
 
 /**
- * Adds a brightness offset after contrast. 0 = no change (default),
+ * Adds a brightness offset before contrast. 0 = no change (default),
  * positive = brighter, negative = darker.
  *
  * @param {number | string | Pattern} value brightness offset

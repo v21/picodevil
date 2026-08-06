@@ -79,7 +79,7 @@ describe("effect-compiler", () => {
       };
       expect(kinds(compile(e))).toEqual([
         OP_BARREL, OP_PIXELATE, OP_WRAP, OP_SAMPLE,
-        OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
+        OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_ALPHA,
       ]);
     });
 
@@ -94,7 +94,7 @@ describe("effect-compiler", () => {
       const e = { ...defaults(), contrast: 1.2, brightness: 0.1, grey: 0.3 };
       const ks = kinds(compile(e));
       const sampleIdx = ks.indexOf(OP_SAMPLE);
-      expect(ks.slice(sampleIdx + 1)).toEqual([OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA]);
+      expect(ks.slice(sampleIdx + 1)).toEqual([OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_ALPHA]);
     });
   });
 
@@ -211,7 +211,7 @@ describe("effect-compiler", () => {
       const ks = kinds(compile(e));
       expect(ks).toEqual([
         OP_BARREL, OP_MODULATE, OP_PIXELATE, OP_WRAP, OP_SAMPLE,
-        OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
+        OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_ALPHA,
       ]);
       expect(ks.length).toBe(MAX_OPS);
     });

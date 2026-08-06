@@ -313,11 +313,11 @@ $: color("red").alpha("1 0.5 0")   // patterned alpha
 
 `.contrast(n)` adjusts contrast, centred at 0.5. 1 = normal (default), 0 = flat 50% grey, -1 = full invert. Values above 1 increase contrast.
 
-`.brightness(n)` adds a brightness offset after contrast. 0 = no change (default), positive = brighter, negative = darker.
+`.brightness(n)` adds a brightness offset before contrast. 0 = no change (default), positive = brighter, negative = darker.
 
 `.tint(hue, strength)` colorises toward a target hue while attracting saturation toward 1. `hue` is in [0,1] turns (0/1 = red, 0.33 = green, 0.67 = blue). `strength` defaults to 1 and is unclamped — values above 1 produce hyper-saturated effects; negative values push away from the hue. Operates in OKLab space in a shared pass with `.huerot()` (applied before it, so huerot can further rotate the result).
 
-All are applied in the fragment shader in this order: contrast → brightness → grey + tint + huerot (one shared OKLab pass) → alpha. (Barrel distortion and pixelation, below, happen earlier still — in UV space, before the texture is even sampled.)
+All are applied in the fragment shader in this order: brightness → contrast → grey + tint + huerot (one shared OKLab pass) → alpha. (Barrel distortion and pixelation, below, happen earlier still — in UV space, before the texture is even sampled.)
 
 ```js
 $: video("clip.mp4").grey(1)                               // fully greyscale

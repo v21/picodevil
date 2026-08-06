@@ -9,8 +9,8 @@
  *   3. PIXELATE  (UV quantisation)
  *   4. WRAP      (tile/non-tile UV wrap)
  *   5. SAMPLE    (texture lookup; required for every tile)
- *   6. CONTRAST  (centred contrast)
- *   7. BRIGHTNESS (additive offset)
+ *   6. BRIGHTNESS (additive offset)
+ *   7. CONTRAST  (centred contrast)
  *   8. COLOR_OKLAB (grey + tint + huerot, one OKLab round-trip)
  *   9. ALPHA     (final multiply; always emitted)
  *
@@ -193,19 +193,19 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
   i += OP_FLOATS;
   count++;
 
-  // CONTRAST: only emit when non-identity (1). Matches today's "color.rgb = (color.rgb - 0.5) * contrast + 0.5".
-  if (e.contrast !== 1) {
-    out[i] = OP_CONTRAST;
-    out[i + 1] = e.contrast;
+  // BRIGHTNESS: only emit when non-zero. Additive offset, applied before contrast.
+  if (e.brightness !== 0) {
+    out[i] = OP_BRIGHTNESS;
+    out[i + 1] = e.brightness;
     out[i + 2] = 0; out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
     i += OP_FLOATS;
     count++;
   }
 
-  // BRIGHTNESS: only emit when non-zero. Additive offset.
-  if (e.brightness !== 0) {
-    out[i] = OP_BRIGHTNESS;
-    out[i + 1] = e.brightness;
+  // CONTRAST: only emit when non-identity (1). Matches today's "color.rgb = (color.rgb - 0.5) * contrast + 0.5".
+  if (e.contrast !== 1) {
+    out[i] = OP_CONTRAST;
+    out[i + 1] = e.contrast;
     out[i + 2] = 0; out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
     i += OP_FLOATS;
     count++;

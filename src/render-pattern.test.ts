@@ -58,9 +58,9 @@ describe(".render() effect split", () => {
     const v = val((screen("clip.mp4") as any).smear(0.5).render().smear(0));
     expect(Number(v._bakeSegments[0].effects.smearAngle)).toBeCloseTo(0.5); // baked pass
     expect(Number(v.smearAngle)).toBe(0);                                    // top pass
-    // both passes carry a real radius (default 8px), so both actually smear
-    expect(Number(v._bakeSegments[0].effects.smear)).toBe(8);
-    expect(Number(v.smear)).toBe(8);
+    // both passes carry a real radius (default 20px), so both actually smear
+    expect(Number(v._bakeSegments[0].effects.smear)).toBe(20);
+    expect(Number(v.smear)).toBe(20);
   });
 
   it("chains — each render() appends a segment", () => {
