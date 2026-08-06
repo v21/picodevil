@@ -65,7 +65,14 @@ export function matchSources(
     for (const ns of group) {
       if (ns.kind === "image" || ns.expectedTime === null) {
         if (candidates && candidates.length > 0) {
-          result.set(ns, { needed: ns, el: candidates.splice(0, 1)[0], isNew: false });
+          // Prefer an uncommitted candidate — one that was itself rolling last frame
+          // (desiredTime unset). A committed element (desiredTime set) belongs to a
+          // clock-scored slot that a sibling non-rolling source is still tracking; taking
+          // it would evict that source onto this element and swap the two every frame
+          // (the plain-vs-rolling same-src thrash). Fall back to the front element (the
+          // previously-active one prepended by the renderer) when none is uncommitted.
+          const idx = ns.kind === "video" ? firstUncommitted(candidates) : 0;
+          result.set(ns, { needed: ns, el: candidates.splice(idx, 1)[0], isNew: false });
         } else {
           result.set(ns, { needed: ns, el: createFreshElement(ns, makeVideoEl), isNew: true });
         }
@@ -153,6 +160,19 @@ function candidateCost(c: VideoEl, target: number, dur: number, frameDt: number)
     ? scoreFreeElement(predicted, target, dur)
     : Math.abs(predicted - target);
   return (noSeek ? dist : SEEK_PENALTY + dist) + (st?.id ?? 0) * ID_EPS;
+}
+
+/**
+ * Index of the first candidate not committed to a scored slot (desiredTime unset) — i.e. a
+ * previously-rolling or cold element. Returns 0 (front) when every candidate is committed, so a
+ * lone rolling source still reclaims the prepended active element. Only VideoEls carry `_state`;
+ * a non-video candidate (shouldn't occur for a rolling video's src) reads as committed and is skipped.
+ */
+function firstUncommitted(candidates: Array<VideoEl | HTMLImageElement>): number {
+  for (let i = 0; i < candidates.length; i++) {
+    if ((candidates[i] as VideoEl)._state?.desiredTime == null) return i;
+  }
+  return 0;
 }
 
 /** True if `pos` is within the drift threshold of `target`, accounting for the video-boundary wrap. */

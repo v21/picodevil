@@ -284,6 +284,60 @@ describe("matchSources", () => {
     });
   });
 
+  describe("plain + rolling sharing a src (element-swap thrash)", () => {
+    // Repro of `$: s("ducks")` stacked with `$: s("ducks").rolling().alpha(.2)`.
+    // Both screens need the same clip; one is a clock-scored (plain) source and one is
+    // rolling, so they do NOT share a NeededSource — each needs its own pool element every
+    // frame. The rolling source used to front-take candidates[0], which (because the renderer
+    // prepends previously-active elements in assignment order) is often the PLAIN source's
+    // element. The two would then swap every frame, forcing both to reseek — visible flicker,
+    // which .alpha() makes obvious. Rolling must instead reclaim its own uncommitted element.
+    const src = "http://test/ducks";
+
+    it("single frame: rolling reclaims its own element, plain keeps its committed one", () => {
+      const plainTarget = 2.0;
+      const plainEl = makeVideoEl(plainTarget, src); plainEl._state.desiredTime = plainTarget;
+      const rollEl = makeVideoEl(7.5, src); // rolling → desiredTime stays undefined
+      // Renderer prepends actives in assignment order [plain, rolling]; plain sits at index 0.
+      const free: FreePool = new Map([[src, [plainEl, rollEl]]]);
+      const durations = new Map([[src, 10]]);
+      const needed = [makeNeededVideo(src, plainTarget), makeNeededVideo(src, null, 1, { rolling: true })];
+
+      const result = matchSources(needed, free, durations, FRAME_DT);
+      expect(result[1].el, "rolling reclaims its own (uncommitted) element").toBe(rollEl);
+      expect(result[0].el, "plain keeps its own committed element").toBe(plainEl);
+    });
+
+    it("stays stable across many frames (no per-frame swap)", () => {
+      const durations = new Map([[src, 10]]);
+      // Steady state: two active elements bound to the two sources.
+      const plainEl = makeVideoEl(2.0, src); plainEl._state.desiredTime = 2.0;
+      const rollEl = makeVideoEl(7.5, src);
+      let actives: VideoEl[] = [plainEl, rollEl]; // assignment order [plain, rolling]
+
+      for (let f = 1; f <= 40; f++) {
+        const plainTarget = 2.0 + f * FRAME_DT; // plain's clock slot creeps forward
+        // Renderer rebuilds the free pool each frame, prepending actives in assignment order.
+        const free: FreePool = new Map([[src, [...actives]]]);
+        const needed = [makeNeededVideo(src, plainTarget), makeNeededVideo(src, null, 1, { rolling: true })];
+        const result = matchSources(needed, free, durations, FRAME_DT);
+
+        const p = result[0].el as VideoEl;
+        const r = result[1].el as VideoEl;
+        expect(p, `frame ${f}: plain must keep its element`).toBe(plainEl);
+        expect(r, `frame ${f}: rolling must keep its element`).toBe(rollEl);
+
+        // Mirror renderer.ts: commit desiredTime (rolling → undefined), advance positions,
+        // and reorder actives to this frame's assignment order for the next iteration.
+        p._state.desiredTime = plainTarget;
+        r._state.desiredTime = undefined;
+        (p as any).currentTime = plainTarget;
+        (r as any).currentTime = Math.min(10, r.currentTime + FRAME_DT);
+        actives = [p, r];
+      }
+    });
+  });
+
   describe("forward prediction", () => {
     it("uses predicted time (currentTime + speed * frameDt) for scoring", () => {
       // Element at 4.9s, speed 1, frameDt=1s → predicted=5.9; target=6 → forward seek 0.1
