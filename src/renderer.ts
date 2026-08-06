@@ -9,6 +9,7 @@ import { queryNeeded, type FrameEvent, type NeededSource } from './source-query'
 import { matchSources, type FreePool } from './source-matcher';
 import { AUTO_MOD_PREFIX, type Renderer, type TileParams, type TileSource, type Screen } from './renderer-interface';
 import { consumerFootprint, requiredModRes, type ModPlan } from './modulate-sizing';
+import { splitEffects } from './effect-fields';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
@@ -288,10 +289,20 @@ export class FrameRenderer {
     if (autoNames.length === 0) return plans;
 
     const consumers = new Map<string, any[]>(autoNames.map(n => [n, []]));
+    const addConsumer = (m: unknown, ev: any) => {
+      if (m === undefined) return;
+      consumers.get(String(m))?.push(ev);
+    };
     for (const fe of allEvents) {
-      const m = fe.ev?.modSrc;
-      if (m === undefined) continue;
-      consumers.get(String(m))?.push(fe.ev);
+      const ev = fe.ev;
+      if (!ev) continue;
+      addConsumer(ev.modSrc, ev);
+      // A `.modulate()` before `.render()` lands modSrc inside a bake segment —
+      // the tile is still the consumer (its footprint sizes the modulator), so
+      // scan segments too, else the modulator is wrongly skipped as unread.
+      if (Array.isArray(ev._bakeSegments)) {
+        for (const seg of ev._bakeSegments) addConsumer(seg?.effects?.modSrc, ev);
+      }
     }
     for (const name of autoNames) {
       const plan = requiredModRes(consumers.get(name)!, this.modPlanVp.w, this.modPlanVp.h);
@@ -709,6 +720,16 @@ export class FrameRenderer {
   private drawFrame(allEvents: FrameEvent[], t: number, cps: number, frameWallTime: number, videoFrameProcessed: Set<VideoEl>, skipFboOnly: boolean): void {
     for (const fe of allEvents) {
       if (skipFboOnly && fe.ev._fboOnly) continue;
+      // `.render()` tiles carry bake segments — expand into an FBO chain in place.
+      const segs = fe.ev._bakeSegments;
+      if (Array.isArray(segs) && segs.length > 0) {
+        try {
+          this.renderBakeChain(fe, segs, t, cps, frameWallTime, videoFrameProcessed);
+        } catch (e) {
+          warn(`screen ${fe.screenIndex} event ${fe.eventIndex} render() error: ${e instanceof Error ? e.message : e}`);
+        }
+        continue;
+      }
       let params: TileParams | null;
       try {
         params = this.buildTileParams(fe, t, cps, frameWallTime, videoFrameProcessed);
@@ -727,6 +748,95 @@ export class FrameRenderer {
         // recoverFromDrawError no-ops for any other error, falling through to the generic warn.
         if (!recoverFromDrawError(e, params, fe)) {
           warn(`screen ${fe.screenIndex} event ${fe.eventIndex} draw error: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+    }
+  }
+
+  /**
+   * Expand a `.render()` tile into its chain of intermediate FBO passes and the
+   * final placed draw.
+   *
+   * The tile value carries `_bakeSegments` (ordered effect snapshots, each with
+   * its own FBO name) plus the source, playback, geometry and any post-boundary
+   * ("top") effects. We render:
+   *   pass 0  — the base source, at the tile's geometry, with seg0's effects → FBO0
+   *   pass i  — FBO_{i-1}'s footprint region, redrawn at the geometry, with seg_i → FBO_i
+   *   final   — the last FBO's footprint, placed at the tile (axis-aligned bbox),
+   *             with the top effects + alpha/blend → the current target
+   *
+   * Each pass samples only the tile's on-screen footprint, so effects after a
+   * boundary are bounded by the tile's frame (no bleed). Playback/geometry live
+   * on the one value, so they're transparent to where `.render()` sits.
+   * Intermediate FBOs are canvas-sized for now (fill is footprint-bounded;
+   * footprint-sizing the allocation is a follow-up).
+   */
+  private renderBakeChain(
+    fe: FrameEvent, segs: Array<{ name: string; effects: Record<string, any> }>,
+    t: number, cps: number, wall: number, videoFrameProcessed: Set<VideoEl>,
+  ): void {
+    const vp = this.renderer.getViewportSize?.();
+    const cw = vp?.w ?? 0, ch = vp?.h ?? 0;
+    const ev = fe.ev;
+
+    // On-screen footprint (bbox incl. scale + rotation). Skip entirely if the
+    // tile isn't visible — nothing reads the bake.
+    const fp = cw > 0 && ch > 0 ? consumerFootprint(ev, cw, ch) : null;
+    if (fp && !fp.visible) return;
+    const cx = ev.x !== undefined ? Number(ev.x) : 0.5;
+    const cy = ev.y !== undefined ? Number(ev.y) : 0.5;
+    const fw = fp ? Math.min(1, Math.max(1 / Math.max(cw, 1), fp.wPx / cw)) : 1;
+    const fh = fp ? Math.min(1, Math.max(1 / Math.max(ch, 1), fp.hPx / ch)) : 1;
+
+    const { rest } = splitEffects(ev);
+    delete (rest as any)._bakeSegments;
+
+    const drawInto = (name: string, buildEv: () => any) => {
+      this.renderer.beginOffscreen(name);
+      this.renderer.clearTarget?.();
+      const p = this.buildTileParams({ ...fe, ev: buildEv() }, t, cps, wall, videoFrameProcessed);
+      if (p) this.renderer.drawTile(p);
+      this.renderer.endFrame();      // flush the pass into the FBO before switching back
+      this.renderer.endOffscreen();
+    };
+
+    // pass 0: base source (geometry + source crop kept) with seg0's effects.
+    drawInto(segs[0].name, () => ({
+      ...rest, ...segs[0].effects, alpha: 1, blend: 'source-over',
+    }));
+
+    // passes 1..n: sample the previous FBO's footprint, redraw at geometry.
+    for (let i = 1; i < segs.length; i++) {
+      const prev = segs[i - 1].name;
+      drawInto(segs[i].name, () => ({
+        _type: 'pattern', src: prev,
+        x: cx, y: cy, width: fw, height: fh,
+        cropx: cx, cropy: cy, cropw: fw, croph: fh,
+        objectfit: 'fill', alpha: 1, blend: 'source-over',
+        ...segs[i].effects,
+      }));
+    }
+
+    // final: place the baked tile with the top (post-last-boundary) effects.
+    const { effects: topEffects } = splitEffects(ev);
+    const last = segs[segs.length - 1].name;
+    const finalParams = this.buildTileParams({
+      ...fe,
+      ev: {
+        _type: 'pattern', src: last,
+        x: cx, y: cy, width: fw, height: fh,
+        cropx: cx, cropy: cy, cropw: fw, croph: fh,
+        objectfit: 'fill',
+        alpha: ev.alpha, blend: ev.blend,
+        ...topEffects,
+      },
+    }, t, cps, wall, videoFrameProcessed);
+    if (finalParams) {
+      try {
+        this.renderer.drawTile(finalParams);
+      } catch (e) {
+        if (!recoverFromDrawError(e, finalParams, fe)) {
+          warn(`screen ${fe.screenIndex} event ${fe.eventIndex} render() final draw error: ${e instanceof Error ? e.message : e}`);
         }
       }
     }

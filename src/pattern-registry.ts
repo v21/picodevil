@@ -1,9 +1,10 @@
 import { Pattern, silence } from "@strudel/core";
-import { AUTO_MOD_PREFIX } from "./renderer-interface";
+import { AUTO_PREFIX, AUTO_MOD_PREFIX, AUTO_RENDER_PREFIX } from "./renderer-interface";
 
 let pPatterns: Record<string, Pattern> = {};
 let anonymousIndex = 0;
 let autoModIndex = 0;
+let autoRenderIndex = 0;
 let eachFn: ((p: Pattern) => Pattern) | undefined;
 let allFns: ((p: Pattern) => Pattern)[] = [];
 let lastNamedIndices: { name: string; screenIndex: number }[] = [];
@@ -71,6 +72,7 @@ export function resetRegistry(): void {
   pPatterns = {};
   anonymousIndex = 0;
   autoModIndex = 0;
+  autoRenderIndex = 0;
   eachFn = undefined;
   allFns = [];
   lastNamedIndices = [];
@@ -84,6 +86,12 @@ export function resetRegistry(): void {
  */
 export function nextAutoModName(): string {
   return `${AUTO_MOD_PREFIX}${autoModIndex++}`;
+}
+
+/** Mint the next auto-render FBO name (`.render()` bake). Same stability
+ *  guarantees as {@link nextAutoModName}. */
+export function nextAutoRenderName(): string {
+  return `${AUTO_RENDER_PREFIX}${autoRenderIndex++}`;
 }
 
 /**
@@ -139,16 +147,16 @@ export function collectScreens(): Pattern[] {
 
   for (const [key, pat] of Object.entries(pPatterns)) {
     const isSoloed = key.length > 1 && key.startsWith('S');
-    const isAutoMod = key.startsWith(AUTO_MOD_PREFIX);
+    const isAuto = key.startsWith(AUTO_PREFIX);
     if (isSoloed && !soloActive) {
-      // Solo exemption: keep auto-modulator layers — soloing a line must not
-      // kill its own inline modulator.
-      const kept = pairs.filter(([k]) => k.startsWith(AUTO_MOD_PREFIX));
+      // Solo exemption: keep auto layers (modulate modulators, render bakes) —
+      // soloing a line must not kill its own inline modulator or baked source.
+      const kept = pairs.filter(([k]) => k.startsWith(AUTO_PREFIX));
       pairs.length = 0;
       pairs.push(...kept);
       soloActive = true;
     }
-    if (!soloActive || isSoloed || isAutoMod) {
+    if (!soloActive || isSoloed || isAuto) {
       pairs.push([key, pat]);
     }
   }

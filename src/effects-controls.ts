@@ -4,7 +4,8 @@
  */
 import { Pattern } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
-import { nextAutoModName, registerAutoHidden } from "./pattern-registry";
+import { nextAutoModName, nextAutoRenderName, registerAutoHidden } from "./pattern-registry";
+import { splitEffects } from "./effect-fields";
 
 const PatternProto = Pattern.prototype as any;
 
@@ -299,4 +300,63 @@ PatternProto.modulate = function (src: any, amt: any = 0.1) {
  */
 PatternProto.modspace = function (value: any) {
   return _modSpace(value, this);
+};
+
+/**
+ * Bakes the effect chain so far into a hidden framebuffer and returns a pattern
+ * that samples it — a genuine resampling boundary. Everything before `.render()`
+ * is rendered into an offscreen texture; everything after applies to that
+ * texture as if it were a fresh source.
+ *
+ * **Per-tile, in place.** Each tile is baked and re-drawn at its own position and
+ * size, sampling just its own footprint of the bake — so effects after `.render()`
+ * are confined to the tile's frame and don't bleed across the canvas:
+ *
+ *     s("ducks").w(.5).h(.5).smear(A).render().smear(0, B)
+ *
+ * bakes the smeared half-size ducks, then the second smear stays inside the .5×.5
+ * frame (it can't blur into the surrounding canvas).
+ *
+ * This buys three things the fixed-slot effect order can't:
+ * - **Repeated effects** — `.barrel(.3).render().barrel(.3)` is two barrel
+ *   passes; without the boundary the two calls would collapse to one.
+ * - **Colour-then-UV order** — normally UV warps (barrel/pixelate) always run
+ *   before colour ops; a `.render()` between them flips that for the second half.
+ * - **Confined effects** — a smear/barrel after `.render()` respects the tile edges.
+ *
+ * `.render()` is a **meta-effect**: it doesn't render immediately, it marks that
+ * an intermediate framebuffer is needed here. Effects are baked into that FBO;
+ * source, playback (`speed`/`begin`/…) and geometry (`x`/`y`/`w`/`h`) stay on the
+ * one tile value, so they're transparent to where `.render()` sits — `render().speed(2)`
+ * and `speed(2).render()` are the same. Boundaries chain (`.render().render()`) and
+ * compose with `.modulate`. The intermediate FBOs share the modulate auto-FBO
+ * lifecycle (sweep + recycle).
+ *
+ * @returns {Pattern} the tile tagged with a bake segment; expanded into FBO passes at draw time
+ * @example
+ * // two barrel passes — stronger warp than one
+ * $: s("clip.mp4").barrel(0.3).render().barrel(0.3)
+ *
+ * // colour-grade, bake, then pixelate the graded result
+ * $: s("clip.mp4").contrast(2).tint(0.6).render().pixelate(20)
+ *
+ * // a smear after render stays inside the half-size frame
+ * $: s("clip.mp4").w(.5).h(.5).render().smear(0, 40)
+ */
+PatternProto.render = function () {
+  // Meta-effect: snapshot the effect fields accumulated so far into a bake
+  // segment (rendered into its own intermediate FBO at draw time) and clear
+  // them, so effects after this call form a fresh pass. Non-effect fields
+  // (source, playback, geometry, crop, alpha, blend) are left untouched on the
+  // one value — which is why they stay transparent to `.render()` ordering.
+  // The FBO name is minted per call site (stable across re-evals) at
+  // construction; the layer itself is expanded lazily by the renderer.
+  const name = nextAutoRenderName();
+  return this.withValue((v: any) => {
+    if (!v || typeof v !== "object") return v;
+    const { effects, rest } = splitEffects(v);
+    const segments = Array.isArray(rest._bakeSegments) ? rest._bakeSegments.slice() : [];
+    segments.push({ name, effects });
+    return { ...rest, _bakeSegments: segments };
+  });
 };

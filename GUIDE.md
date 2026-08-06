@@ -430,6 +430,37 @@ produces 25 identically-modulated tiles under the default `'uv'` space — the `
 
 Only `.modulate` (UV displacement) exists today; the wider modulation vocabulary (`.modulateScale`, `.lumaMask`, generated `noise()`/`osc()` sources, …) is planned.
 
+### Bake a chain with `.render()`
+
+Effects normally run in a fixed order no matter how you write them: UV warps (`.barrel`, `.pixelate`, `.modulate`) always happen before colour ops (`.contrast`, `.tint`, `.grey`, …), and two calls to the *same* effect just replace each other. `.render()` is how you break out of that single pass — it marks a **resampling boundary**: everything before it is baked into an intermediate framebuffer, and everything after applies to that baked result as a fresh pass.
+
+```js
+// 1. Repeated effects — two barrel passes, a stronger warp than one
+$: s("clip.mp4").barrel(0.3).render().barrel(0.3)
+
+// 2. Colour-then-UV order — grade the image, bake, THEN pixelate the graded result
+$: s("clip.mp4").contrast(2).tint(0.6).render().pixelate(20)
+
+// 3. Two different smears that would otherwise collapse into one
+$: s("clip.mp4").smear(0.5).render().smear(0)
+```
+
+Without the boundary, the second `.barrel` / `.smear` would just overwrite the first (effect controls are replacement params), and the pixelate in example 2 would run *before* the grade rather than after.
+
+**Per tile, in place.** Each tile is baked and redrawn at its own position and size, sampling just its own frame — so effects after `.render()` are **confined to the tile** and don't bleed across the canvas:
+
+```js
+$: s("ducks").w(.5).h(.5).smear(A).render().smear(0, B)   // second smear stays inside the .5×.5 frame
+```
+
+**Only effects are baked.** `.render()` is transparent to everything that isn't a pixel effect — source, playback (`speed`/`begin`/…) and geometry (`x`/`y`/`w`/`h`) stay on the one tile, so it doesn't matter which side of `.render()` you write them:
+
+```js
+$: s("ducks").render().speed(2)   // identical to s("ducks").speed(2).render()
+```
+
+Boundaries **chain** (`.render().render()` stacks passes) and compose with `.modulate` (a modulate before a `.render()` is baked like any other effect). The intermediate framebuffers are hidden, swept and recycled automatically, and show up in the Perf tab's auto-FBO count.
+
 ### Scale
 
 ```js

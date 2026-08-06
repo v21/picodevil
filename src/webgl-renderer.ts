@@ -1,4 +1,4 @@
-import { AUTO_MOD_PREFIX, type Renderer, type TileParams, type TileSource } from './renderer-interface';
+import { AUTO_PREFIX, type Renderer, type TileParams, type TileSource } from './renderer-interface';
 import { ladderStep } from './modulate-sizing';
 import { TextureCache } from './texture-cache';
 import { warn } from './warnings';
@@ -676,6 +676,16 @@ export class WebGLRenderer implements Renderer {
   /** Name of the offscreen pass in progress, and whether it ping-pongs. Used by endOffscreen() to swap. */
   private offscreenName: string | null = null;
   private offscreenDoubleBuffered = false;
+  /** Viewport dims of the currently bound target (canvas or FBO sub-viewport). */
+  private currentViewW = 0;
+  private currentViewH = 0;
+  /** Saved targets for NESTED offscreen passes — a `.render()` bake chain runs
+   *  inside a named layer's pass, so endOffscreen must restore the enclosing
+   *  target, not hard-reset to the canvas. */
+  private readonly targetStack: Array<{
+    fbo: WebGLFramebuffer | null; viewW: number; viewH: number;
+    name: string | null; doubleBuffered: boolean;
+  }> = [];
 
   private w = 0;
   private h = 0;
@@ -824,6 +834,9 @@ export class WebGLRenderer implements Renderer {
     this.fbos.clear();
     this.fboFreePool.length = 0;
     this.currentFBO = null;
+    this.currentViewW = this.w;
+    this.currentViewH = this.h;
+    this.targetStack.length = 0;
     this.offscreenName = null;
     // Drop cached textures so the next frame re-uploads onto fresh handles. Use
     // forget() not clear(): the old textures died with the lost context, and
@@ -856,6 +869,7 @@ export class WebGLRenderer implements Renderer {
   resize(w: number, h: number): void {
     this.w = w;
     this.h = h;
+    if (this.currentFBO === null) { this.currentViewW = w; this.currentViewH = h; }
     this.gl.viewport(0, 0, w, h);
     this.setResolution(w, h);
     // Resize existing FBOs to match new canvas dimensions
@@ -868,10 +882,10 @@ export class WebGLRenderer implements Renderer {
       gl.bindTexture(gl.TEXTURE_2D, null);
     };
     for (const [name, entry] of this.fbos) {
-      // Auto-modulator FBOs live on a canvas-relative ladder — their old sizes
-      // are meaningless now. They're stateless: drop them and let the next
-      // frame's pass recreate them at the right ladder step.
-      if (name.startsWith(AUTO_MOD_PREFIX)) {
+      // Auto FBOs (modulators on a size ladder, render bakes at canvas size)
+      // are stateless — their old textures are meaningless after a resize.
+      // Drop them and let the next frame's pass recreate them at the new size.
+      if (name.startsWith(AUTO_PREFIX)) {
         this.fbos.delete(name);
         this.deleteFBOEntry(entry);
         continue;
@@ -893,6 +907,15 @@ export class WebGLRenderer implements Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
     this.setBlend('source-over');
+  }
+
+  /** Clear the currently bound target to transparent. Used to prime a bake FBO
+   *  before rendering into it. Unlike beginFrame it doesn't reset frame state. */
+  clearTarget(): void {
+    const { gl } = this;
+    this.flushPending();
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
   drawTile(p: TileParams): void {
@@ -1253,6 +1276,13 @@ export class WebGLRenderer implements Renderer {
     const { gl } = this;
     this.flushPending(); // commit any pending draws to the current framebuffer before switching
 
+    // Save the enclosing target so endOffscreen restores it (nesting: a bake
+    // chain inside a named layer's pass).
+    this.targetStack.push({
+      fbo: this.currentFBO, viewW: this.currentViewW, viewH: this.currentViewH,
+      name: this.offscreenName, doubleBuffered: this.offscreenDoubleBuffered,
+    });
+
     // Reduced-resolution auto-modulator pass: allocate the texture on the
     // quantised ladder, render into a sub-viewport of it. Fill cost scales
     // with viewport, not texture size, so the ladder avoids realloc churn.
@@ -1290,10 +1320,14 @@ export class WebGLRenderer implements Renderer {
     // For a self-referencing FBO, render into the back buffer while the front
     // (entry.fbo/tex) stays readable as the previous frame. endOffscreen swaps.
     const target = doubleBuffer ? this.getOrCreateBack(entry) : entry;
+    const vw = target === entry ? entry.viewW : target.w;
+    const vh = target === entry ? entry.viewH : target.h;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
-    gl.viewport(0, 0, target === entry ? entry.viewW : target.w, target === entry ? entry.viewH : target.h);
-    this.setResolution(entry.viewW, entry.viewH);
+    gl.viewport(0, 0, vw, vh);
+    this.setResolution(vw, vh);
     this.currentFBO = target.fbo;
+    this.currentViewW = vw;
+    this.currentViewH = vh;
     this.offscreenName = name;
     this.offscreenDoubleBuffered = doubleBuffer;
   }
@@ -1319,12 +1353,19 @@ export class WebGLRenderer implements Renderer {
         [e.tex, b.tex] = [b.tex, e.tex];
       }
     }
-    this.offscreenName = null;
-    this.offscreenDoubleBuffered = false;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, this.w, this.h);
-    this.setResolution(this.w, this.h);
-    this.currentFBO = null;
+    // Restore the enclosing target (canvas if the stack is empty).
+    const prev = this.targetStack.pop();
+    const fbo = prev ? prev.fbo : null;
+    const vw = prev ? prev.viewW : this.w;
+    const vh = prev ? prev.viewH : this.h;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0, 0, vw, vh);
+    this.setResolution(vw, vh);
+    this.currentFBO = fbo;
+    this.currentViewW = vw;
+    this.currentViewH = vh;
+    this.offscreenName = prev ? prev.name : null;
+    this.offscreenDoubleBuffered = prev ? prev.doubleBuffered : false;
   }
 
   snapshotSoFar(): void {
@@ -1350,27 +1391,27 @@ export class WebGLRenderer implements Renderer {
   }
 
   /**
-   * Frame-end maintenance: recycle auto-modulator FBOs that were neither
-   * rendered nor resolved as a modulator this frame (stale after a re-eval
-   * renumbered their call site). User-named FBOs are never swept. Safe because
-   * auto FBOs are stateless — recreating one gets correct content the first
-   * frame it's referenced.
+   * Frame-end maintenance: recycle auto FBOs (modulate modulators, render
+   * bakes) that were neither rendered nor resolved this frame — stale after a
+   * re-eval renumbered their call site. User-named FBOs are never swept. Safe
+   * because auto FBOs are stateless: recreating one gets correct content the
+   * first frame it's referenced.
    */
   sweepAutoFBOs(): void {
     for (const [name, entry] of this.fbos) {
-      if (!name.startsWith(AUTO_MOD_PREFIX)) continue;
+      if (!name.startsWith(AUTO_PREFIX)) continue;
       if (entry.touched) { entry.touched = false; continue; }
       this.fbos.delete(name);
       this.recycleFBOEntry(entry);
     }
   }
 
-  /** Auto-modulator FBO visibility for the perf panel: active count and VRAM
-   *  bytes held by auto FBOs, including the recycled pool. */
+  /** Auto-FBO visibility for the perf panel: active count and VRAM bytes held
+   *  by auto FBOs (modulators + render bakes), including the recycled pool. */
   getAutoFBOStats(): { count: number; bytes: number; pooled: number } {
     let count = 0, bytes = 0;
     for (const [name, e] of this.fbos) {
-      if (!name.startsWith(AUTO_MOD_PREFIX)) continue;
+      if (!name.startsWith(AUTO_PREFIX)) continue;
       count++;
       bytes += e.w * e.h * 4;
     }
@@ -1460,8 +1501,8 @@ export class WebGLRenderer implements Renderer {
   private getOrCreateFBO(name: string, texW = this.w || 1, texH = this.h || 1): FBOEntry {
     let entry = this.fbos.get(name);
     if (entry) return entry;
-    // Auto-modulator FBOs prefer a recycled same-size entry over allocating.
-    if (name.startsWith(AUTO_MOD_PREFIX)) {
+    // Auto FBOs prefer a recycled same-size entry over allocating.
+    if (name.startsWith(AUTO_PREFIX)) {
       const idx = this.fboFreePool.findIndex(e => e.w === texW && e.h === texH);
       if (idx >= 0) {
         entry = this.fboFreePool.splice(idx, 1)[0];

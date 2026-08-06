@@ -1,12 +1,19 @@
 export type FitMode = "cover" | "contain" | "fill" | "none" | "tile" | "tilecenter";
 
 /**
- * Name prefix for the hidden FBO layers `.modulate()` auto-registers.
- * The prefix IS the marker: the pattern registry exempts these from solo
- * filtering, and the renderer's stale sweep / auto-sizing key off it. Users
- * can never mint one — a leading underscore mutes `.p()` registrations.
+ * Shared prefix for every hidden FBO layer picodevil auto-registers (modulate
+ * modulators, render bakes). The prefix IS the marker for the shared auto-FBO
+ * lifecycle — solo exemption, the renderer's stale sweep + recycle pool, and
+ * perf-panel accounting all key off it. Users can never mint one: a leading
+ * underscore mutes `.p()` registrations.
  */
+export const AUTO_PREFIX = '__auto_';
+
+/** Auto-FBO for a `.modulate()` modulator argument. */
 export const AUTO_MOD_PREFIX = '__auto_mod_';
+
+/** Auto-FBO for a `.render()` bake of the effect-chain-so-far. */
+export const AUTO_RENDER_PREFIX = '__auto_render_';
 
 /** Minimal interface for a registered screen pattern. */
 export type Screen = { queryArc(begin: number, end: number): any[] };
@@ -103,8 +110,10 @@ export interface Renderer {
    * texture and modulate lookups scale accordingly.
    */
   beginOffscreen(name: string, doubleBuffer?: boolean, reqW?: number, reqH?: number): void;
-  /** Restore the default (canvas) framebuffer. */
+  /** Restore the enclosing framebuffer (canvas, or the outer pass when nested). */
   endOffscreen(): void;
+  /** Clear the currently bound target to transparent (prime a bake FBO). Optional. */
+  clearTarget?(): void;
   /** Flush pending draws and blit current canvas state to the "all" FBO for mid-frame compositing. */
   snapshotSoFar(): void;
   /** Blit the current canvas output to the "prev" FBO for next-frame feedback. */

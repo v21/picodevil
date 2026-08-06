@@ -590,6 +590,8 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.tuple(modulatorExpr, modAmtArg).map(([src, amt]) => ({ code: `.modulate(${src}, ${amt})` })),
   fc.tuple(modulatorExpr, modAmtArg, modSpaceArg)
     .map(([src, amt, sp]) => ({ code: `.modulate(${src}, ${amt}).modspace(${sp})` })),
+  // render() — bake the chain so far into an FBO and keep chaining on the result
+  fc.constant({ code: `.render()` }),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),

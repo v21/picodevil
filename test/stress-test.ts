@@ -149,6 +149,11 @@ const CASES: StressCase[] = [
     name: "stackN(25) shared inline modulator",
     code: `$: s("red.mp4").urlBase('/test-assets/').stackN(25).modulate(s("blue.mp4").urlBase('/test-assets/').scale(.5), .1).tile()`,
   },
+  {
+    // render() bake: one extra full-canvas pass, then resample + warp.
+    name: "render() bake then barrel",
+    code: `$: s("red.mp4 blue.mp4").urlBase('/test-assets/').contrast(2).render().barrel(0.4)`,
+  },
 ];
 
 interface CaseResult {
