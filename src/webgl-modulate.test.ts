@@ -259,7 +259,10 @@ describe("modspace 'uv' working-UV semantics", () => {
     });
   });
 
-  it("out-of-[0,1] working UVs wrap via fract (crop scroll), not clamp", () => {
+  it("'uv' is cell-local — a crop scroll is applied downstream, not seen by the modulator", () => {
+    // In the cell-local model, UV effects (modulate included) run in the cell's
+    // [0,1] frame; the crop window (incl. scroll) maps that frame onto the source
+    // afterwards, at OP_WRAP. So the modulator lookup is UNAFFECTED by cropx.
     withRenderer((renderer, canvas) => {
       renderer.beginFrame();
       // Modulator: black left half, white right half.
@@ -267,16 +270,17 @@ describe("modspace 'uv' working-UV semantics", () => {
         makeTile({ source: BLACK, x: 0.25, w: 0.5 }),
         makeTile({ source: WHITE, x: 0.75, w: 0.5 }),
       ]);
-      // cropx=1 scrolls the crop window: uv spans [0.5, 1.5]. At screen x=70,
-      // uv.x = 1.2: fract → 0.2 → BLACK → −0.15 → 1.05 → WRAP fract → 0.05 →
-      // red (source split at 0.2). CLAMP_TO_EDGE would read the white edge →
-      // +0.15 → 1.35 → 0.35 → blue.
+      // Screen x=70 → local.x 0.7 → modulator WHITE → disp +0.15 → local 0.85.
+      // OP_WRAP then applies cropx=1 (uvOffset 0.5) → 0.5+0.85 = 1.35 → fract 0.35
+      // → source (split at 0.2) BLUE. The OLD source-space model read the scrolled
+      // uv 1.2 at modulate time → BLACK → −0.15 → red; the crop scroll no longer
+      // leaks into the modulator lookup.
       renderer.drawTile(makeTile({
         source: redBlueX(0.2), cropx: 1,
         modSrc: "m", modAmt: 0.3, modSpace: 'uv',
       }));
       renderer.endFrame();
-      expectRed(readPixel(canvas, 70, 50));
+      expectBlue(readPixel(canvas, 70, 50));
     });
   });
 });

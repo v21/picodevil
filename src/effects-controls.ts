@@ -181,6 +181,11 @@ PatternProto.tint = function (hue: any, strength: any = 1) {
  * Barrel distortion bows the image outward, clipping corners to transparent —
  * the classic CRT curved-screen look. For a subtle CRT effect, try values around 0.3–0.5.
  *
+ * Barrel (like every UV effect) works in the drawn cell's own [0,1] frame: it is
+ * centred on and scaled to the visible cell, so on a crop — `.cropStack()`, or a
+ * `.crop*()`/`.scroll*()` window — each tile warps around its own centre. To warp
+ * the whole source *before* it is sliced instead, bake it first: `.barrel(k).render().cropStack(...)`.
+ *
  * @param {number | string | Pattern} [value=0.5] distortion coefficient: >0 = barrel, <0 = pincushion
  * @returns {Pattern} pattern with lens distortion applied
  * @example
@@ -189,6 +194,9 @@ PatternProto.tint = function (hue: any, strength: any = 1) {
  *
  * // barrel on a single video
  * $: s('clip.mp4').objectfit('fill').barrel(0.5)
+ *
+ * // per-tile warp: each cropStack cell bows around its own centre
+ * $: s('clip.mp4').cropStack(3,3).tile().barrel(0.5)
  *
  * // pulsing CRT warp
  * $: s('all').barrel(sine.range(0, 0.6))

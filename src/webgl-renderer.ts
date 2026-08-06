@@ -148,11 +148,17 @@ layout(location = 10) in vec2 a_effects;  // x=effectStart, y=effectCount
 
 flat out int v_effectStart;
 flat out int v_effectCount;
-out vec2 v_uv;
+flat out vec2 v_uvOffset;
+flat out vec2 v_uvSize;
 out vec2 v_local;
 
 void main() {
-  v_uv = a_uvOffset + a_uv * a_uvSize;
+  // UV effects run in the cell's local [0,1] frame (v_local); the crop/fit map
+  // (offset + size) is carried through and applied at OP_WRAP, right before the
+  // texture sample — so barrel/pixelate/etc. are centred on and scaled to the
+  // drawn cell, not the source's 0.5.
+  v_uvOffset = a_uvOffset;
+  v_uvSize = a_uvSize;
   v_local = a_uv;
   v_effectStart = int(a_effects.x);
   v_effectCount = int(a_effects.y);
@@ -190,7 +196,8 @@ layout(std140) uniform Effects {
 
 flat in int v_effectStart;
 flat in int v_effectCount;
-in vec2 v_uv;
+flat in vec2 v_uvOffset;
+flat in vec2 v_uvSize;
 in vec2 v_local;
 out vec4 fragColor;
 
@@ -291,7 +298,10 @@ vec3 oklab_to_linear_rgb(vec3 lab) {
 }
 
 void main() {
-  vec2 uv = v_uv;
+  // Working coord starts cell-local ([0,1] over the drawn quad). UV-space ops
+  // (barrel/modulate/pixelate) operate here; OP_WRAP maps it onto the source
+  // crop window just before sampling.
+  vec2 uv = v_local;
   vec4 color = vec4(0.0);
   bool discarded = false;
 
@@ -321,6 +331,10 @@ void main() {
         uv = min(uv, 1.0 - step * 0.5);
       }
     } else if (kind == OP_WRAP) {
+      // Map the cell-local working coord onto the source crop window (offset +
+      // size, carried from the vertex). This is where "local space" becomes
+      // "source space" — everything before this ran in the cell's [0,1] frame.
+      uv = v_uvOffset + uv * v_uvSize;
       // a.yz = cropOff, a.w/b.x = cropSize.x/y, b.y = tileMode (1 = wrap within crop subregion)
       if (b.y > 0.5) {
         vec2 cropOff = a.yz;
@@ -332,30 +346,28 @@ void main() {
     } else if (kind == OP_MODULATE) {
       // UV displacement driven by a modulator texture (always an FBO: y-up texels).
       // a.y = texIdx, a.z = amt, a.w = space (0 uv / 1 tile / 2 screen)
-      // b.xy = lookup scale (auto-sizing sub-viewport), b.z = consumer-UV-y-down flag
+      // b.xy = lookup scale (auto-sizing sub-viewport). b.z (modYDown) is now
+      // vestigial: the working coord is cell-local (y-down) for EVERY consumer
+      // kind — element or FBO — because the crop/FBO map is deferred to OP_WRAP.
+      // So the modulator lookup mirror and the displacement sign are unconditional.
       vec2 L;
       if (a.w > 1.5) {
         // screen: gl_FragCoord and FBO texels are both y-up — no flip.
         L = gl_FragCoord.xy / u_resolution;
       } else if (a.w > 0.5) {
-        // tile: v_local is y-down across the quad; mirror into y-up texels.
+        // tile: raw local quad coord (y-down); mirror into the modulator's y-up texels.
         L = vec2(v_local.x, 1.0 - v_local.y);
       } else {
-        // uv: the working UV at this slot. Element-source consumers carry y-down
-        // UVs — mirror them; FBO-source consumers are already y-up. fract gives
-        // tile-wrap semantics (CLAMP_TO_EDGE would smear at crop-tiled edges).
-        L = uv;
-        if (b.z > 0.5) L.y = 1.0 - L.y;
-        L = fract(L);
+        // uv: the working (e.g. barrel-warped) local coord, mirrored the same way.
+        // fract gives tile-wrap semantics (CLAMP_TO_EDGE would smear at edges).
+        L = fract(vec2(uv.x, 1.0 - uv.y));
       }
       L *= b.xy;
       vec4 m = sampleAny(int(a.y), L);
-      // Centred displacement: mid-grey = no move (the 0.5 bias is fixed here by
-      // design); alpha-weighted so empty FBO regions displace nothing.
-      vec2 disp = (m.rg - 0.5) * a.z * m.a;
-      // Green > 0.5 samples visually downward for both consumer UV handednesses.
-      if (b.z < 0.5) disp.y = -disp.y;
-      uv += disp;
+      // Centred displacement: mid-grey = no move (0.5 bias fixed by design);
+      // alpha-weighted so empty FBO regions displace nothing. Green > 0.5
+      // displaces visually downward (+local.y in the y-down working frame).
+      uv += (m.rg - 0.5) * a.z * m.a;
     } else if (kind == OP_SAMPLE) {
       color = sampleAny(int(a.y), uv);
     } else if (kind == OP_SMEAR) {
@@ -1022,8 +1034,10 @@ export class WebGLRenderer implements Renderer {
         uvSizeX: uvSzX, uvSizeY: uvSzY,
         alpha:        p.alpha,
         grey:         p.grey ?? 0,
-        pixUVStepX:   p.pixelate > 0 ? p.pixelate * absCropw / dispW : 0,
-        pixUVStepY:   p.pixelate > 0 ? p.pixelate * absCroph / dispH : 0,
+        // Cell-local step (see the fill/cover branch): pixelate px over the
+        // displayed dispW px. No absCropw factor — the crop scale is applied at the map.
+        pixUVStepX:   p.pixelate > 0 ? p.pixelate / dispW : 0,
+        pixUVStepY:   p.pixelate > 0 ? p.pixelate / dispH : 0,
         hueRot:       p.huerot ?? 0,
         contrast:     p.contrast ?? 1,
         brightness:   p.brightness ?? 0,
@@ -1079,8 +1093,11 @@ export class WebGLRenderer implements Renderer {
       uvSizeY,
       alpha:       p.alpha,
       grey:        p.grey ?? 0,
-      pixUVStepX:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeX) / cellW : 0,
-      pixUVStepY:  p.pixelate > 0 ? p.pixelate * Math.abs(uvSizeY) / cellH : 0,
+      // Pixelate runs in cell-local space (before the crop map), so the step is
+      // in local units: pixelate screen px over the cell's cellW px = pixelate/cellW.
+      // (No uvSize factor — the crop scale is applied later, at the map.)
+      pixUVStepX:  p.pixelate > 0 ? p.pixelate / cellW : 0,
+      pixUVStepY:  p.pixelate > 0 ? p.pixelate / cellH : 0,
       hueRot:      p.huerot ?? 0,
       contrast:     p.contrast ?? 1,
       brightness:   p.brightness ?? 0,

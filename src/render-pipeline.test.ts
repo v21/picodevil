@@ -174,6 +174,25 @@ describe("render pipeline (meta-effect)", () => {
     expect(flushWarnings()).toEqual([]);
   });
 
+  it("barrel AFTER render is centred on the tile, not the ladder texture", () => {
+    // Regression for the off-centre bake bug: a 0.3 footprint bakes into a 30px
+    // sub-viewport of a 50px ladder texture (su=0.6). A UV effect must run in the
+    // tile's own [0,1] frame — so barrel centres on the tile centre and its
+    // corners clip symmetrically. The old source-space barrel centred on the
+    // texture's 0.5 (local ~0.83, toward one corner) and blew out lopsided.
+    (color("white") as any).width(0.3).height(0.3).render().barrel(6).p("$");
+    renderOnce((canvas) => {
+      // Tile is centred (0.5,0.5), spans screen [35,65]. Centre opaque (barrel
+      // neutral point), all four corners pushed out of [0,1] → transparent.
+      expect(opaque(readPixel(canvas, 50, 50)[3])).toBe(true);
+      expect(transparent(readPixel(canvas, 37, 37)[3])).toBe(true);
+      expect(transparent(readPixel(canvas, 63, 37)[3])).toBe(true);
+      expect(transparent(readPixel(canvas, 37, 63)[3])).toBe(true);
+      expect(transparent(readPixel(canvas, 63, 63)[3])).toBe(true);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
   it("baked FBOs are swept when the render line disappears", () => {
     (color("red") as any).grey(1).render().p("$");
     const s1 = collectScreens();

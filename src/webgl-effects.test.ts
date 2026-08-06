@@ -385,6 +385,49 @@ describe("barrel", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Barrel in cell-local space: UV effects operate in the drawn cell's [0,1]
+// frame, and the crop window maps that frame onto the source at sample time.
+// So barrel is centred on and scaled to the visible cell, regardless of where
+// (or how big) the crop window is — not centred on the source's 0.5.
+// ---------------------------------------------------------------------------
+
+describe("barrel in cell-local space (crop)", () => {
+  it("off-centre crop: barrel is symmetric about the cell centre", () => {
+    // Crop window = right half of the source (cropx .75, cropw .5). In the old
+    // source-space model the barrel centred on source-UV 0.5 (the cell's LEFT
+    // edge), so the left corner stayed opaque while the right blew out —
+    // asymmetric. In cell-local space both corners push out alike.
+    const canvas = renderTile(makeTile({
+      source: { kind: 'color', r: 1, g: 0, b: 0 },
+      cropx: 0.75, cropw: 0.5,
+      fit: 'fill', barrel: 10,
+    }));
+    const [rC, , , aC] = readPixel(canvas, 50, 50);   // centre
+    const [, , , aTL]  = readPixel(canvas, 3, 3);     // top-left corner
+    const [, , , aTR]  = readPixel(canvas, W - 4, 3); // top-right corner
+    expect(aC).toBe(255);              // centre opaque — barrel centred on the cell
+    expect(rC).toBeGreaterThan(200);
+    expect(Math.abs(aTL - aTR)).toBeLessThan(20);     // symmetric across the cell
+  });
+
+  it("scaled crop: barrel strength spans the cell, not the source", () => {
+    // Quarter-size centred crop. In source space the barrel's r²−0.25 radial
+    // term is measured over the crop's [0.25,0.75] range → too weak to reach
+    // the corners (they stayed opaque). In cell-local space local spans [0,1],
+    // so a corner blows out exactly like a full-frame barrel.
+    const canvas = renderTile(makeTile({
+      source: { kind: 'color', r: 1, g: 0, b: 0 },
+      cropx: 0.5, cropy: 0.5, cropw: 0.5, croph: 0.5,
+      fit: 'fill', barrel: 10,
+    }));
+    const [, , , aCentre] = readPixel(canvas, 50, 50);
+    const [, , , aCorner] = readPixel(canvas, 3, 3);
+    expect(aCentre).toBe(255);        // centre opaque
+    expect(aCorner).toBe(0);          // corner pushed out, same as a full-frame barrel
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Smear (5-tap directional Gaussian with per-sample positional jitter)
 // ---------------------------------------------------------------------------
 
