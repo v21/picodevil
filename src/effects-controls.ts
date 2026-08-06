@@ -224,7 +224,7 @@ const _smearJitter = createMixParam("smearJitter");
  * // vertical motion blur
  * $: video("clip.mp4").smear(0.25, 20)
  */
-PatternProto.smear = function (angle: any = 0, pixels: any = 8, jitter: any = 0.1) {
+PatternProto.smear = function (angle: any = 0, pixels: any = 20, jitter: any = 0.5) {
   return _smearJitter(jitter, _smearAngle(angle, _smear(pixels, this)));
 };
 
