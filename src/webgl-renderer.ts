@@ -250,10 +250,22 @@ vec4 smearSample(int texIdx, vec2 uv, vec2 d1, float j) {
   vec2 fc = gl_FragCoord.xy;
   vec2 amp = vec2(j * length(d1));   // isotropic jitter half-extent
   float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
-  vec4 s = vec4(0.0);
-  for (int t = 0; t < 5; ++t)
-    s += sampleAny(texIdx, fract(uv + d1 * float(t - 2) + pdJit(fc, float(t), amp))) * w5[t];
-  return s / 16.0;
+  // Filter in premultiplied alpha: weight each tap's rgb by its own alpha so
+  // transparent taps (rgb≈0) contribute no colour and don't drag the average
+  // toward black (dark fringes/halos at transparent edges — barrel corners,
+  // contain/none letterbox, PNGs, and the transparent regions a .render() bake
+  // leaves). Un-premultiply the result so it stays straight-alpha for the
+  // downstream colour ops + the SRC_ALPHA blend. Fully-opaque input (a=1) is
+  // bit-identical to a plain average. Total weight is 16.
+  vec3 rgbSum = vec3(0.0);
+  float aSum = 0.0;
+  for (int t = 0; t < 5; ++t) {
+    vec4 tap = sampleAny(texIdx, fract(uv + d1 * float(t - 2) + pdJit(fc, float(t), amp)));
+    float w = w5[t];
+    rgbSum += tap.rgb * tap.a * w;
+    aSum   += tap.a * w;
+  }
+  return vec4(rgbSum / max(aSum, 1e-4), aSum / 16.0);
 }
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -963,8 +975,15 @@ export class WebGLRenderer implements Renderer {
       [srcW, srcH] = srcSize(p.source);
     }
 
-    const cellW = p.w * this.w;
-    const cellH = p.h * this.h;
+    // Cell size in *target-viewport* pixels, not canvas pixels. On the main
+    // canvas these are equal, but inside a footprint-sized `.render()` bake the
+    // target is a sub-viewport (currentViewW×currentViewH < canvas) and the tile
+    // fills it (width=1). Everything screen-referenced — cover/tile fit, the
+    // pixelate step, the smear per-tap offset — must use the viewport so the bake
+    // is a faithful footprint render; using the full canvas here makes those
+    // effects come out (viewport/canvas)× too small once the bake is placed 1:1.
+    const cellW = p.w * this.currentViewW;
+    const cellH = p.h * this.currentViewH;
 
     // Modulator resolution. A miss is impossible by construction (the auto FBO
     // registers and renders before its consumer in the same frame), as is the
