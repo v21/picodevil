@@ -90,8 +90,18 @@ export interface EffectInputs {
   /** Directional smear per-tap offset vector (dir × step). 0,0 = no smear. */
   smearOffX?:   number;
   smearOffY?:   number;
-  /** Per-tap positional jitter factor (0.1 ≈ ±0.1·step) — dithers wide-offset aliasing into noise. */
-  smearJitter?: number;
+  /** Per-tap positional jitter half-extent in UV, per axis (jit·smear·|uvPerPx|)
+   *  — a constant screen-pixel dither regardless of the fit's per-axis scale. */
+  smearJitAmpX?: number;
+  smearJitAmpY?: number;
+  /** 1 when the main source is an FBO texture (a `.render()` bake, `s("name")`,
+   *  `s("all")`/`s("prev")`) — its content is **premultiplied** (source-over
+   *  baking writes rgb·a into a transparent target). The straight-alpha pipeline
+   *  (colour ops + SRC_ALPHA blend) must un-premultiply it on read, else every
+   *  antialiased / partially-transparent edge is darkened by alpha a second time
+   *  (a `.render()` on an image/video visibly erodes its edges). Element textures
+   *  are straight-alpha → 0. */
+  sourceIsFbo?: number;
 }
 
 /**
@@ -183,12 +193,18 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
     out[i + 1] = e.texIndex;
     out[i + 2] = sx;
     out[i + 3] = sy;
-    out[i + 4] = e.smearJitter || 0;
-    out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+    // b.x = jitter amp X, b.y = source-is-FBO, b.z = jitter amp Y. (The tap confine
+    // window is derived in-shader from OP_WRAP's visible crop window, not passed.)
+    out[i + 4] = e.smearJitAmpX || 0;
+    out[i + 5] = e.sourceIsFbo ? 1 : 0;
+    out[i + 6] = e.smearJitAmpY || 0;
+    out[i + 7] = 0;
   } else {
     out[i] = OP_SAMPLE;
     out[i + 1] = e.texIndex;
-    out[i + 2] = 0; out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+    // a.z = source-is-FBO flag (un-premultiply the sample back to straight alpha).
+    out[i + 2] = e.sourceIsFbo ? 1 : 0;
+    out[i + 3] = 0; out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
   }
   i += OP_FLOATS;
   count++;

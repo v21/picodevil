@@ -244,11 +244,19 @@ vec2 pdJit(vec2 fc, float k, vec2 amp) {
 // jitter of half-extent j·|d1|, so the jitter is weighted by strength and turns
 // wide-offset aliasing into noise. Each tap wraps via fract.
 //   d1 = smear per-tap UV offset (taps at -2..2 · d1)
-vec4 smearSample(int texIdx, vec2 uv, vec2 d1, float j) {
-  if (d1.x == 0.0 && d1.y == 0.0) return sampleAny(texIdx, uv);
+vec4 smearSample(int texIdx, vec2 uv, vec2 d1, vec2 amp, vec2 winOff, vec2 winSize, bool fbo) {
+  if (d1.x == 0.0 && d1.y == 0.0) {
+    vec4 s = sampleAny(texIdx, uv);
+    if (fbo) s.rgb /= max(s.a, 1e-4);
+    return s;
+  }
 
-  vec2 fc = gl_FragCoord.xy;
-  vec2 amp = vec2(j * length(d1));   // isotropic jitter half-extent
+  vec2 fc = gl_FragCoord.xy;   // amp = per-axis jitter half-extent (screen-constant)
+  // Confine every tap to the visible sampled window [winOff, winOff+winSize]
+  // (wrap within it). Off-window texels are the cropped-off overflow (cover/crop)
+  // or the un-rendered region past a footprint FBO sub-viewport — a smear must
+  // not pull them, so a bake (which discards them) stays transparent.
+  vec2 ws = max(winSize, vec2(1e-4));
   float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
   // Filter in premultiplied alpha: weight each tap's rgb by its own alpha so
   // transparent taps (rgb≈0) contribute no colour and don't drag the average
@@ -260,7 +268,11 @@ vec4 smearSample(int texIdx, vec2 uv, vec2 d1, float j) {
   vec3 rgbSum = vec3(0.0);
   float aSum = 0.0;
   for (int t = 0; t < 5; ++t) {
-    vec4 tap = sampleAny(texIdx, fract(uv + d1 * float(t - 2) + pdJit(fc, float(t), amp)));
+    vec2 p = uv + d1 * float(t - 2) + pdJit(fc, float(t), amp);
+    vec4 tap = sampleAny(texIdx, winOff + ws * fract((p - winOff) / ws));
+    // FBO taps are premultiplied → un-premultiply to straight before the
+    // (premultiplied) filtering below re-weights rgb by alpha.
+    if (fbo) tap.rgb /= max(tap.a, 1e-4);
     float w = w5[t];
     rgbSum += tap.rgb * tap.a * w;
     aSum   += tap.a * w;
@@ -316,6 +328,11 @@ void main() {
   vec2 uv = v_local;
   vec4 color = vec4(0.0);
   bool discarded = false;
+  // Smear confine window (texture UV): the visible sampled region. OP_WRAP fills
+  // it. A smear must not read outside what's actually shown — for a cover/crop
+  // source the off-window texels are the cropped-off overflow, which a .render()
+  // bake discards; confining both to the same window keeps render() transparent.
+  vec2 smearWinOff = vec2(0.0), smearWinSize = vec2(1.0);
 
   // effectStart is already in vec4 slots; each op spans 2 vec4 slots.
   for (int i = 0; i < v_effectCount; ++i) {
@@ -352,8 +369,14 @@ void main() {
         vec2 cropOff = a.yz;
         vec2 cropSize = vec2(a.w, b.x);
         uv = cropOff + fract((uv - cropOff) / cropSize) * cropSize;
+        smearWinOff = cropOff; smearWinSize = cropSize;         // tile: the repeat subregion
       } else {
         uv = fract(uv);
+        // non-tile: the visible crop window (sign-normalised). For an FBO source
+        // this is the rendered sub-viewport [0,fboScale]; for a cropped element
+        // it excludes the off-screen overflow.
+        smearWinOff = min(v_uvOffset, v_uvOffset + v_uvSize);
+        smearWinSize = abs(v_uvSize);
       }
     } else if (kind == OP_MODULATE) {
       // UV displacement driven by a modulator texture (always an FBO: y-up texels).
@@ -381,10 +404,13 @@ void main() {
       // displaces visually downward (+local.y in the y-down working frame).
       uv += (m.rg - 0.5) * a.z * m.a;
     } else if (kind == OP_SAMPLE) {
+      // a.z = source-is-FBO: FBO content is premultiplied, un-premultiply to straight.
       color = sampleAny(int(a.y), uv);
+      if (a.z > 0.5) color.rgb /= max(color.a, 1e-4);
     } else if (kind == OP_SMEAR) {
-      // a.y = texIdx, a.zw = smear offset, b.x = smear jitter.
-      color = smearSample(int(a.y), uv, a.zw, b.x);
+      // a.y = texIdx, a.zw = smear offset, b.xz = per-axis jitter amp, b.y = FBO.
+      // Taps wrap within the smear confine window (set by OP_WRAP above).
+      color = smearSample(int(a.y), uv, a.zw, vec2(b.x, b.z), smearWinOff, smearWinSize, b.y > 0.5);
     } else if (kind == OP_CONTRAST) {
       // Contrast centred at 0.5.
       color.rgb = (color.rgb - 0.5) * a.y + 0.5;
@@ -622,7 +648,11 @@ interface DrawCommand {
   // Smear (source UV units, converted from screen pixels in drawTile).
   smearOffX:    number;
   smearOffY:    number;
-  smearJitter:  number;
+  // Per-axis jitter half-extent (UV) — constant screen size regardless of fit.
+  smearJitAmpX: number;
+  smearJitAmpY: number;
+  // 1 when the main source is a (premultiplied) FBO texture — un-premultiply on read.
+  sourceIsFbo:  number;
   transform:    Float32Array; // 16 floats, column-major
 }
 
@@ -1011,15 +1041,24 @@ export class WebGLRenderer implements Renderer {
 
     // Smear: convert the screen-pixel radius to a source-UV per-tap offset. The
     // px→UV scale differs per fit branch (below), so this closure takes it as an
-    // argument. The angle is in turns (0 = horizontal, .25 = vertical). Same
-    // convention as `pixelate` (screen pixels, texture space).
+    // argument — **signed** (uvSize/cell, not abs), so the smear direction follows
+    // any axis flip in the source→screen map: the FBO V-flip (`.render()` sources)
+    // and negative-crop flips. Passing abs made a baked source smear the opposite
+    // vertical direction from a raw element. Angle is in turns (0 = horizontal,
+    // .25 = vertical). Same convention as `pixelate` (screen pixels, texture space).
     const smear = p.smear ?? 0;
     const smearAng = (smear > 0 ? (p.smearAngle ?? 0) : 0) * 2 * Math.PI;
     const smearCos = Math.cos(smearAng), smearSin = Math.sin(smearAng);
+    const smearJit = p.smearJitter ?? 0.1;
     const smearFields = (uvPerPxX: number, uvPerPxY: number) => ({
       smearOffX:   smear > 0 ? smear * smearCos * uvPerPxX : 0,
       smearOffY:   smear > 0 ? smear * smearSin * uvPerPxY : 0,
-      smearJitter: p.smearJitter ?? 0.1,
+      // Per-axis jitter half-extent in UV, so the positional dither is a constant
+      // screen size (jit·smear px) on each axis regardless of the fit's per-axis
+      // scale. The old `jit·|d1|` was isotropic in UV → anisotropic on screen, and
+      // differed between a cover element and its fill-fit `.render()` bake.
+      smearJitAmpX: smear > 0 ? smearJit * smear * Math.abs(uvPerPxX) : 0,
+      smearJitAmpY: smear > 0 ? smearJit * smear * Math.abs(uvPerPxY) : 0,
     });
 
     // contain / none: shrink dest rect to the display area, UV covers the crop window.
@@ -1067,7 +1106,10 @@ export class WebGLRenderer implements Renderer {
         tileMode:     0,
         modTexture, modAmt, modSpace,
         modUVScaleX, modUVScaleY, modYDown,
-        ...smearFields(absCropw / dispW, absCroph / dispH),
+        // Signed (uvSz, post-FBO-flip) so smear direction follows the flip; wrap
+        // taps within the valid content extent (FBO sub-viewport, else 1).
+        ...smearFields(uvSzX / dispW, uvSzY / dispH),
+        sourceIsFbo: fboSource ? 1 : 0,
         transform:    buildTransform(p),
       });
       return;
@@ -1127,7 +1169,10 @@ export class WebGLRenderer implements Renderer {
       tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
       modTexture, modAmt, modSpace,
       modUVScaleX, modUVScaleY, modYDown,
-      ...smearFields(Math.abs(uvSizeX) / cellW, Math.abs(uvSizeY) / cellH),
+      // Signed (uvSize, post-FBO-flip) so smear direction follows the flip; wrap
+      // taps within the valid content extent (FBO sub-viewport, else 1).
+      ...smearFields(uvSizeX / cellW, uvSizeY / cellH),
+      sourceIsFbo: fboSource ? 1 : 0,
       transform:    buildTransform(p),
     });
   }
@@ -1240,7 +1285,9 @@ export class WebGLRenderer implements Renderer {
         modYDown:     cmd.modYDown,
         smearOffX:    cmd.smearOffX,
         smearOffY:    cmd.smearOffY,
-        smearJitter:  cmd.smearJitter,
+        smearJitAmpX: cmd.smearJitAmpX,
+        smearJitAmpY: cmd.smearJitAmpY,
+        sourceIsFbo:  cmd.sourceIsFbo,
       }, this.opsScratch, 0);
 
       // Build dedup key. Float-array join is allocation-y but cheap enough for

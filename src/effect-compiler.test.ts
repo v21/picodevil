@@ -238,18 +238,21 @@ describe("effect-compiler", () => {
       expect(ks[smearIdx + 1]).toBe(OP_CONTRAST);
     });
 
-    it("packs [texIdx, smearOffX, smearOffY, smearJitter]", () => {
+    it("packs [texIdx, smearOffX, smearOffY | jitAmpX, sourceIsFbo, jitAmpY]", () => {
       const e = {
         ...defaults(), texIndex: 2,
-        smearOffX: 0.01, smearOffY: 0.02, smearJitter: 0.2,
+        smearOffX: 0.01, smearOffY: 0.02,
+        smearJitAmpX: 0.2, smearJitAmpY: 0.3, sourceIsFbo: 1,
       };
       const ops = compile(e);
       const o = OP_FLOATS; // WRAP is op 0, SMEAR is op 1
       expect(ops[o]).toBe(OP_SMEAR);
       expect(ops[o + 1]).toBe(2);
-      expect(ops[o + 2]).toBeCloseTo(0.01);
-      expect(ops[o + 3]).toBeCloseTo(0.02);
-      expect(ops[o + 4]).toBeCloseTo(0.2);
+      expect(ops[o + 2]).toBeCloseTo(0.01); // a.z smearOffX
+      expect(ops[o + 3]).toBeCloseTo(0.02); // a.w smearOffY
+      expect(ops[o + 4]).toBeCloseTo(0.2);  // b.x jitAmpX
+      expect(ops[o + 5]).toBe(1);           // b.y sourceIsFbo
+      expect(ops[o + 6]).toBeCloseTo(0.3);  // b.z jitAmpY
     });
 
     it("MAX_OPS still covers the fully-loaded chain with SMEAR in the SAMPLE slot", () => {
