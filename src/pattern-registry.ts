@@ -12,6 +12,8 @@ let lastNamedIndices: { name: string; screenIndex: number }[] = [];
 export type RegistrySnapshot = {
   pPatterns: Record<string, Pattern>;
   anonymousIndex: number;
+  autoModIndex: number;
+  autoRenderIndex: number;
   eachFn: ((p: Pattern) => Pattern) | undefined;
   allFns: ((p: Pattern) => Pattern)[];
 };
@@ -108,6 +110,8 @@ export function snapshotRegistry(): RegistrySnapshot {
   return {
     pPatterns: { ...pPatterns },
     anonymousIndex,
+    autoModIndex,
+    autoRenderIndex,
     eachFn,
     allFns: [...allFns],
   };
@@ -116,6 +120,11 @@ export function snapshotRegistry(): RegistrySnapshot {
 export function restoreRegistry(snapshot: RegistrySnapshot): void {
   pPatterns = snapshot.pPatterns;
   anonymousIndex = snapshot.anonymousIndex;
+  // Restore the auto-FBO counters too, symmetric with anonymousIndex — else a
+  // snapshot/restore that isn't followed by resetRegistry() would leave them
+  // ahead, drifting/colliding `__auto_*` names.
+  autoModIndex = snapshot.autoModIndex;
+  autoRenderIndex = snapshot.autoRenderIndex;
   eachFn = snapshot.eachFn;
   allFns = snapshot.allFns;
   lastNamedIndices = [];

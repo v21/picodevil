@@ -74,9 +74,10 @@ export interface ModPlan {
  * Required modulator resolution for one auto FBO, from its consumer events.
  * Per consumer:
  *   'screen' → full canvas (rects map 1:1 to the full-frame image)
- *   'tile'   → footprint (the whole modulator squeezed into the tile)
- *   'uv'     → footprint × max(1, 1/|cropw|, 1/|croph|) — an uncropped tile
- *              reads at exactly tile density; crop-zoom magnifies the need
+ *   'uv' / 'tile' → footprint. The modulator is sampled in cell-local [0,1]
+ *              (OP_MODULATE runs before OP_WRAP applies the crop), so a source
+ *              crop never magnifies the modulator's density — footprint suffices.
+ * Case/whitespace-insensitive on modSpace; unrecognised → 'uv'.
  * Max over visible consumers; zero visible consumers ⇒ skip.
  */
 export function requiredModRes(events: any[], canvasW: number, canvasH: number): ModPlan {
@@ -88,17 +89,13 @@ export function requiredModRes(events: any[], canvasW: number, canvasH: number):
     if (!f.visible) continue;
     anyVisible = true;
 
-    const space = ev.modSpace !== undefined ? String(ev.modSpace) : 'uv';
+    const space = ev.modSpace !== undefined ? String(ev.modSpace).trim().toLowerCase() : 'uv';
     let w: number, h: number;
     if (space === 'screen') {
       w = canvasW; h = canvasH;
-    } else if (space === 'tile') {
-      w = f.wPx; h = f.hPx;
     } else {
-      const cropw = Math.abs(num(ev.cropw, 1));
-      const croph = Math.abs(num(ev.croph, 1));
-      w = f.wPx * Math.max(1, cropw > 0 ? 1 / cropw : Infinity);
-      h = f.hPx * Math.max(1, croph > 0 ? 1 / croph : Infinity);
+      // 'uv' and 'tile' both read the modulator across one cell → footprint density.
+      w = f.wPx; h = f.hPx;
     }
     reqW = Math.max(reqW, w);
     reqH = Math.max(reqH, h);

@@ -27,7 +27,6 @@ function defaults(): EffectInputs {
     modAmt: 0,
     modSpace: 0,
     modUVScaleX: 1, modUVScaleY: 1,
-    modYDown: 1,
   };
 }
 
@@ -175,11 +174,11 @@ describe("effect-compiler", () => {
       expect(kinds(compile(e))).toEqual([OP_MODULATE, OP_WRAP, OP_SAMPLE, OP_ALPHA]);
     });
 
-    it("packs [texIdx, amt, space, uvScaleX, uvScaleY, yDown]", () => {
+    it("packs [texIdx, amt, space, uvScaleX, uvScaleY]; b.z/b.w reserved 0", () => {
       const e = {
         ...defaults(),
         modTexIndex: 3, modAmt: 0.25, modSpace: 2,
-        modUVScaleX: 0.5, modUVScaleY: 0.75, modYDown: 0,
+        modUVScaleX: 0.5, modUVScaleY: 0.75,
       };
       const ops = compile(e);
       expect(ops[0]).toBe(OP_MODULATE);
@@ -188,7 +187,8 @@ describe("effect-compiler", () => {
       expect(ops[3]).toBe(2);
       expect(ops[4]).toBeCloseTo(0.5);
       expect(ops[5]).toBeCloseTo(0.75);
-      expect(ops[6]).toBe(0);
+      expect(ops[6]).toBe(0); // b.z reserved
+      expect(ops[7]).toBe(0); // b.w reserved
     });
 
     it("MAX_OPS covers the fully-loaded chain including MODULATE", () => {
@@ -206,7 +206,7 @@ describe("effect-compiler", () => {
         cropSizeX: 0.8, cropSizeY: 0.8,
         tileMode: 1,
         modTexIndex: 1, modAmt: 0.1, modSpace: 0,
-        modUVScaleX: 1, modUVScaleY: 1, modYDown: 1,
+        modUVScaleX: 1, modUVScaleY: 1,
       };
       const ks = kinds(compile(e));
       expect(ks).toEqual([

@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
-import { smearModeCode } from "./effects-controls";
+import { smearModeCode, normModSpace } from "./effects-controls";
 import "./effects-controls";
 
 function query(pat: any, t: number) {
@@ -119,5 +119,25 @@ describe("smearModeCode", () => {
   it("passes through a raw numeric code", () => {
     expect(smearModeCode(6)).toBe(6);
     expect(smearModeCode(NaN)).toBe(0);
+  });
+});
+
+describe("normModSpace", () => {
+  it("normalises canonical tokens", () => {
+    expect(normModSpace("uv")).toBe("uv");
+    expect(normModSpace("tile")).toBe("tile");
+    expect(normModSpace("screen")).toBe("screen");
+  });
+
+  it("is case/space-insensitive", () => {
+    expect(normModSpace("Screen")).toBe("screen");
+    expect(normModSpace(" TILE ")).toBe("tile");
+    expect(normModSpace("UV")).toBe("uv");
+  });
+
+  it("falls back to 'uv' for unknown / non-string", () => {
+    expect(normModSpace("world")).toBe("uv");
+    expect(normModSpace(undefined)).toBe("uv");
+    expect(normModSpace(3)).toBe("uv");
   });
 });

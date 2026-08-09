@@ -10,7 +10,7 @@ import { matchSources, type FreePool } from './source-matcher';
 import { AUTO_MOD_PREFIX, type Renderer, type TileParams, type TileSource, type Screen } from './renderer-interface';
 import { consumerFootprint, requiredModRes, type ModPlan } from './modulate-sizing';
 import { splitEffects } from './effect-fields';
-import { smearModeCode } from './effects-controls';
+import { smearModeCode, normModSpace } from './effects-controls';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
@@ -721,7 +721,7 @@ export class FrameRenderer {
       smearMode:   smearModeCode(ev.smearMode),
       modSrc,
       modAmt,
-      modSpace:      ev.modSpace      !== undefined ? String(ev.modSpace) as TileParams['modSpace'] : undefined,
+      modSpace:      ev.modSpace      !== undefined ? normModSpace(ev.modSpace) : undefined,
     };
   }
 
@@ -777,8 +777,10 @@ export class FrameRenderer {
    * Each pass samples only the tile's on-screen footprint, so effects after a
    * boundary are bounded by the tile's frame (no bleed). Playback/geometry live
    * on the one value, so they're transparent to where `.render()` sits.
-   * Intermediate FBOs are canvas-sized for now (fill is footprint-bounded;
-   * footprint-sizing the allocation is a follow-up).
+   * Intermediate FBOs are footprint-auto-sized (ladder-quantised sub-viewport of
+   * a texture sized to the tile's on-screen footprint) — except when a
+   * downstream crop samples the bake (`postBakeCrop`), where they're baked at
+   * full canvas resolution so the crop reads a fully-resolved frame.
    */
   private renderBakeChain(
     fe: FrameEvent, segs: Array<{ name: string; effects: Record<string, any> }>,
@@ -871,6 +873,11 @@ export class FrameRenderer {
       ...topEffects,
     };
     if (ev.rotateZ !== undefined) finalEv.rotateZ = ev.rotateZ;
+    // rotateX/rotateY (perspective foreshortening) are geometry, stripped from
+    // the unrotated bake and re-applied here — else a `.rotateX(k).render()`
+    // tile bakes and places flat, silently losing the tilt.
+    if (ev.rotateX !== undefined) finalEv.rotateX = ev.rotateX;
+    if (ev.rotateY !== undefined) finalEv.rotateY = ev.rotateY;
     if (ev.rotate !== undefined) { finalEv.rotate = ev.rotate; finalEv.rotateAxis = ev.rotateAxis; }
     const finalParams = this.buildTileParams({ ...fe, ev: finalEv }, t, cps, wall, videoFrameProcessed);
     if (finalParams) {

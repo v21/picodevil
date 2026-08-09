@@ -91,6 +91,20 @@ describe("render pipeline (meta-effect)", () => {
     expect(flushWarnings()).toEqual([]);
   });
 
+  it("rotateX foreshortening survives .render() (regression: was silently dropped)", () => {
+    // cos(0.2·τ) ≈ 0.31 → a full-frame white tile is squashed to a ~31%-height
+    // band centred on the canvas. Rotation is stripped from the unrotated bake and
+    // re-applied at the final placement; before the fix rotateX/rotateY were never
+    // re-applied, so the tile rendered as a full, flat square (top & bottom opaque).
+    (color("white") as any).rotateX(0.2).render().p("$");
+    renderOnce((canvas) => {
+      expect(opaque(readPixel(canvas, 50, 50)[3])).toBe(true);       // centre band: visible
+      expect(transparent(readPixel(canvas, 50, 12)[3])).toBe(true);  // top: outside the tilt
+      expect(transparent(readPixel(canvas, 50, 88)[3])).toBe(true);  // bottom: outside the tilt
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
   it("genuine second pass: brightness applies twice across the boundary", () => {
     // #808080 ≈ 0.5. Baked +0.3 → 0.8; final samples 0.8 and adds 0.3 → clamps
     // white. Without the boundary the two calls collapse (+0.3 once) → ~204.

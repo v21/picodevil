@@ -84,15 +84,16 @@ describe("requiredModRes", () => {
     expect(r.reqH).toBeCloseTo(H / 5);
   });
 
-  it("'uv' with crop zoom magnifies the need, clamped to canvas", () => {
-    // cropw 0.5 → lookup magnified 2× → footprint × 2.
+  it("'uv' sizing ignores source crop — modulator is sampled cell-local, so footprint suffices", () => {
+    // The modulator lookup runs in cell-local space (OP_MODULATE before OP_WRAP),
+    // so a source crop-zoom does NOT raise the modulator's density: still footprint.
     const zoom = requiredModRes([ev({ width: 0.25, height: 0.25, cropw: 0.5, croph: 0.5 })], W, H);
-    expect(zoom.reqW).toBeCloseTo(W / 2);
-    expect(zoom.reqH).toBeCloseTo(H / 2);
-    // Extreme zoom clamps at canvas size.
-    const extreme = requiredModRes([ev({ cropw: 0.01, croph: 0.01 })], W, H);
-    expect(extreme.reqW).toBe(W);
-    expect(extreme.reqH).toBe(H);
+    expect(zoom.reqW).toBeCloseTo(W / 4);
+    expect(zoom.reqH).toBeCloseTo(H / 4);
+    // Even an extreme crop doesn't inflate the allocation past footprint.
+    const extreme = requiredModRes([ev({ width: 0.25, height: 0.25, cropw: 0.01, croph: 0.01 })], W, H);
+    expect(extreme.reqW).toBeCloseTo(W / 4);
+    expect(extreme.reqH).toBeCloseTo(H / 4);
   });
 
   it("takes the max over consumers, ignoring offscreen ones", () => {

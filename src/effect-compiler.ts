@@ -86,11 +86,6 @@ export interface EffectInputs {
   /** Modulator lookup scale (auto-sizing sub-viewport: view/tex). 1 = full texture. */
   modUVScaleX:  number;
   modUVScaleY:  number;
-  /** 1 when the consumer's working UV space is y-down (element-texture source),
-   *  0 for FBO-source consumers (y-up). Controls the uv-space lookup mirror and
-   *  the visual-Y displacement sign so green > 0.5 displaces visually the same
-   *  way for both consumer kinds. */
-  modYDown:     number;
   // Smear — one multi-tap op covering both tap shapes. The tap vector is stored
   // X-referenced (direction baked in CPU-side: one cos/sin per tile, none per
   // fragment) and a single shared aspect scales Y, so ring/line/jitter are all
@@ -172,7 +167,7 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
     out[i + 3] = e.modSpace;
     out[i + 4] = e.modUVScaleX;
     out[i + 5] = e.modUVScaleY;
-    out[i + 6] = e.modYDown;
+    out[i + 6] = 0; // b.z: reserved (was modYDown; displacement is now unconditional)
     out[i + 7] = 0;
     i += OP_FLOATS;
     count++;

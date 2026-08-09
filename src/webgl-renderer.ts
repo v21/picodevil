@@ -502,10 +502,10 @@ void main() {
     } else if (kind == OP_MODULATE) {
       // UV displacement driven by a modulator texture (always an FBO: y-up texels).
       // a.y = texIdx, a.z = amt, a.w = space (0 uv / 1 tile / 2 screen)
-      // b.xy = lookup scale (auto-sizing sub-viewport). b.z (modYDown) is now
-      // vestigial: the working coord is cell-local (y-down) for EVERY consumer
-      // kind — element or FBO — because the crop/FBO map is deferred to OP_WRAP.
-      // So the modulator lookup mirror and the displacement sign are unconditional.
+      // b.xy = lookup scale (auto-sizing sub-viewport). b.z/b.w = reserved (0).
+      // The working coord is cell-local (y-down) for EVERY consumer kind — element
+      // or FBO — because the crop/FBO map is deferred to OP_WRAP, so the modulator
+      // lookup mirror and the displacement sign are unconditional.
       vec2 L;
       if (a.w > 1.5) {
         // screen: gl_FragCoord and FBO texels are both y-up — no flip.
@@ -674,13 +674,22 @@ const IDENTITY = new Float32Array([
 
 /**
  * Build a 4×4 column-major transform matrix that applies rotation and scale
- * around the cell centre in clip space.
+ * around the cell centre.
  *
  * The current params encode rotations as pre-computed cosine scales
  * (rotateXScale = cos(rotateX * TAU), applied to the Y axis; vice versa).
  * scaleX / scaleY are applied on top of those.
+ *
+ * `aspect` is the render target's pixel aspect (viewW / viewH). Clip space is
+ * [-1,1]² stretched onto that non-square viewport, so a raw clip-space rotation
+ * rotates *and* stretches by the aspect (a 90° turn of a landscape source came
+ * out squashed to the window shape). We conjugate the rotation by the aspect —
+ * i.e. rotate in pixel space — so the on-screen rotation is rigid and preserves
+ * the source aspect ratio. Only the axis-mixing (off-diagonal, sin) terms need
+ * it; pure axis scales (scaleX/Y and the rotateX/Y foreshortens) are diagonal
+ * and already aspect-correct.
  */
-function buildTransform(p: TileParams): Float32Array {
+function buildTransform(p: TileParams, aspect: number): Float32Array {
   const hasRotation = p.rotateZ !== 0 || p.rotateXScale !== 1 || p.rotateYScale !== 1;
   const hasScale    = p.scaleX !== 1 || p.scaleY !== 1;
   if (!hasRotation && !hasScale) return IDENTITY;
@@ -698,10 +707,12 @@ function buildTransform(p: TileParams): Float32Array {
   const cx =  2 * p.x - 1;
   const cy = -(2 * p.y - 1);
 
-  // T(cx,cy) * S(Sx,Sy) * R(θ) * T(-cx,-cy)
+  // T(cx,cy) * S(Sx,Sy) * [aspect-conjugated R(θ)] * T(-cx,-cy).
+  // The sin terms carry 1/aspect (top-right) and aspect (bottom-left): this is
+  // diag(1/W,1/H)·R·diag(W,H) — a rigid rotation in pixel space, expressed in clip.
   const a  =  cosZ * Sx;
-  const b  = -sinZ * Sy;
-  const c  =  sinZ * Sx;
+  const b  = -sinZ * Sy / aspect;
+  const c  =  sinZ * Sx * aspect;
   const d  =  cosZ * Sy;
   const tx = cx - a * cx - b * cy;
   const ty = cy - c * cx - d * cy;
@@ -765,7 +776,6 @@ interface DrawCommand {
   modSpace:     number; // 0 uv / 1 tile / 2 screen
   modUVScaleX:  number;
   modUVScaleY:  number;
-  modYDown:     number; // 1 = element-source consumer (y-down UVs), 0 = FBO-source
   // Smear (polar+aspect; UV units converted from screen pixels in drawTile).
   smearVecX:    number;   // X-referenced tap vector (dir baked in)
   smearVecY:    number;
@@ -1159,7 +1169,6 @@ export class WebGLRenderer implements Renderer {
     }
     const modAmt    = p.modAmt ?? 0.1;
     const modSpace  = p.modSpace === 'screen' ? 2 : p.modSpace === 'tile' ? 1 : 0;
-    const modYDown  = fboSource ? 0 : 1;
 
     // Smear (polar + shared aspect). Sign of `smear` picks the tap shape: > 0
     // linear line, < 0 circular ring; |smear| is the radius, `smearAngle` the line
@@ -1243,12 +1252,12 @@ export class WebGLRenderer implements Renderer {
         cropOffX: 0, cropOffY: 0, cropSizeX: 1, cropSizeY: 1,
         tileMode:     0,
         modTexture, modAmt, modSpace,
-        modUVScaleX, modUVScaleY, modYDown,
+        modUVScaleX, modUVScaleY,
         // Signed (uvSz, post-FBO-flip) so smear direction follows the flip; wrap
         // taps within the valid content extent (FBO sub-viewport, else 1).
         ...smearFields(uvSzX / dispW, uvSzY / dispH),
         sourceIsFbo: fboSource ? 1 : 0,
-        transform:    buildTransform(p),
+        transform:    buildTransform(p, this.currentViewW / this.currentViewH),
       });
       return;
     }
@@ -1306,12 +1315,12 @@ export class WebGLRenderer implements Renderer {
       cropOffX, cropOffY, cropSizeX, cropSizeY,
       tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
       modTexture, modAmt, modSpace,
-      modUVScaleX, modUVScaleY, modYDown,
+      modUVScaleX, modUVScaleY,
       // Signed (uvSize, post-FBO-flip) so smear direction follows the flip; wrap
       // taps within the valid content extent (FBO sub-viewport, else 1).
       ...smearFields(uvSizeX / cellW, uvSizeY / cellH),
       sourceIsFbo: fboSource ? 1 : 0,
-      transform:    buildTransform(p),
+      transform:    buildTransform(p, this.currentViewW / this.currentViewH),
     });
   }
 
@@ -1420,7 +1429,6 @@ export class WebGLRenderer implements Renderer {
         modSpace:     cmd.modSpace,
         modUVScaleX:  cmd.modUVScaleX,
         modUVScaleY:  cmd.modUVScaleY,
-        modYDown:     cmd.modYDown,
         smearVecX:      cmd.smearVecX,
         smearVecY:      cmd.smearVecY,
         smearJitFactor: cmd.smearJitFactor,

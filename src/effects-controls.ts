@@ -271,8 +271,9 @@ const _smearMode = createMixParam("smearMode");
  * - `sharpen` / `sharp` (= `sharpen3`), `sharpen1`…`sharpen9` (or `sharp1`…`sharp9`) — unsharp mask
  *
  * With a circular smear + `max`/`min` this is dilation/erosion — `.dilate`/`.erode`
- * are aliases. Compound morphology composes across `.render()`: opening =
- * `.smearop('min').render().smearop('max')`, closing swaps the two.
+ * are aliases. Compound morphology composes across `.render()`: opening (despeckle) =
+ * `.erode(4).render().dilate(4)`, closing swaps the two. (Note a bare
+ * `.smearop('min')` with no active `.smear` is a no-op — it needs the taps.)
  *
  * @param {string | Pattern} [mode='avg'] reducer name (see list); unknown → 'avg'
  * @returns {Pattern} pattern with the smear reducer applied
@@ -394,6 +395,17 @@ export function smearModeCode(mode: unknown): number {
     if (c !== undefined) return c;
   }
   return 0;
+}
+
+// Normalise a `.modspace` value to its canonical token. Case/whitespace-insensitive
+// (like smearModeCode); anything unrecognised → 'uv'. Not a `/** */` block — keep it
+// out of the reference sidebar.
+export function normModSpace(space: unknown): 'uv' | 'tile' | 'screen' {
+  if (typeof space === "string") {
+    const s = space.trim().toLowerCase();
+    if (s === "screen" || s === "tile" || s === "uv") return s;
+  }
+  return 'uv';
 }
 
 // Internal mix params for .modulate — ev.modSrc always carries an auto-FBO
