@@ -362,31 +362,62 @@ $: s("clip.mp4").cropStack(3,3).tile().barrel(0.5)          // per-tile: each ce
 $: s("clip.mp4").barrel(0.5).render().cropStack(3,3).tile() // whole-frame warp, THEN sliced
 ```
 
-### Smear
+### Smear — the multi-tap sampler
 
-`.smear(angle, pixels)` is a directional (1-D) Gaussian blur — a motion-blur streak along `angle`, given in **turns** (0 = horizontal, 0.25 = vertical). The angle is patternable, so the streak can rotate. `pixels` is the radius in **screen pixels** (no argument defaults to 20); cost is **fixed regardless of radius**, so animate it freely. A negative `pixels` just means its magnitude — the kernel is symmetric, so direction comes from `angle`, not the sign.
+`.smear(angle, pixels, jitter)` is the general **9-tap resampling** primitive: it
+samples a small set of neighbouring points and combines them. The **sign of
+`pixels` picks the tap shape**:
 
-An optional trailing `jitter` (default `0.5`) gives **every sample point** (the centre included) its own small random x/y displacement, scaled by the smear strength, so that at wide radii the discrete taps dither into fine noise instead of showing as faint ghost copies. Pass `0` for crisp, un-dithered taps.
+- **`pixels > 0` — linear:** a directional (1-D) motion-blur streak along `angle`
+  (in **turns**: 0 = horizontal, 0.25 = vertical).
+- **`pixels < 0` — circular:** a ring of radius `|pixels|` (a rounder, bokeh-ish
+  blur), which `angle` rotates.
+- **`pixels = 0` — jitter-only:** no streak, just the jitter scatter (below).
 
-**Jitter-only:** with `pixels` at `0` and `jitter > 0` there's no directional streak, so you get a **stochastic dither** — the 5 taps scatter randomly around each pixel. Handy as a soft random blur / grain (the jitter magnitude is the scatter radius).
+`angle` and `pixels` are patternable (defaults `0`, `20`); cost is **fixed
+regardless of radius**. What the sampler *does* with the taps is chosen by
+[`.smearop`](#smearop--pluggable-reducer) — the default is an average, i.e. a blur.
 
-Smear runs in texture space (like `.pixelate`), so it rotates with `.rotateZ()` and smears whatever earlier UV warps (crop, barrel, modulate) produced.
+`jitter` (default `0.5`) scatters each tap over a **disc** of radius
+`jitter·(|pixels|+1)` screen px. It's a **first-class blur, not just a dither**, so
+it works even at `pixels 0` (a pure random blur). The disc and the ring are
+screen-correct at any tile aspect. Pass `0` for crisp, un-jittered taps.
+
+Smear runs in texture space (like `.pixelate`), so it rotates with `.rotateZ()` and
+smears whatever earlier UV warps (crop, barrel, modulate) produced.
+
+> **One smear per tile.** `.smear` and its aliases `.blur`, `.dilate`, `.erode`
+> share the single sampling slot, so they **override** each other (last one wins) —
+> they don't stack. Put a `.render()` between two to apply both.
 
 ```js
-$: video("clip.mp4").smear(0, 30)                  // horizontal smear
+$: video("clip.mp4").smear(0, 30)                  // horizontal motion blur
 $: video("clip.mp4").smear(sine, 30)               // rotating streak
-$: video("clip.mp4").smear(0.25, 20)               // vertical motion blur
+$: video("clip.mp4").smear(0, -20)                 // circular (bokeh) blur
 $: video("clip.mp4").smear(0, fft.bass.range(0, 40)) // smear pulsing to the beat
-$: video("clip.mp4").smear(0, 0, slider(20, 0, 60)) // jitter-only stochastic dither
+$: video("clip.mp4").smear(0, 0, slider(20, 0, 60)) // pure jitter blur
 ```
 
-### smearop — pluggable smear reducer
+#### Aliases
 
-By default smear **averages** its samples (a blur). `.smearop(mode)` swaps in a
-different reducer over the same taps, so a directional smear can dilate, erode,
-find edges, denoise or sharpen. It only supplies the reducer — you still need an
-active `.smear(...)` to give it the taps: `.smear(0, 20).smearop('max')`. `mode`
-is patternable, so it can alternate per cycle.
+- **`.blur(amount)`** = `.smear(0, -amount)` — a soft circular blur.
+- **`.dilate(amount)`** = a circular smear reduced with `max`: bright regions grow.
+- **`.erode(amount)`** = a circular smear reduced with `min`: bright regions shrink.
+
+```js
+$: video("clip.mp4").blur(8)                       // soft circular blur
+$: video("clip.mp4").dilate(4)                     // fatten bright regions
+$: video("clip.mp4").erode(4)                      // thin bright detail
+$: video("clip.mp4").dilate(sine.range(1, 8))      // morph the radius
+```
+
+### smearop — pluggable reducer
+
+By default smear **averages** its taps (a blur). `.smearop(mode)` swaps in a
+different reducer, so any smear (linear or circular) can dilate, erode, find edges,
+denoise or sharpen. It only supplies the reducer — you still need an active
+`.smear(...)` for the taps: `.smear(0, 20).smearop('max')`. `mode` is patternable,
+so it can alternate per cycle.
 
 Naming: no suffix = **per-channel** (each R/G/B independent → colourful fringing);
 an `l` suffix = **luminance-keyed** (returns the whole colour of the tap chosen by
@@ -395,44 +426,22 @@ luminance → no fringing).
 | mode | effect |
 |---|---|
 | `avg` *(default; also `average` / `ave` / `mean`)* / `avgl` | mean / luminance-weighted mean (blur) |
-| `max` / `min` | dilate / erode (bright regions grow / shrink) |
+| `max` (`dilate`) / `min` (`erode`) | per-channel morphology (bright grows / shrinks) |
 | `maxl` / `minl` | brightest / darkest tap's colour |
 | `median` (`med`) / `medianl` (`medl`) | per-channel / luminance-keyed median — denoise, painterly |
 | `range` (`edge`) | per-channel max − min → edge detection (outlines) |
 | `rangel` (`edgel`) | **coloured** edge = abs(brightest − darkest tap colour) |
 | `sharpen` / `sharp`, `sharpen1`…`sharpen9` (or `sharp1`…`sharp9`) | unsharp mask; bare `sharpen` = `sharpen3` |
 
-Because a smear is a **1-D** streak, crossing two at 90° via [`.render()`](#bake-a-chain-with-render)
-gives a separable 2-D result, and the classic compound morphologies fall out of
-chaining:
+A `max`/`min` on a **circular** smear is dilation/erosion (that's what `.dilate`/
+`.erode` are). Compound morphology composes across [`.render()`](#bake-a-chain-with-render):
 
 ```js
-$: video("clip.mp4").smear(0, 24).smearop('max')      // directional dilate
-$: video("clip.mp4").smear(0, 8).smearop('range')     // edge outlines
+$: video("clip.mp4").smear(0, 24).smearop('max')      // directional (linear) dilate
+$: video("clip.mp4").smear(0, 8).smearop('edge')      // edge outlines
 $: video("clip.mp4").smear(0, 6).smearop('sharpen6')  // punchy unsharp
-$: video("clip.mp4").smear(0, 12).smearop('max').render().smear(0.25, 12).smearop('max') // 2-D (square) dilate
-$: video("clip.mp4").smearop('min').render().smearop('max')  // morphological opening (despeckle)
-```
-
-### Dilate (ring morphology)
-
-`.dilate(amount)` is a single-pass **circular** dilate/erode: a 9-tap ring (centre +
-one tap every 45°). A positive `amount` **dilates** (per-channel max — bright regions
-grow, dark specks fill in); a negative `amount` **erodes** (min — bright regions
-shrink, thin bright lines break up). `amount` is the ring radius in **screen pixels**
-and is patternable, so it can morph. An optional `jitter` (default `0.5`, as smear)
-dithers the ring's dottiness at large radius into noise; pass `0` for a crisp ring.
-
-Cost is **fixed** (9 taps) regardless of radius. Unlike the directional `smearop`
-above, one `.dilate()` call is already 2-D and round — but it shares smear's sampling
-slot, so a dilate and a smear on the same tile don't combine; cross them with
-[`.render()`](#bake-a-chain-with-render) (`.dilate(4).render().smear(0, 20)`).
-
-```js
-$: video("clip.mp4").dilate(4)                     // fatten bright regions
-$: video("clip.mp4").dilate(-4)                    // erode (thin bright detail)
-$: video("clip.mp4").dilate(sine.range(-6, 6))     // morph erode ↔ dilate
-$: s("rgb1").dilate(6)                             // per-channel colour fringing at edges
+$: video("clip.mp4").smear(0, -6).smearop('median')   // circular median (painterly)
+$: video("clip.mp4").dilate(6).render().erode(6)      // morphological closing
 ```
 
 ### Blending
