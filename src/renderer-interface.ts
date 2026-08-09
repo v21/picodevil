@@ -79,6 +79,16 @@ export interface TileParams {
   smearAngle: number;
   /** smear per-tap positional jitter factor (0.1 ≈ ±0.1·step); dithers wide-offset aliasing. */
   smearJitter: number;
+  /** Reducer over the smear taps (`.smearop`), pre-mapped to an int code by
+   *  buildTileParams: 0 = avg (default), 1 = avgl, 2 = max, 3 = min, 4 = maxl,
+   *  5 = minl, 6 = median, 7 = medl, 8 = range, 9 = rangel, 10..18 = sharpen1..9.
+   *  Only takes effect when a smear is active. */
+  smearMode: number;
+  /** Ring dilate/erode radius in screen pixels (9-tap circular max/min).
+   *  0 = off (default); >0 = dilate, <0 = erode. */
+  dilate: number;
+  /** dilate per-tap positional jitter factor (as smear); dithers the ring. */
+  dilateJitter: number;
   /** Name of the FBO whose pixels displace this tile's UV lookup (`.modulate`). */
   modSrc?: string;
   /** Modulate displacement amount in source-crop UV units. */

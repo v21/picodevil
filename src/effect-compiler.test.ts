@@ -3,7 +3,7 @@ import {
   compile,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR,
+  OP_MODULATE, OP_SMEAR, OP_DILATE,
   OP_FLOATS, MAX_OPS,
   type EffectInputs,
 } from "./effect-compiler";
@@ -265,6 +265,75 @@ describe("effect-compiler", () => {
       };
       const ks = kinds(compile(e));
       expect(ks).toContain(OP_SMEAR);
+      expect(ks).not.toContain(OP_SAMPLE);
+      expect(ks.length).toBeLessThanOrEqual(MAX_OPS);
+    });
+
+    it("smearMode rides OP_SMEAR's spare b.w slot", () => {
+      const e = { ...defaults(), smearOffX: 0.05, smearOffY: 0, smearMode: 8 };
+      const ops = compile(e);
+      const o = OP_FLOATS; // WRAP is op 0, SMEAR is op 1
+      expect(ops[o]).toBe(OP_SMEAR);
+      expect(ops[o + 7]).toBe(8); // b.w = mode
+    });
+
+    it("smearMode alone (no offset/jitter) leaves plain SAMPLE — needs an active smear", () => {
+      const ks = kinds(compile({ ...defaults(), smearMode: 2 }));
+      expect(ks).toContain(OP_SAMPLE);
+      expect(ks).not.toContain(OP_SMEAR);
+    });
+
+    it("jitter-only (offset 0, jitter > 0) still emits SMEAR — a stochastic sample", () => {
+      const ks = kinds(compile({ ...defaults(), smearOffX: 0, smearOffY: 0, smearJitAmpX: 0.1, smearJitAmpY: 0.1 }));
+      expect(ks).toContain(OP_SMEAR);
+      expect(ks).not.toContain(OP_SAMPLE);
+    });
+  });
+
+  describe("DILATE", () => {
+    it("not emitted with no ring radius — plain SAMPLE stays", () => {
+      const ks = kinds(compile(defaults()));
+      expect(ks).toContain(OP_SAMPLE);
+      expect(ks).not.toContain(OP_DILATE);
+    });
+
+    it("ring radius replaces SAMPLE with DILATE at the pivot", () => {
+      const e = { ...defaults(), dilRadUVx: 0.02, dilRadUVy: 0.02, contrast: 1.5 };
+      const ks = kinds(compile(e));
+      expect(ks).toContain(OP_DILATE);
+      expect(ks).not.toContain(OP_SAMPLE);
+      const idx = ks.indexOf(OP_DILATE);
+      expect(ks[idx - 1]).toBe(OP_WRAP);
+      expect(ks[idx + 1]).toBe(OP_CONTRAST);
+    });
+
+    it("packs [texIdx, radX, radY | jitX, sourceIsFbo, jitY, mode]", () => {
+      const e = {
+        ...defaults(), texIndex: 3,
+        dilRadUVx: 0.01, dilRadUVy: 0.02,
+        dilJitAmpX: 0.1, dilJitAmpY: 0.15, dilMode: -1, sourceIsFbo: 1,
+      };
+      const ops = compile(e);
+      const o = OP_FLOATS; // WRAP is op 0, DILATE is op 1
+      expect(ops[o]).toBe(OP_DILATE);
+      expect(ops[o + 1]).toBe(3);
+      expect(ops[o + 2]).toBeCloseTo(0.01); // a.z radX
+      expect(ops[o + 3]).toBeCloseTo(0.02); // a.w radY
+      expect(ops[o + 4]).toBeCloseTo(0.1);  // b.x jitAmpX
+      expect(ops[o + 5]).toBe(1);           // b.y sourceIsFbo
+      expect(ops[o + 6]).toBeCloseTo(0.15); // b.z jitAmpY
+      expect(ops[o + 7]).toBe(-1);          // b.w mode (erode)
+    });
+
+    it("dilate wins the pivot over smear when both are set", () => {
+      const e = {
+        ...defaults(),
+        dilRadUVx: 0.02, dilRadUVy: 0.02,
+        smearOffX: 0.05, smearOffY: 0.05,
+      };
+      const ks = kinds(compile(e));
+      expect(ks).toContain(OP_DILATE);
+      expect(ks).not.toContain(OP_SMEAR);
       expect(ks).not.toContain(OP_SAMPLE);
       expect(ks.length).toBeLessThanOrEqual(MAX_OPS);
     });

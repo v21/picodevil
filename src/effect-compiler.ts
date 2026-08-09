@@ -8,7 +8,9 @@
  *   2. MODULATE  (UV displacement from a modulator texture)
  *   3. PIXELATE  (UV quantisation)
  *   4. WRAP      (tile/non-tile UV wrap)
- *   5. SAMPLE    (texture lookup; required for every tile)
+ *   5. SAMPLE    (texture lookup; required for every tile — the "pivot" slot.
+ *                 OP_SMEAR or OP_DILATE take this slot instead when active, so
+ *                 there is always exactly one sampling op)
  *   6. BRIGHTNESS (additive offset)
  *   7. CONTRAST  (centred contrast)
  *   8. COLOR_OKLAB (grey + tint + huerot, one OKLab round-trip)
@@ -38,8 +40,15 @@ export const OP_ALPHA       = 7;
 export const OP_MODULATE    = 8;
 /** Directional smear: a multi-tap sample that replaces SAMPLE in the pivot slot
  *  when smear is active (a tile has exactly one sampling op, so this never
- *  coexists with SAMPLE). */
+ *  coexists with SAMPLE). Its reducer is selectable via `smearMode` (`.smearop`)
+ *  — avg (default) / min / max / median / range / sharpen etc. */
 export const OP_SMEAR       = 9;
+/** Ring morphology (`.dilate`): a 9-tap circular max/min sample that also
+ *  replaces SAMPLE in the pivot slot. Emitted ahead of SMEAR, so when both are
+ *  set on one tile dilate wins the single sampling slot (combine via `.render()`).
+ *  A distinct op code, but it occupies the pivot rather than lengthening the
+ *  chain, so MAX_OPS is unchanged. */
+export const OP_DILATE      = 10;
 
 /** Number of floats per op (one kind + 7 args). */
 export const OP_FLOATS = 8;
@@ -94,6 +103,19 @@ export interface EffectInputs {
    *  — a constant screen-pixel dither regardless of the fit's per-axis scale. */
   smearJitAmpX?: number;
   smearJitAmpY?: number;
+  /** Reducer applied over the smear taps (`.smearop`): 0 = avg (default, today's
+   *  smear), 1 = avgl, 2 = max, 3 = min, 4 = maxl, 5 = minl, 6 = median,
+   *  7 = medl, 8 = range, 9 = rangel, 10..18 = sharpen1..9. Rides OP_SMEAR only. */
+  smearMode?:   number;
+  // Ring dilate/erode (source UV units, computed CPU-side from screen pixels).
+  /** Per-axis ring radius in UV (|amount|·uvPerPx). 0,0 = no dilate. */
+  dilRadUVx?:   number;
+  dilRadUVy?:   number;
+  /** Per-axis ring jitter half-extent in UV (jit·|amount|·|uvPerPx|). */
+  dilJitAmpX?:  number;
+  dilJitAmpY?:  number;
+  /** Reduction mode / sign: +1 = dilate (per-channel max), -1 = erode (min). */
+  dilMode?:     number;
   /** 1 when the main source is an FBO texture (a `.render()` bake, `s("name")`,
    *  `s("all")`/`s("prev")`) — its content is **premultiplied** (source-over
    *  baking writes rgb·a into a transparent target). The straight-alpha pipeline
@@ -182,23 +204,40 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
   i += OP_FLOATS;
   count++;
 
-  // SAMPLE / SMEAR: exactly one sampling op per tile. When smear is active, emit
-  // OP_SMEAR (a directional multi-tap read) in the same pivot slot instead of the
-  // single-tap OP_SAMPLE — so the chain length (and MAX_OPS) is unchanged and the
-  // common path stays a single tap. `|| 0` guards partial test inputs where these
-  // fields are undefined.
+  // SAMPLE / SMEAR / DILATE: exactly one sampling op per tile. A multi-tap read
+  // (smear or dilate) replaces the single-tap OP_SAMPLE in this same pivot slot
+  // when active — so the chain length (and MAX_OPS) is unchanged and the common
+  // path stays a single tap. Precedence: DILATE > SMEAR > SAMPLE, so when both a
+  // ring dilate and a smear land on one tile, dilate wins the slot (they compose
+  // only across a `.render()` boundary). `|| 0` guards partial test inputs.
+  const drx = e.dilRadUVx || 0, dry = e.dilRadUVy || 0;
   const sx = e.smearOffX || 0, sy = e.smearOffY || 0;
-  if (sx !== 0 || sy !== 0) {
+  const sjx = e.smearJitAmpX || 0, sjy = e.smearJitAmpY || 0;
+  if (drx !== 0 || dry !== 0) {
+    out[i] = OP_DILATE;
+    out[i + 1] = e.texIndex;
+    out[i + 2] = drx;
+    out[i + 3] = dry;
+    // b.x = jitter amp X, b.y = source-is-FBO, b.z = jitter amp Y, b.w = mode
+    // (+1 dilate / -1 erode). Confine window derived in-shader from OP_WRAP.
+    out[i + 4] = e.dilJitAmpX || 0;
+    out[i + 5] = e.sourceIsFbo ? 1 : 0;
+    out[i + 6] = e.dilJitAmpY || 0;
+    out[i + 7] = e.dilMode || 0;
+    // Emit SMEAR when the directional offset OR the jitter is non-zero: a smear
+    // with pixels 0 but jitter > 0 is a valid jitter-only stochastic sample (d1 = 0,
+    // the 5 taps differ only by their per-tap random displacement).
+  } else if (sx !== 0 || sy !== 0 || sjx !== 0 || sjy !== 0) {
     out[i] = OP_SMEAR;
     out[i + 1] = e.texIndex;
     out[i + 2] = sx;
     out[i + 3] = sy;
-    // b.x = jitter amp X, b.y = source-is-FBO, b.z = jitter amp Y. (The tap confine
-    // window is derived in-shader from OP_WRAP's visible crop window, not passed.)
+    // b.x = jitter amp X, b.y = source-is-FBO, b.z = jitter amp Y, b.w = reducer
+    // mode. (The tap confine window is derived in-shader from OP_WRAP's window.)
     out[i + 4] = e.smearJitAmpX || 0;
     out[i + 5] = e.sourceIsFbo ? 1 : 0;
     out[i + 6] = e.smearJitAmpY || 0;
-    out[i + 7] = 0;
+    out[i + 7] = e.smearMode || 0;
   } else {
     out[i] = OP_SAMPLE;
     out[i + 1] = e.texIndex;

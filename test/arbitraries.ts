@@ -97,6 +97,13 @@ const DISCRETE_BOOLEAN_SIGNALS = ["brand"];
 
 const FIT_MODES = ["cover", "contain", "fill", "none", "tile", "tilecenter"];
 
+// .smearop reducer names (incl. synonyms + a couple of sharpen strengths).
+const SMEAR_OP_MODES = [
+  "avg", "average", "ave", "mean", "avgl", "max", "min", "maxl", "minl",
+  "median", "med", "medianl", "medl", "range", "edge", "rangel", "edgel",
+  "sharpen", "sharp", "sharpen5", "sharp9",
+];
+
 const BLEND_MODES = [
   "source-over", "multiply", "screen", "overlay",
   "darken", "lighten", "color-dodge", "color-burn",
@@ -533,6 +540,11 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   numericArg.map(a => ({ code: `.barrel(${a})` })),
   fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
+  // smearop reducer (needs an active smear to bite, but is a no-op alone)
+  fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }), fc.constantFrom(...SMEAR_OP_MODES))
+    .map(([ang, n, m]) => ({ code: `.smear(${ang}, ${Math.round(n)}).smearop("${m}")` })),
+  // ring dilate/erode (signed amount = dilate/erode)
+  fc.double({ min: -32, max: 32, noNaN: true }).map(n => ({ code: `.dilate(${Math.round(n)})` })),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),
@@ -586,6 +598,9 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   numericArg.map(a => ({ code: `.barrel(${a})` })),
   fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
+  fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }), fc.constantFrom(...SMEAR_OP_MODES))
+    .map(([ang, n, m]) => ({ code: `.smear(${ang}, ${Math.round(n)}).smearop("${m}")` })),
+  fc.double({ min: -32, max: 32, noNaN: true }).map(n => ({ code: `.dilate(${Math.round(n)})` })),
   // texture modulation — inline pattern arg, optionally with a lookup space
   fc.tuple(modulatorExpr, modAmtArg).map(([src, amt]) => ({ code: `.modulate(${src}, ${amt})` })),
   fc.tuple(modulatorExpr, modAmtArg, modSpaceArg)

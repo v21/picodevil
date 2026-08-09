@@ -239,6 +239,108 @@ PatternProto.smear = function (angle: any = 0, pixels: any = 20, jitter: any = 0
   return _smearJitter(jitter, _smearAngle(angle, _smear(pixels, this)));
 };
 
+const _smearMode = createMixParam("smearMode");
+
+/**
+ * Selects the reducer smear applies over its 5 taps, so a directional smear can
+ * do more than blur. Needs an active `.smear(...)` (it only supplies the reducer,
+ * not the taps): `.smear(0, 20).smearop('max')`. Patternable, so the reducer can
+ * alternate — `.smearop("<avg max range>")`.
+ *
+ * Naming: no suffix = per-channel, `l` suffix = luminance-keyed (returns the
+ * whole colour of the tap chosen by luminance — no channel fringing).
+ * - `avg` (default; also `average` / `ave` / `mean`) — weighted mean = today's
+ *   smear/blur; `avgl` — luminance-weighted mean
+ * - `max` / `min` — per-channel dilate / erode (bright grows / shrinks; colour fringe)
+ * - `maxl` / `minl` — brightest / darkest tap's colour
+ * - `median` (`med`) — per-channel median (denoise); `medianl` (`medl`) — median-luminance tap's colour
+ * - `range` (`edge`) — per-channel max−min = edge detect; `rangel` (`edgel`) — coloured
+ *   edge = abs(brightest − darkest tap colour)
+ * - `sharpen` / `sharp` (= `sharpen3`), `sharpen1`…`sharpen9` (or `sharp1`…`sharp9`) — unsharp mask
+ *
+ * Compound morphology composes across `.render()`: opening =
+ * `.smearop('min').render().smearop('max')`, closing swaps the two.
+ *
+ * @param {string | Pattern} [mode='avg'] reducer name (see list); unknown → 'avg'
+ * @returns {Pattern} pattern with the smear reducer applied
+ * @example
+ * // directional dilate (bright regions stretch along the smear)
+ * $: video("clip.mp4").smear(0, 24).smearop('max')
+ *
+ * // edge outlines
+ * $: video("clip.mp4").smear(0, 8).smearop('range')
+ *
+ * // punchy unsharp
+ * $: video("clip.mp4").smear(0, 6).smearop('sharpen6')
+ */
+PatternProto.smearop = function (mode: any = 'avg') {
+  return _smearMode(mode, this);
+};
+
+const _dilate = createMixParam("dilate");
+const _dilateJitter = createMixParam("dilateJitter");
+
+/**
+ * Morphological dilation / erosion with a circular kernel — a single-pass 9-tap
+ * ring (centre + one tap every 45°, radius-scaled). Positive `amount` dilates
+ * (per-channel max: bright regions grow, dark specks fill in); negative erodes
+ * (min: bright regions shrink, thin bright lines break up). `amount` is the ring
+ * radius in screen pixels and is patternable, so it can morph. `jitter`
+ * randomises each tap's position (as `.smear`), dithering the ring's dottiness at
+ * large radius into noise.
+ *
+ * Cost is fixed (9 taps) regardless of radius. Reuses smear's sampling slot, so a
+ * dilate and a smear on one tile don't combine — cross them via `.render()`
+ * (`.dilate(4).render().smear(0, 20)`), the same way repeated effects compose.
+ *
+ * @param {number | string | Pattern} [amount=3] ring radius in screen px; >0 = dilate, <0 = erode, 0 = off
+ * @param {number | string | Pattern} [jitter=0.5] per-tap positional jitter (fraction of radius)
+ * @returns {Pattern} pattern with the ring morphology applied
+ * @example
+ * // fatten bright regions
+ * $: video("clip.mp4").dilate(4)
+ *
+ * // erode (thin bright detail)
+ * $: video("clip.mp4").dilate(-4)
+ *
+ * // morph erode↔dilate
+ * $: video("clip.mp4").dilate(sine.range(-6, 6))
+ */
+PatternProto.dilate = function (amount: any = 3, jitter: any = 0.5) {
+  return _dilateJitter(jitter, _dilate(amount, this));
+};
+
+/**
+ * Reducer-name → shader op-code map for `.smearop`. Kept next to the method so
+ * the canonical list lives in one place; `buildTileParams` uses it to pre-map the
+ * event value to an int, and it is unit-tested directly.
+ */
+const SMEAR_MODE_CODES: Record<string, number> = {
+  avg: 0, average: 0, ave: 0, mean: 0, avgl: 1,
+  max: 2, min: 3,
+  maxl: 4, minl: 5,
+  median: 6, med: 6,
+  medianl: 7, medl: 7,
+  range: 8, edge: 8, rangel: 9, edgel: 9,
+  sharpen: 12, sharp: 12, // a good default = sharpen3
+  sharpen1: 10, sharpen2: 11, sharpen3: 12, sharpen4: 13, sharpen5: 14,
+  sharpen6: 15, sharpen7: 16, sharpen8: 17, sharpen9: 18,
+  sharp1: 10, sharp2: 11, sharp3: 12, sharp4: 13, sharp5: 14,
+  sharp6: 15, sharp7: 16, sharp8: 17, sharp9: 18,
+};
+
+// Map a `.smearop` mode (string name, or a raw int code) to its op code. Unknown → 0
+// (avg). Not a `/** */` block: the reference-sidebar plugin scans this file and would
+// otherwise list this internal helper as a user-facing effect.
+export function smearModeCode(mode: unknown): number {
+  if (typeof mode === "number") return Number.isFinite(mode) ? mode : 0;
+  if (typeof mode === "string") {
+    const c = SMEAR_MODE_CODES[mode.trim().toLowerCase()];
+    if (c !== undefined) return c;
+  }
+  return 0;
+}
+
 // Internal mix params for .modulate — ev.modSrc always carries an auto-FBO
 // name minted by .modulate; there is no user-facing string form.
 const _modSrc = createMixParam("modSrc");

@@ -10,6 +10,7 @@ import { matchSources, type FreePool } from './source-matcher';
 import { AUTO_MOD_PREFIX, type Renderer, type TileParams, type TileSource, type Screen } from './renderer-interface';
 import { consumerFootprint, requiredModRes, type ModPlan } from './modulate-sizing';
 import { splitEffects } from './effect-fields';
+import { smearModeCode } from './effects-controls';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
@@ -707,9 +708,19 @@ export class FrameRenderer {
       tintHue:       ev.tintHue       !== undefined ? Number(ev.tintHue)       : 0,
       tintStrength:  ev.tintStrength  !== undefined ? Number(ev.tintStrength)  : 0,
       barrel:        ev.barrel        !== undefined ? Number(ev.barrel)        : 0,
-      smear:       ev.smear       !== undefined ? Math.max(0, Number(ev.smear)) : 0,
+      // abs, not clamp-to-0: a negative radius smears by its magnitude (the 5-tap
+      // kernel is symmetric, so a sign flip would relabel the same taps → identical
+      // output anyway; direction is the `angle` param, not the sign of `pixels`).
+      smear:       ev.smear       !== undefined ? Math.abs(Number(ev.smear)) : 0,
       smearAngle:  ev.smearAngle  !== undefined ? Number(ev.smearAngle)         : 0,
-      smearJitter: ev.smearJitter !== undefined ? Number(ev.smearJitter)        : 0.1,
+      // Default 0 (not 0.1): jitter is only "live" when `.smear()` was called (it
+      // always sets smearJitter, default 0.5). This lets a jitter-only smear
+      // (pixels 0, jitter > 0) emit OP_SMEAR without every un-smeared tile in the
+      // app picking up a stray jitter from a non-zero default.
+      smearJitter: ev.smearJitter !== undefined ? Number(ev.smearJitter)        : 0,
+      smearMode:   smearModeCode(ev.smearMode),
+      dilate:      ev.dilate       !== undefined ? Number(ev.dilate)            : 0,
+      dilateJitter: ev.dilateJitter !== undefined ? Number(ev.dilateJitter)     : 0.1,
       modSrc,
       modAmt,
       modSpace:      ev.modSpace      !== undefined ? String(ev.modSpace) as TileParams['modSpace'] : undefined,

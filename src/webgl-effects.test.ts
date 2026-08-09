@@ -633,3 +633,120 @@ describe("FBO double-buffering (self-reference feedback)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Morphology: dilate() ring + smearop() reducers
+//
+// These need a source with spatial structure (max/min of a flat region is a
+// no-op), so we render a centred bright square on black and probe points on the
+// horizontal centre line (y=50) — robust to any V orientation. Jitter is set to 0
+// for deterministic taps. The source is a 100×100 canvas at 'fill', so 1 source
+// px ≈ 1 screen px and a radius in px maps 1:1 to the probe distances below.
+// ---------------------------------------------------------------------------
+
+/** 100×100 canvas: black background with a filled [x0,x1)×[y0,y1) rectangle in `color`. */
+function squareCanvas(color: string, x0: number, y0: number, x1: number, y1: number): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = 100; c.height = 100;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, 100, 100);
+  ctx.fillStyle = color;
+  ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  return c;
+}
+
+describe("dilate() ring morphology", () => {
+  it("dilate grows a bright square: a point 6px outside the left edge lights up", () => {
+    const src = { kind: 'text' as const, canvas: squareCanvas("white", 40, 40, 60, 60) };
+    // Baseline: without dilate, (34,50) is 6px left of the square → dark.
+    const base = readPixel(renderTile(makeTile({ source: src })), 34, 50);
+    expect(base[0]).toBeLessThan(60);
+    // dilate radius 8 reaches its +X ring tap to (42,50), inside the white square.
+    const dil = readPixel(renderTile(makeTile({ source: src, dilate: 8, dilateJitter: 0 })), 34, 50);
+    expect(dil[0]).toBeGreaterThan(200);
+  });
+
+  it("erode (negative) shrinks a bright square: a point 3px inside the edge goes dark", () => {
+    const src = { kind: 'text' as const, canvas: squareCanvas("white", 40, 40, 60, 60) };
+    // (43,50) is 3px inside the left edge → white without erode.
+    const base = readPixel(renderTile(makeTile({ source: src })), 43, 50);
+    expect(base[0]).toBeGreaterThan(200);
+    // erode radius 8 pulls the -X ring tap to (35,50), outside → min = black.
+    const ero = readPixel(renderTile(makeTile({ source: src, dilate: -8, dilateJitter: 0 })), 43, 50);
+    expect(ero[0]).toBeLessThan(60);
+    // The core (10px from every edge > 8) survives erosion.
+    const core = readPixel(renderTile(makeTile({ source: src, dilate: -8, dilateJitter: 0 })), 50, 50);
+    expect(core[0]).toBeGreaterThan(200);
+  });
+
+  it("per-channel: dilating a red square grows red without inventing other channels", () => {
+    const src = { kind: 'text' as const, canvas: squareCanvas("red", 40, 40, 60, 60) };
+    const [r, g, b] = readPixel(renderTile(makeTile({ source: src, dilate: 8, dilateJitter: 0 })), 34, 50);
+    expect(r).toBeGreaterThan(200);
+    expect(g).toBeLessThan(60);
+    expect(b).toBeLessThan(60);
+  });
+});
+
+describe("smearop() reducers", () => {
+  const whiteSquare = () => ({ kind: 'text' as const, canvas: squareCanvas("white", 40, 40, 60, 60) });
+
+  it("smearop('max') is a directional dilate: grows the square along the smear axis", () => {
+    // smear(0, 6) = horizontal taps spanning ±12px; smearMode 2 = per-channel max.
+    const out = readPixel(renderTile(makeTile({
+      source: whiteSquare(), smear: 6, smearAngle: 0, smearMode: 2, smearJitter: 0,
+    })), 30, 50); // 10px left of the edge, within the +X tap reach
+    expect(out[0]).toBeGreaterThan(200);
+  });
+
+  it("smearop('min') is a directional erode: eats the edge inward", () => {
+    const out = readPixel(renderTile(makeTile({
+      source: whiteSquare(), smear: 6, smearAngle: 0, smearMode: 3, smearJitter: 0,
+    })), 44, 50); // 4px inside the left edge; a -X tap reaches outside → black
+    expect(out[0]).toBeLessThan(60);
+  });
+
+  it("smearop('range') detects edges: flat interior dark, edge bright", () => {
+    // A wide square (60px) so the centre is >12px (the ±2·6px smear span) from any
+    // edge → a genuinely flat neighbourhood, unlike the 20px whiteSquare.
+    const wide = { kind: 'text' as const, canvas: squareCanvas("white", 20, 20, 80, 80) };
+    const interior = readPixel(renderTile(makeTile({
+      source: wide, smear: 6, smearAngle: 0, smearMode: 8, smearJitter: 0,
+    })), 50, 50);
+    expect(interior[0]).toBeLessThan(60); // uniform white neighbourhood → max−min ≈ 0
+    const edge = readPixel(renderTile(makeTile({
+      source: wide, smear: 6, smearAngle: 0, smearMode: 8, smearJitter: 0,
+    })), 20, 50);
+    expect(edge[0]).toBeGreaterThan(180); // black|white straddle at the edge → range ≈ 1
+  });
+
+  it("smearop('avg') is unchanged plain smear (default reducer)", () => {
+    const tile = { source: whiteSquare(), smear: 6, smearAngle: 0, smearJitter: 0 };
+    const plain = readPixel(renderTile(makeTile({ ...tile })), 50, 50);
+    const avg = readPixel(renderTile(makeTile({ ...tile, smearMode: 0 })), 50, 50);
+    expect(avg).toEqual(plain);
+  });
+
+  it("jitter-only (pixels 0, jitter > 0) samples neighbours — a stochastic dither", () => {
+    // No directional streak (smear 0) but a wide jitter: the 5 taps scatter around
+    // the pixel, so the centre of a small bright square pulls in surrounding black.
+    const sq = { source: whiteSquare(), smear: 0, smearAngle: 0, smearMode: 0 };
+    const clean = readPixel(renderTile(makeTile({ ...sq, smearJitter: 0 })), 50, 50);
+    expect(clean[0]).toBeGreaterThan(250); // no smear op at all → pure white centre
+    const jit = readPixel(renderTile(makeTile({ ...sq, smearJitter: 40 })), 50, 50);
+    expect(jit[0]).toBeLessThan(200);      // ±20px scatter reaches the black surround
+  });
+
+  it("smearop('rangel') is a coloured edge (abs(maxl−minl)), not greyscale", () => {
+    // Red square on black: at the edge the brightest tap is red, the darkest black,
+    // so abs(maxl−minl) = red — a coloured edge (R high, G/B low), unlike a grey range.
+    const redSquare = { kind: 'text' as const, canvas: squareCanvas("red", 40, 40, 60, 60) };
+    const [r, g, b] = readPixel(renderTile(makeTile({
+      source: redSquare, smear: 6, smearAngle: 0, smearMode: 9, smearJitter: 0,
+    })), 40, 50);
+    expect(r).toBeGreaterThan(180);
+    expect(g).toBeLessThan(60);
+    expect(b).toBeLessThan(60);
+  });
+});

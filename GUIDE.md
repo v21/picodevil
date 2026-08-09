@@ -364,9 +364,11 @@ $: s("clip.mp4").barrel(0.5).render().cropStack(3,3).tile() // whole-frame warp,
 
 ### Smear
 
-`.smear(angle, pixels)` is a directional (1-D) Gaussian blur — a motion-blur streak along `angle`, given in **turns** (0 = horizontal, 0.25 = vertical). The angle is patternable, so the streak can rotate. `pixels` is the radius in **screen pixels** (no argument defaults to 8); cost is **fixed regardless of radius**, so animate it freely.
+`.smear(angle, pixels)` is a directional (1-D) Gaussian blur — a motion-blur streak along `angle`, given in **turns** (0 = horizontal, 0.25 = vertical). The angle is patternable, so the streak can rotate. `pixels` is the radius in **screen pixels** (no argument defaults to 20); cost is **fixed regardless of radius**, so animate it freely. A negative `pixels` just means its magnitude — the kernel is symmetric, so direction comes from `angle`, not the sign.
 
-An optional trailing `jitter` (default `0.1`) gives **every sample point** (the centre included) its own small random x/y displacement, scaled by the smear strength, so that at wide radii the discrete taps dither into fine noise instead of showing as faint ghost copies. Pass `0` for crisp, un-dithered taps.
+An optional trailing `jitter` (default `0.5`) gives **every sample point** (the centre included) its own small random x/y displacement, scaled by the smear strength, so that at wide radii the discrete taps dither into fine noise instead of showing as faint ghost copies. Pass `0` for crisp, un-dithered taps.
+
+**Jitter-only:** with `pixels` at `0` and `jitter > 0` there's no directional streak, so you get a **stochastic dither** — the 5 taps scatter randomly around each pixel. Handy as a soft random blur / grain (the jitter magnitude is the scatter radius).
 
 Smear runs in texture space (like `.pixelate`), so it rotates with `.rotateZ()` and smears whatever earlier UV warps (crop, barrel, modulate) produced.
 
@@ -375,6 +377,62 @@ $: video("clip.mp4").smear(0, 30)                  // horizontal smear
 $: video("clip.mp4").smear(sine, 30)               // rotating streak
 $: video("clip.mp4").smear(0.25, 20)               // vertical motion blur
 $: video("clip.mp4").smear(0, fft.bass.range(0, 40)) // smear pulsing to the beat
+$: video("clip.mp4").smear(0, 0, slider(20, 0, 60)) // jitter-only stochastic dither
+```
+
+### smearop — pluggable smear reducer
+
+By default smear **averages** its samples (a blur). `.smearop(mode)` swaps in a
+different reducer over the same taps, so a directional smear can dilate, erode,
+find edges, denoise or sharpen. It only supplies the reducer — you still need an
+active `.smear(...)` to give it the taps: `.smear(0, 20).smearop('max')`. `mode`
+is patternable, so it can alternate per cycle.
+
+Naming: no suffix = **per-channel** (each R/G/B independent → colourful fringing);
+an `l` suffix = **luminance-keyed** (returns the whole colour of the tap chosen by
+luminance → no fringing).
+
+| mode | effect |
+|---|---|
+| `avg` *(default; also `average` / `ave` / `mean`)* / `avgl` | mean / luminance-weighted mean (blur) |
+| `max` / `min` | dilate / erode (bright regions grow / shrink) |
+| `maxl` / `minl` | brightest / darkest tap's colour |
+| `median` (`med`) / `medianl` (`medl`) | per-channel / luminance-keyed median — denoise, painterly |
+| `range` (`edge`) | per-channel max − min → edge detection (outlines) |
+| `rangel` (`edgel`) | **coloured** edge = abs(brightest − darkest tap colour) |
+| `sharpen` / `sharp`, `sharpen1`…`sharpen9` (or `sharp1`…`sharp9`) | unsharp mask; bare `sharpen` = `sharpen3` |
+
+Because a smear is a **1-D** streak, crossing two at 90° via [`.render()`](#bake-a-chain-with-render)
+gives a separable 2-D result, and the classic compound morphologies fall out of
+chaining:
+
+```js
+$: video("clip.mp4").smear(0, 24).smearop('max')      // directional dilate
+$: video("clip.mp4").smear(0, 8).smearop('range')     // edge outlines
+$: video("clip.mp4").smear(0, 6).smearop('sharpen6')  // punchy unsharp
+$: video("clip.mp4").smear(0, 12).smearop('max').render().smear(0.25, 12).smearop('max') // 2-D (square) dilate
+$: video("clip.mp4").smearop('min').render().smearop('max')  // morphological opening (despeckle)
+```
+
+### Dilate (ring morphology)
+
+`.dilate(amount)` is a single-pass **circular** dilate/erode: a 9-tap ring (centre +
+one tap every 45°). A positive `amount` **dilates** (per-channel max — bright regions
+grow, dark specks fill in); a negative `amount` **erodes** (min — bright regions
+shrink, thin bright lines break up). `amount` is the ring radius in **screen pixels**
+and is patternable, so it can morph. An optional `jitter` (default `0.5`, as smear)
+dithers the ring's dottiness at large radius into noise; pass `0` for a crisp ring.
+
+Cost is **fixed** (9 taps) regardless of radius. Unlike the directional `smearop`
+above, one `.dilate()` call is already 2-D and round — but it shares smear's sampling
+slot, so a dilate and a smear on the same tile don't combine; cross them with
+[`.render()`](#bake-a-chain-with-render) (`.dilate(4).render().smear(0, 20)`).
+
+```js
+$: video("clip.mp4").dilate(4)                     // fatten bright regions
+$: video("clip.mp4").dilate(-4)                    // erode (thin bright detail)
+$: video("clip.mp4").dilate(sine.range(-6, 6))     // morph erode ↔ dilate
+$: s("rgb1").dilate(6)                             // per-channel colour fringing at edges
 ```
 
 ### Blending

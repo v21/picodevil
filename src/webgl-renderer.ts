@@ -6,7 +6,7 @@ import {
   compileInto, OP_FLOATS, MAX_OPS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR,
+  OP_MODULATE, OP_SMEAR, OP_DILATE,
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
@@ -211,6 +211,7 @@ out vec4 fragColor;
 #define OP_ALPHA       ${OP_ALPHA}
 #define OP_MODULATE    ${OP_MODULATE}
 #define OP_SMEAR       ${OP_SMEAR}
+#define OP_DILATE      ${OP_DILATE}
 
 vec4 sampleAny(int texIdx, vec2 uv) {
   ${sampleChain}
@@ -239,45 +240,143 @@ vec2 pdJit(vec2 fc, float k, vec2 amp) {
   return (pdRandom2(fc + vec2(k * 0.7548, k * 1.3821)) - 0.5) * amp;
 }
 
-// Directional smear: a 5-tap 1-D Gaussian [1 4 6 4 1]/16 along d1. Every
-// sampling point — the centre included — is displaced by its own random x/y
-// jitter of half-extent j·|d1|, so the jitter is weighted by strength and turns
-// wide-offset aliasing into noise. Each tap wraps via fract.
-//   d1 = smear per-tap UV offset (taps at -2..2 · d1)
-vec4 smearSample(int texIdx, vec2 uv, vec2 d1, vec2 amp, vec2 winOff, vec2 winSize, bool fbo) {
-  if (d1.x == 0.0 && d1.y == 0.0) {
-    vec4 s = sampleAny(texIdx, uv);
-    if (fbo) s.rgb /= max(s.a, 1e-4);
-    return s;
-  }
+// Rec.709 luminance, and branchless median-of-3 / median-of-5 (a standard
+// min/max network) — used by the .smearop reducers.
+float pdLum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+float pdMed3(float a, float b, float c) { return max(min(a, b), min(max(a, b), c)); }
+float pdMed5(float a, float b, float c, float d, float e) {
+  float f = max(min(a, b), min(c, d));
+  float g = min(max(a, b), max(c, d));
+  return pdMed3(e, f, g);
+}
 
-  vec2 fc = gl_FragCoord.xy;   // amp = per-axis jitter half-extent (screen-constant)
-  // Confine every tap to the visible sampled window [winOff, winOff+winSize]
-  // (wrap within it). Off-window texels are the cropped-off overflow (cover/crop)
-  // or the un-rendered region past a footprint FBO sub-viewport — a smear must
-  // not pull them, so a bake (which discards them) stays transparent.
+// The dilate ring: 8 unit directions 45° apart (the centre tap is handled
+// separately). Scaled per-axis by the ring radius in dilateSample.
+const vec2 PD_DIR8[8] = vec2[8](
+  vec2( 1.0,        0.0),       vec2( 0.70710678,  0.70710678),
+  vec2( 0.0,        1.0),       vec2(-0.70710678,  0.70710678),
+  vec2(-1.0,        0.0),       vec2(-0.70710678, -0.70710678),
+  vec2( 0.0,       -1.0),       vec2( 0.70710678, -0.70710678));
+
+// Directional smear: 5 taps along d1 (taps at -2..2 · d1), every sampling point
+// (centre included) displaced by its own random x/y jitter of per-axis half-extent
+// amp so wide offsets dither into noise; each tap wraps within the visible window
+// [winOff, winOff+winSize] so a smear never pulls cropped-off / un-rendered texels.
+// mode selects the reducer applied over the taps (see .smearop): 0 avg (default),
+// 1 avgl, 2 max, 3 min, 4 maxl, 5 minl, 6 median, 7 medl, 8 range, 9 rangel,
+// 10..18 sharpen1..9. avg (0) is byte-identical to the pre-smearop path.
+vec4 smearSample(int texIdx, vec2 uv, vec2 d1, vec2 amp, vec2 winOff, vec2 winSize, bool fbo, float mode) {
+  vec2 fc = gl_FragCoord.xy;
   vec2 ws = max(winSize, vec2(1e-4));
-  float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
-  // Filter in premultiplied alpha: weight each tap's rgb by its own alpha so
-  // transparent taps (rgb≈0) contribute no colour and don't drag the average
-  // toward black (dark fringes/halos at transparent edges — barrel corners,
-  // contain/none letterbox, PNGs, and the transparent regions a .render() bake
-  // leaves). Un-premultiply the result so it stays straight-alpha for the
-  // downstream colour ops + the SRC_ALPHA blend. Fully-opaque input (a=1) is
-  // bit-identical to a plain average. Total weight is 16.
-  vec3 rgbSum = vec3(0.0);
-  float aSum = 0.0;
+  // Sample all 5 taps once (un-premultiplied straight alpha); every reducer works
+  // over this set.
+  vec4 tp[5];
   for (int t = 0; t < 5; ++t) {
     vec2 p = uv + d1 * float(t - 2) + pdJit(fc, float(t), amp);
-    vec4 tap = sampleAny(texIdx, winOff + ws * fract((p - winOff) / ws));
-    // FBO taps are premultiplied → un-premultiply to straight before the
-    // (premultiplied) filtering below re-weights rgb by alpha.
-    if (fbo) tap.rgb /= max(tap.a, 1e-4);
-    float w = w5[t];
-    rgbSum += tap.rgb * tap.a * w;
-    aSum   += tap.a * w;
+    vec4 s = sampleAny(texIdx, winOff + ws * fract((p - winOff) / ws));
+    if (fbo) s.rgb /= max(s.a, 1e-4);
+    tp[t] = s;
   }
-  return vec4(rgbSum / max(aSum, 1e-4), aSum / 16.0);
+  int m = int(mode + 0.5);
+
+  // avg (0) / avgl (1): weighted mean, filtered in premultiplied alpha so
+  // transparent taps (rgb≈0) don't drag the average toward black (dark fringes at
+  // barrel corners, letterbox, PNG/bake edges). avg uses the fixed [1 4 6 4 1]/16
+  // Gaussian and is bit-identical to a plain smear; avgl weights by luminance.
+  if (m <= 1) {
+    float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
+    vec3 rgbSum = vec3(0.0);
+    float aSum = 0.0, aPlain = 0.0;
+    for (int t = 0; t < 5; ++t) {
+      float w = (m == 1) ? max(pdLum(tp[t].rgb), 1e-4) : w5[t];
+      rgbSum += tp[t].rgb * tp[t].a * w;
+      aSum   += tp[t].a * w;
+      aPlain += tp[t].a;
+    }
+    float outA = (m == 1) ? aPlain * 0.2 : aSum / 16.0;
+    return vec4(rgbSum / max(aSum, 1e-4), outA);
+  }
+  // max/min per-channel = dilate/erode (2/3); maxl/minl luminance-keyed (4/5).
+  if (m <= 5) {
+    if (m <= 3) {
+      vec4 acc = tp[0];
+      for (int t = 1; t < 5; ++t) acc = (m == 2) ? max(acc, tp[t]) : min(acc, tp[t]);
+      return acc;
+    }
+    vec4 best = tp[0];
+    float bl = pdLum(tp[0].rgb);
+    for (int t = 1; t < 5; ++t) {
+      float l = pdLum(tp[t].rgb);
+      if ((m == 4) ? (l > bl) : (l < bl)) { bl = l; best = tp[t]; }
+    }
+    return best;
+  }
+  // median (6) per-channel; medl (7) = the tap nearest the median luminance.
+  if (m == 6) {
+    return vec4(
+      pdMed5(tp[0].r, tp[1].r, tp[2].r, tp[3].r, tp[4].r),
+      pdMed5(tp[0].g, tp[1].g, tp[2].g, tp[3].g, tp[4].g),
+      pdMed5(tp[0].b, tp[1].b, tp[2].b, tp[3].b, tp[4].b),
+      pdMed5(tp[0].a, tp[1].a, tp[2].a, tp[3].a, tp[4].a));
+  }
+  if (m == 7) {
+    float ls[5] = float[5](pdLum(tp[0].rgb), pdLum(tp[1].rgb), pdLum(tp[2].rgb),
+                           pdLum(tp[3].rgb), pdLum(tp[4].rgb));
+    float med = pdMed5(ls[0], ls[1], ls[2], ls[3], ls[4]);
+    vec4 best = tp[0];
+    float bd = abs(ls[0] - med);
+    for (int t = 1; t < 5; ++t) {
+      float d = abs(ls[t] - med);
+      if (d < bd) { bd = d; best = tp[t]; }
+    }
+    return best;
+  }
+  // range/edge (8) per-channel max−min = edge detect (each channel's extremes may
+  // come from different taps). rangel/edgel (9) = the coloured luminance-keyed range
+  // abs(maxl − minl): the colour difference between the brightest and darkest taps.
+  if (m == 8) {
+    vec4 mx = tp[0], mn = tp[0];
+    for (int t = 1; t < 5; ++t) { mx = max(mx, tp[t]); mn = min(mn, tp[t]); }
+    return vec4(mx.rgb - mn.rgb, mx.a);
+  }
+  if (m == 9) {
+    vec4 hi = tp[0], lo = tp[0];
+    float hl = pdLum(tp[0].rgb), ll = hl;
+    for (int t = 1; t < 5; ++t) {
+      float l = pdLum(tp[t].rgb);
+      if (l > hl) { hl = l; hi = tp[t]; }
+      if (l < ll) { ll = l; lo = tp[t]; }
+    }
+    return vec4(abs(hi.rgb - lo.rgb), max(hi.a, lo.a));
+  }
+  // sharpen (10..18): unsharp mask center + k·(center − blur), k = m − 9.
+  float k = float(m - 9);
+  float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
+  vec3 rgbSum = vec3(0.0);
+  float aSum = 0.0;
+  for (int t = 0; t < 5; ++t) { rgbSum += tp[t].rgb * tp[t].a * w5[t]; aSum += tp[t].a * w5[t]; }
+  vec3 blur = rgbSum / max(aSum, 1e-4);
+  vec4 c0 = sampleAny(texIdx, winOff + ws * fract((uv - winOff) / ws));  // clean (unjittered) centre
+  if (fbo) c0.rgb /= max(c0.a, 1e-4);
+  return vec4(c0.rgb + k * (c0.rgb - blur), c0.a);
+}
+
+// Ring morphology (.dilate): centre tap + an 8-tap ring at radius rad (per-axis
+// UV). Per-channel max (mode > 0 = dilate) or min (erode) over the 9 taps. Jitter
+// and window confine as in smearSample. Fixed cost regardless of radius.
+vec4 dilateSample(int texIdx, vec2 uv, vec2 rad, vec2 amp, float mode, vec2 winOff, vec2 winSize, bool fbo) {
+  vec2 fc = gl_FragCoord.xy;
+  vec2 ws = max(winSize, vec2(1e-4));
+  bool grow = mode > 0.0;
+  vec4 acc = sampleAny(texIdx, winOff + ws * fract((uv + pdJit(fc, 8.0, amp) - winOff) / ws));
+  if (fbo) acc.rgb /= max(acc.a, 1e-4);
+  for (int k = 0; k < 8; ++k) {
+    vec2 p = uv + PD_DIR8[k] * rad + pdJit(fc, float(k), amp);
+    vec4 s = sampleAny(texIdx, winOff + ws * fract((p - winOff) / ws));
+    if (fbo) s.rgb /= max(s.a, 1e-4);
+    acc = grow ? max(acc, s) : min(acc, s);
+  }
+  return acc;
 }
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -408,9 +507,13 @@ void main() {
       color = sampleAny(int(a.y), uv);
       if (a.z > 0.5) color.rgb /= max(color.a, 1e-4);
     } else if (kind == OP_SMEAR) {
-      // a.y = texIdx, a.zw = smear offset, b.xz = per-axis jitter amp, b.y = FBO.
-      // Taps wrap within the smear confine window (set by OP_WRAP above).
-      color = smearSample(int(a.y), uv, a.zw, vec2(b.x, b.z), smearWinOff, smearWinSize, b.y > 0.5);
+      // a.y = texIdx, a.zw = smear offset, b.xz = per-axis jitter amp, b.y = FBO,
+      // b.w = reducer mode (.smearop). Taps wrap within the confine window (OP_WRAP).
+      color = smearSample(int(a.y), uv, a.zw, vec2(b.x, b.z), smearWinOff, smearWinSize, b.y > 0.5, b.w);
+    } else if (kind == OP_DILATE) {
+      // a.y = texIdx, a.zw = per-axis ring radius, b.xz = jitter amp, b.y = FBO,
+      // b.w = mode (+1 dilate / -1 erode). Same confine window as smear.
+      color = dilateSample(int(a.y), uv, a.zw, vec2(b.x, b.z), b.w, smearWinOff, smearWinSize, b.y > 0.5);
     } else if (kind == OP_CONTRAST) {
       // Contrast centred at 0.5.
       color.rgb = (color.rgb - 0.5) * a.y + 0.5;
@@ -651,6 +754,14 @@ interface DrawCommand {
   // Per-axis jitter half-extent (UV) — constant screen size regardless of fit.
   smearJitAmpX: number;
   smearJitAmpY: number;
+  // Reducer over the smear taps (`.smearop`), int op code. 0 = avg (default).
+  smearMode:    number;
+  // Ring dilate/erode (source UV units, converted from screen pixels in drawTile).
+  dilRadUVx:    number;
+  dilRadUVy:    number;
+  dilJitAmpX:   number;
+  dilJitAmpY:   number;
+  dilMode:      number; // +1 dilate (max), -1 erode (min), 0 off
   // 1 when the main source is a (premultiplied) FBO texture — un-premultiply on read.
   sourceIsFbo:  number;
   transform:    Float32Array; // 16 floats, column-major
@@ -1049,16 +1160,39 @@ export class WebGLRenderer implements Renderer {
     const smear = p.smear ?? 0;
     const smearAng = (smear > 0 ? (p.smearAngle ?? 0) : 0) * 2 * Math.PI;
     const smearCos = Math.cos(smearAng), smearSin = Math.sin(smearAng);
-    const smearJit = p.smearJitter ?? 0.1;
+    const smearJit = p.smearJitter ?? 0;
+    const smearMode = p.smearMode ?? 0;
     const smearFields = (uvPerPxX: number, uvPerPxY: number) => ({
       smearOffX:   smear > 0 ? smear * smearCos * uvPerPxX : 0,
       smearOffY:   smear > 0 ? smear * smearSin * uvPerPxY : 0,
       // Per-axis jitter half-extent in UV, so the positional dither is a constant
-      // screen size (jit·smear px) on each axis regardless of the fit's per-axis
-      // scale. The old `jit·|d1|` was isotropic in UV → anisotropic on screen, and
-      // differed between a cover element and its fill-fit `.render()` bake.
-      smearJitAmpX: smear > 0 ? smearJit * smear * Math.abs(uvPerPxX) : 0,
-      smearJitAmpY: smear > 0 ? smearJit * smear * Math.abs(uvPerPxY) : 0,
+      // screen size on each axis regardless of the fit's per-axis scale. The old
+      // `jit·|d1|` was isotropic in UV → anisotropic on screen, and differed between
+      // a cover element and its fill-fit `.render()` bake. Scale by `(smear + 1)` px
+      // (not just `smear`): keeps a ~1px dither floor as the radius →0, so at
+      // pixels 0 with jitter > 0 you get a *jitter-only* stochastic sample (5 taps
+      // randomly displaced, no directional streak). NOT gated on `smear > 0`; the
+      // compiler emits OP_SMEAR whenever offset OR jitter is non-zero.
+      smearJitAmpX: smearJit * (smear + 1) * Math.abs(uvPerPxX),
+      smearJitAmpY: smearJit * (smear + 1) * Math.abs(uvPerPxY),
+      smearMode,
+    });
+
+    // Ring dilate/erode: `amount` is the ring radius in screen px; its sign picks
+    // dilate (max) vs erode (min) via dilMode, so the ring offset magnitude uses
+    // |amount|. Same screen-px→UV conversion as smear (per-axis, so the ring stays
+    // a screen circle under an anisotropic fit); the ring is symmetric, so the
+    // uvPerPx sign (a source→screen flip) is cosmetically irrelevant.
+    const dilate = p.dilate ?? 0;
+    const dilAmt = Math.abs(dilate);
+    const dilJit = p.dilateJitter ?? 0.1;
+    const dilMode = Math.sign(dilate);
+    const dilateFields = (uvPerPxX: number, uvPerPxY: number) => ({
+      dilRadUVx:  dilate !== 0 ? dilAmt * uvPerPxX : 0,
+      dilRadUVy:  dilate !== 0 ? dilAmt * uvPerPxY : 0,
+      dilJitAmpX: dilate !== 0 ? dilJit * dilAmt * Math.abs(uvPerPxX) : 0,
+      dilJitAmpY: dilate !== 0 ? dilJit * dilAmt * Math.abs(uvPerPxY) : 0,
+      dilMode,
     });
 
     // contain / none: shrink dest rect to the display area, UV covers the crop window.
@@ -1109,6 +1243,7 @@ export class WebGLRenderer implements Renderer {
         // Signed (uvSz, post-FBO-flip) so smear direction follows the flip; wrap
         // taps within the valid content extent (FBO sub-viewport, else 1).
         ...smearFields(uvSzX / dispW, uvSzY / dispH),
+        ...dilateFields(uvSzX / dispW, uvSzY / dispH),
         sourceIsFbo: fboSource ? 1 : 0,
         transform:    buildTransform(p),
       });
@@ -1172,6 +1307,7 @@ export class WebGLRenderer implements Renderer {
       // Signed (uvSize, post-FBO-flip) so smear direction follows the flip; wrap
       // taps within the valid content extent (FBO sub-viewport, else 1).
       ...smearFields(uvSizeX / cellW, uvSizeY / cellH),
+      ...dilateFields(uvSizeX / cellW, uvSizeY / cellH),
       sourceIsFbo: fboSource ? 1 : 0,
       transform:    buildTransform(p),
     });
@@ -1287,6 +1423,12 @@ export class WebGLRenderer implements Renderer {
         smearOffY:    cmd.smearOffY,
         smearJitAmpX: cmd.smearJitAmpX,
         smearJitAmpY: cmd.smearJitAmpY,
+        smearMode:    cmd.smearMode,
+        dilRadUVx:    cmd.dilRadUVx,
+        dilRadUVy:    cmd.dilRadUVy,
+        dilJitAmpX:   cmd.dilJitAmpX,
+        dilJitAmpY:   cmd.dilJitAmpY,
+        dilMode:      cmd.dilMode,
         sourceIsFbo:  cmd.sourceIsFbo,
       }, this.opsScratch, 0);
 
