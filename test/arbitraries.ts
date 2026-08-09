@@ -538,13 +538,15 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
-  fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
+  // signed radius: >0 linear line, <0 circular ring, 0 jitter-only
+  fc.tuple(rotArg, fc.double({ min: -64, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
   // smearop reducer (needs an active smear to bite, but is a no-op alone)
-  fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }), fc.constantFrom(...SMEAR_OP_MODES))
+  fc.tuple(rotArg, fc.double({ min: -64, max: 64, noNaN: true }), fc.constantFrom(...SMEAR_OP_MODES))
     .map(([ang, n, m]) => ({ code: `.smear(${ang}, ${Math.round(n)}).smearop("${m}")` })),
-  // ring dilate/erode (signed amount = dilate/erode)
-  fc.double({ min: -32, max: 32, noNaN: true }).map(n => ({ code: `.dilate(${Math.round(n)})` })),
+  // ring morphology aliases
+  fc.double({ min: 0, max: 32, noNaN: true }).map(n => ({ code: `.dilate(${Math.round(n)})` })),
+  fc.double({ min: 0, max: 32, noNaN: true }).map(n => ({ code: `.erode(${Math.round(n)})` })),
   // crop controls
   cropArg.map(a => ({ code: `.cropx(${a})` })),
   cropArg.map(a => ({ code: `.cropy(${a})` })),

@@ -20,24 +20,40 @@ function src(pat: string) {
   return mini(pat).withValue((v: string) => ({ src: v }));
 }
 
-describe("dilate control", () => {
-  it(".dilate(amount) merges dilate + default jitter onto the value", () => {
+describe("dilate/erode aliases (circular smear + smearop)", () => {
+  it(".dilate(amount) = a circular smear (negative radius) reduced with max", () => {
     const v = query(src("a.mp4").dilate(mini("4")), 0);
     expect(v.src).toBe("a.mp4");
-    expect(v.dilate).toBe(4);
-    expect(v.dilateJitter).toBe(0.5); // method default
+    expect(v.smear).toBe(-4);        // negative radius = circular ring
+    expect(v.smearMode).toBe("max"); // dilate = max reducer
+    expect(v.smearJitter).toBeCloseTo(0.5);
   });
 
-  it(".dilate(amount, jitter) sets both", () => {
-    const v = query(src("a.mp4").dilate(mini("-3"), mini("0.2")), 0);
-    expect(v.dilate).toBe(-3); // negative = erode
-    expect(v.dilateJitter).toBeCloseTo(0.2);
+  it(".erode(amount) = a circular smear reduced with min", () => {
+    const v = query(src("a.mp4").erode(mini("3"), mini("0.2")), 0);
+    expect(v.smear).toBe(-3);
+    expect(v.smearMode).toBe("min");
+    expect(v.smearJitter).toBeCloseTo(0.2);
   });
 
-  it("dilate amount is patternable", () => {
+  it("dilate radius is patternable and always circular (abs → negative)", () => {
     const pat = src("a.mp4").dilate(mini("2 8"));
-    expect(query(pat, 0.1).dilate).toBe(2);
-    expect(query(pat, 0.6).dilate).toBe(8);
+    expect(query(pat, 0.1).smear).toBe(-2);
+    expect(query(pat, 0.6).smear).toBe(-8);
+    // a passed-negative amount is still a (circular) radius, not a re-flip
+    expect(query(src("a.mp4").dilate(mini("-5")), 0).smear).toBe(-5);
+  });
+
+  it(".blur(amount) = a circular smear with the default (avg) reducer", () => {
+    const v = query(src("a.mp4").blur(mini("8")), 0);
+    expect(v.smear).toBe(-8);          // circular ring
+    expect(v.smearMode).toBeUndefined(); // no smearop → avg
+  });
+
+  it("a later smear-family call overrides an earlier one (one sampling slot)", () => {
+    const v = query(src("a.mp4").smear(mini("0"), mini("20")).dilate(mini("4")), 0);
+    expect(v.smear).toBe(-4);          // dilate's circular radius wins
+    expect(v.smearMode).toBe("max");
   });
 });
 
@@ -74,10 +90,12 @@ describe("smearModeCode", () => {
     expect(smearModeCode("medl")).toBe(7);
   });
 
-  it("accepts avg/edge synonyms", () => {
+  it("accepts avg/edge/morphology synonyms", () => {
     for (const s of ["avg", "average", "ave", "mean"]) expect(smearModeCode(s)).toBe(0);
-    expect(smearModeCode("edge")).toBe(8);   // = range
-    expect(smearModeCode("edgel")).toBe(9);  // = rangel
+    expect(smearModeCode("edge")).toBe(8);    // = range
+    expect(smearModeCode("edgel")).toBe(9);   // = rangel
+    expect(smearModeCode("dilate")).toBe(2);  // = max
+    expect(smearModeCode("erode")).toBe(3);   // = min
   });
 
   it("bare sharpen/sharp alias sharpen3; sharpenN and sharpN map to 10..18", () => {

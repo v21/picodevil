@@ -73,22 +73,21 @@ export interface TileParams {
   tintStrength: number;
   /** Barrel (>0) / pincushion (<0) distortion coefficient. 0 = off (default). */
   barrel: number;
-  /** Directional smear radius in screen pixels (5-tap Gaussian). 0 = off (default). */
+  /** Signed smear radius in screen px (9-tap). **Sign = tap shape**: > 0 linear (a
+   *  directional line), < 0 circular (a rotated ring — `.dilate`/`.erode`), 0 =
+   *  jitter-only. `|value|` is the radius; `smearAngle` is the line direction / ring
+   *  rotation. */
   smear: number;
-  /** smear direction in turns (0 = horizontal, 0.25 = vertical). */
+  /** smear direction / ring rotation in turns (0 = horizontal, 0.25 = vertical). */
   smearAngle: number;
-  /** smear per-tap positional jitter factor (0.1 ≈ ±0.1·step); dithers wide-offset aliasing. */
+  /** smear per-tap positional jitter factor; scatters each tap over a disc of
+   *  radius jit·(|amount|+1) screen px — a first-class blur, not just a dither.
+   *  Default 0 when smear was never invoked. */
   smearJitter: number;
   /** Reducer over the smear taps (`.smearop`), pre-mapped to an int code by
-   *  buildTileParams: 0 = avg (default), 1 = avgl, 2 = max, 3 = min, 4 = maxl,
-   *  5 = minl, 6 = median, 7 = medl, 8 = range, 9 = rangel, 10..18 = sharpen1..9.
-   *  Only takes effect when a smear is active. */
+   *  buildTileParams: 0 = avg (default), 1 = avgl, 2 = max (dilate), 3 = min (erode),
+   *  4 = maxl, 5 = minl, 6 = median, 7 = medl, 8 = range, 9 = rangel, 10..18 = sharpen1..9. */
   smearMode: number;
-  /** Ring dilate/erode radius in screen pixels (9-tap circular max/min).
-   *  0 = off (default); >0 = dilate, <0 = erode. */
-  dilate: number;
-  /** dilate per-tap positional jitter factor (as smear); dithers the ring. */
-  dilateJitter: number;
   /** Name of the FBO whose pixels displace this tile's UV lookup (`.modulate`). */
   modSrc?: string;
   /** Modulate displacement amount in source-crop UV units. */

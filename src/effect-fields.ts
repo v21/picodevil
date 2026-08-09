@@ -32,8 +32,6 @@ export const EFFECT_FIELDS: ReadonlySet<string> = new Set([
   'smearAngle',
   'smearJitter',
   'smearMode',
-  'dilate',
-  'dilateJitter',
   'modSrc',
   'modAmt',
   'modSpace',

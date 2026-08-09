@@ -6,7 +6,7 @@ import {
   compileInto, OP_FLOATS, MAX_OPS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR, OP_DILATE,
+  OP_MODULATE, OP_SMEAR,
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
@@ -211,7 +211,6 @@ out vec4 fragColor;
 #define OP_ALPHA       ${OP_ALPHA}
 #define OP_MODULATE    ${OP_MODULATE}
 #define OP_SMEAR       ${OP_SMEAR}
-#define OP_DILATE      ${OP_DILATE}
 
 vec4 sampleAny(int texIdx, vec2 uv) {
   ${sampleChain}
@@ -240,72 +239,114 @@ vec2 pdJit(vec2 fc, float k, vec2 amp) {
   return (pdRandom2(fc + vec2(k * 0.7548, k * 1.3821)) - 0.5) * amp;
 }
 
-// Rec.709 luminance, and branchless median-of-3 / median-of-5 (a standard
-// min/max network) — used by the .smearop reducers.
 float pdLum(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
-float pdMed3(float a, float b, float c) { return max(min(a, b), min(max(a, b), c)); }
-float pdMed5(float a, float b, float c, float d, float e) {
-  float f = max(min(a, b), min(c, d));
-  float g = min(max(a, b), max(c, d));
-  return pdMed3(e, f, g);
+
+// Per-(fragment,tap) offset uniformly within a disc, scaled per-axis by amp (amp.y
+// already carries the aspect → a screen-disc, no corner bias). The random angle
+// costs a sincos, so callers guard on amp != 0.
+vec2 pdJitDisc(vec2 fc, float k, vec2 amp) {
+  vec2 u = pdRandom2(fc + vec2(k * 0.7548, k * 1.3821));
+  float r = sqrt(u.x);
+  float ang = 6.28318530718 * u.y;
+  return vec2(cos(ang), sin(ang)) * r * amp;
 }
 
-// The dilate ring: 8 unit directions 45° apart (the centre tap is handled
-// separately). Scaled per-axis by the ring radius in dilateSample.
-const vec2 PD_DIR8[8] = vec2[8](
-  vec2( 1.0,        0.0),       vec2( 0.70710678,  0.70710678),
-  vec2( 0.0,        1.0),       vec2(-0.70710678,  0.70710678),
-  vec2(-1.0,        0.0),       vec2(-0.70710678, -0.70710678),
-  vec2( 0.0,       -1.0),       vec2( 0.70710678, -0.70710678));
+// Rotate a 2-vector by +45° (steps the ring taps, no trig).
+vec2 pdRot45(vec2 v) { const float C = 0.70710678; return vec2(C * (v.x - v.y), C * (v.x + v.y)); }
 
-// Directional smear: 5 taps along d1 (taps at -2..2 · d1), every sampling point
-// (centre included) displaced by its own random x/y jitter of per-axis half-extent
-// amp so wide offsets dither into noise; each tap wraps within the visible window
-// [winOff, winOff+winSize] so a smear never pulls cropped-off / un-rendered texels.
-// mode selects the reducer applied over the taps (see .smearop): 0 avg (default),
-// 1 avgl, 2 max, 3 min, 4 maxl, 5 minl, 6 median, 7 medl, 8 range, 9 rangel,
-// 10..18 sharpen1..9. avg (0) is byte-identical to the pre-smearop path.
-vec4 smearSample(int texIdx, vec2 uv, vec2 d1, vec2 amp, vec2 winOff, vec2 winSize, bool fbo, float mode) {
+// Linear-avg weights: a 9-tap Gaussian sampled at σ = 2 steps (exp(-(t-4)²/8)) — same
+// width as the old 5-tap smear at the same ±2·|s| reach. Circular avg weights uniformly.
+const float PD_GAUSS9[9] = float[9](
+  0.135335, 0.324652, 0.606531, 0.882497, 1.0, 0.882497, 0.606531, 0.324652, 0.135335);
+
+// Per-channel median of 9 vec4s — McGuire's 3×3-median min/max network. min/max are
+// per-component, so R/G/B/A are medianed independently. Mutates its locals.
+#define PD_S2(a, b) { vec4 t_ = a; a = min(a, b); b = max(t_, b); }
+vec4 pdMed9(vec4 v0, vec4 v1, vec4 v2, vec4 v3, vec4 v4, vec4 v5, vec4 v6, vec4 v7, vec4 v8) {
+  PD_S2(v0, v3) PD_S2(v1, v4) PD_S2(v2, v5)
+  PD_S2(v0, v1) PD_S2(v0, v2)
+  PD_S2(v4, v5) PD_S2(v3, v5)
+  PD_S2(v1, v2) PD_S2(v3, v4)
+  PD_S2(v1, v3) PD_S2(v1, v6)
+  PD_S2(v4, v6) PD_S2(v2, v6)
+  PD_S2(v2, v3) PD_S2(v4, v7) PD_S2(v2, v4) PD_S2(v3, v7)
+  PD_S2(v4, v8) PD_S2(v3, v8)
+  PD_S2(v3, v4)
+  return v4;
+}
+#undef PD_S2
+
+// One multi-tap resample covering both tap shapes and every .smearop reducer.
+//   a.zw = X-referenced tap vector (direction baked CPU-side; magnitude R·uvPerPxX)
+//   b.x  = jitter factor; b.y = flags (shape·2 + sourceIsFbo); b.z = aspect
+//   (uvPerPxY/uvPerPxX — scales Y of every tap + the jitter disc → screen-correct at
+//   any cell aspect); b.w = reducer mode.
+// Taps (9): linear = (t-4)·step, t=0..8; circular = centre + step rotated in 45°
+// steps. Each tap wraps within the confine window [winOff, winOff+winSize] so a
+// smear never pulls cropped-off / un-rendered texels. Modes 0..18 per .smearop.
+vec4 smearSample(vec2 uv, vec4 a, vec4 b, vec2 winOff, vec2 winSize) {
+  int texIdx = int(a.y);
+  vec2 v = a.zw;
+  float jf = b.x;
+  int flags = int(b.y + 0.5);
+  bool circular = flags >= 2;
+  bool fbo = (flags - (circular ? 2 : 0)) > 0;
+  float aspect = b.z;
+  int m = int(b.w + 0.5);
+
   vec2 fc = gl_FragCoord.xy;
   vec2 ws = max(winSize, vec2(1e-4));
-  // Sample all 5 taps once (un-premultiplied straight alpha); every reducer works
-  // over this set.
-  vec4 tp[5];
-  for (int t = 0; t < 5; ++t) {
-    vec2 p = uv + d1 * float(t - 2) + pdJit(fc, float(t), amp);
+  vec2 jitAmp = vec2(jf, jf * aspect);
+  bool jit = (jf != 0.0);
+
+  // 9 tap offsets (UV); Y scaled by aspect → screen geometry at any cell aspect.
+  vec2 off[9];
+  if (circular) {
+    off[0] = vec2(0.0);
+    vec2 d = v;
+    for (int k = 0; k < 8; ++k) { off[k + 1] = vec2(d.x, d.y * aspect); d = pdRot45(d); }
+  } else {
+    vec2 stepv = vec2(v.x, v.y * aspect);
+    for (int t = 0; t < 9; ++t) off[t] = stepv * float(t - 4);
+  }
+
+  // Sample all 9 taps (un-premultiplied straight alpha); every reducer works over this set.
+  vec4 tp[9];
+  for (int t = 0; t < 9; ++t) {
+    vec2 p = uv + off[t] + (jit ? pdJitDisc(fc, float(t), jitAmp) : vec2(0.0));
     vec4 s = sampleAny(texIdx, winOff + ws * fract((p - winOff) / ws));
     if (fbo) s.rgb /= max(s.a, 1e-4);
     tp[t] = s;
   }
-  int m = int(mode + 0.5);
 
-  // avg (0) / avgl (1): weighted mean, filtered in premultiplied alpha so
-  // transparent taps (rgb≈0) don't drag the average toward black (dark fringes at
-  // barrel corners, letterbox, PNG/bake edges). avg uses the fixed [1 4 6 4 1]/16
-  // Gaussian and is bit-identical to a plain smear; avgl weights by luminance.
+  // avg (0) / avgl (1): weighted mean, filtered in premultiplied alpha so transparent
+  // taps (rgb≈0) don't drag colour to black (dark fringes at barrel corners, letterbox,
+  // PNG/bake edges). Linear uses the binomial-9 Gaussian, circular a uniform ring mean;
+  // avgl weights each tap by its luminance.
   if (m <= 1) {
-    float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
     vec3 rgbSum = vec3(0.0);
-    float aSum = 0.0, aPlain = 0.0;
-    for (int t = 0; t < 5; ++t) {
-      float w = (m == 1) ? max(pdLum(tp[t].rgb), 1e-4) : w5[t];
+    float aSum = 0.0, sumW = 0.0, aPlain = 0.0;
+    for (int t = 0; t < 9; ++t) {
+      float w = circular ? 1.0 : PD_GAUSS9[t];
+      if (m == 1) w *= max(pdLum(tp[t].rgb), 1e-4);
       rgbSum += tp[t].rgb * tp[t].a * w;
       aSum   += tp[t].a * w;
+      sumW   += w;
       aPlain += tp[t].a;
     }
-    float outA = (m == 1) ? aPlain * 0.2 : aSum / 16.0;
+    float outA = (m == 1) ? aPlain / 9.0 : aSum / max(sumW, 1e-4);
     return vec4(rgbSum / max(aSum, 1e-4), outA);
   }
   // max/min per-channel = dilate/erode (2/3); maxl/minl luminance-keyed (4/5).
   if (m <= 5) {
     if (m <= 3) {
       vec4 acc = tp[0];
-      for (int t = 1; t < 5; ++t) acc = (m == 2) ? max(acc, tp[t]) : min(acc, tp[t]);
+      for (int t = 1; t < 9; ++t) acc = (m == 2) ? max(acc, tp[t]) : min(acc, tp[t]);
       return acc;
     }
     vec4 best = tp[0];
     float bl = pdLum(tp[0].rgb);
-    for (int t = 1; t < 5; ++t) {
+    for (int t = 1; t < 9; ++t) {
       float l = pdLum(tp[t].rgb);
       if ((m == 4) ? (l > bl) : (l < bl)) { bl = l; best = tp[t]; }
     }
@@ -313,36 +354,32 @@ vec4 smearSample(int texIdx, vec2 uv, vec2 d1, vec2 amp, vec2 winOff, vec2 winSi
   }
   // median (6) per-channel; medl (7) = the tap nearest the median luminance.
   if (m == 6) {
-    return vec4(
-      pdMed5(tp[0].r, tp[1].r, tp[2].r, tp[3].r, tp[4].r),
-      pdMed5(tp[0].g, tp[1].g, tp[2].g, tp[3].g, tp[4].g),
-      pdMed5(tp[0].b, tp[1].b, tp[2].b, tp[3].b, tp[4].b),
-      pdMed5(tp[0].a, tp[1].a, tp[2].a, tp[3].a, tp[4].a));
+    return pdMed9(tp[0], tp[1], tp[2], tp[3], tp[4], tp[5], tp[6], tp[7], tp[8]);
   }
   if (m == 7) {
-    float ls[5] = float[5](pdLum(tp[0].rgb), pdLum(tp[1].rgb), pdLum(tp[2].rgb),
-                           pdLum(tp[3].rgb), pdLum(tp[4].rgb));
-    float med = pdMed5(ls[0], ls[1], ls[2], ls[3], ls[4]);
+    float ls[9];
+    for (int t = 0; t < 9; ++t) ls[t] = pdLum(tp[t].rgb);
+    float med = pdMed9(vec4(ls[0]), vec4(ls[1]), vec4(ls[2]), vec4(ls[3]), vec4(ls[4]),
+                       vec4(ls[5]), vec4(ls[6]), vec4(ls[7]), vec4(ls[8])).x;
     vec4 best = tp[0];
     float bd = abs(ls[0] - med);
-    for (int t = 1; t < 5; ++t) {
+    for (int t = 1; t < 9; ++t) {
       float d = abs(ls[t] - med);
       if (d < bd) { bd = d; best = tp[t]; }
     }
     return best;
   }
-  // range/edge (8) per-channel max−min = edge detect (each channel's extremes may
-  // come from different taps). rangel/edgel (9) = the coloured luminance-keyed range
-  // abs(maxl − minl): the colour difference between the brightest and darkest taps.
+  // range/edge (8) per-channel max−min = edge detect; rangel/edgel (9) = coloured
+  // luminance-keyed range abs(maxl − minl): colour difference of brightest & darkest.
   if (m == 8) {
     vec4 mx = tp[0], mn = tp[0];
-    for (int t = 1; t < 5; ++t) { mx = max(mx, tp[t]); mn = min(mn, tp[t]); }
+    for (int t = 1; t < 9; ++t) { mx = max(mx, tp[t]); mn = min(mn, tp[t]); }
     return vec4(mx.rgb - mn.rgb, mx.a);
   }
   if (m == 9) {
     vec4 hi = tp[0], lo = tp[0];
     float hl = pdLum(tp[0].rgb), ll = hl;
-    for (int t = 1; t < 5; ++t) {
+    for (int t = 1; t < 9; ++t) {
       float l = pdLum(tp[t].rgb);
       if (l > hl) { hl = l; hi = tp[t]; }
       if (l < ll) { ll = l; lo = tp[t]; }
@@ -351,32 +388,17 @@ vec4 smearSample(int texIdx, vec2 uv, vec2 d1, vec2 amp, vec2 winOff, vec2 winSi
   }
   // sharpen (10..18): unsharp mask center + k·(center − blur), k = m − 9.
   float k = float(m - 9);
-  float w5[5] = float[5](1.0, 4.0, 6.0, 4.0, 1.0);
   vec3 rgbSum = vec3(0.0);
   float aSum = 0.0;
-  for (int t = 0; t < 5; ++t) { rgbSum += tp[t].rgb * tp[t].a * w5[t]; aSum += tp[t].a * w5[t]; }
+  for (int t = 0; t < 9; ++t) {
+    float w = circular ? 1.0 : PD_GAUSS9[t];
+    rgbSum += tp[t].rgb * tp[t].a * w;
+    aSum   += tp[t].a * w;
+  }
   vec3 blur = rgbSum / max(aSum, 1e-4);
   vec4 c0 = sampleAny(texIdx, winOff + ws * fract((uv - winOff) / ws));  // clean (unjittered) centre
   if (fbo) c0.rgb /= max(c0.a, 1e-4);
   return vec4(c0.rgb + k * (c0.rgb - blur), c0.a);
-}
-
-// Ring morphology (.dilate): centre tap + an 8-tap ring at radius rad (per-axis
-// UV). Per-channel max (mode > 0 = dilate) or min (erode) over the 9 taps. Jitter
-// and window confine as in smearSample. Fixed cost regardless of radius.
-vec4 dilateSample(int texIdx, vec2 uv, vec2 rad, vec2 amp, float mode, vec2 winOff, vec2 winSize, bool fbo) {
-  vec2 fc = gl_FragCoord.xy;
-  vec2 ws = max(winSize, vec2(1e-4));
-  bool grow = mode > 0.0;
-  vec4 acc = sampleAny(texIdx, winOff + ws * fract((uv + pdJit(fc, 8.0, amp) - winOff) / ws));
-  if (fbo) acc.rgb /= max(acc.a, 1e-4);
-  for (int k = 0; k < 8; ++k) {
-    vec2 p = uv + PD_DIR8[k] * rad + pdJit(fc, float(k), amp);
-    vec4 s = sampleAny(texIdx, winOff + ws * fract((p - winOff) / ws));
-    if (fbo) s.rgb /= max(s.a, 1e-4);
-    acc = grow ? max(acc, s) : min(acc, s);
-  }
-  return acc;
 }
 
 // Sign-preserving sRGB gamma encode/decode — handles out-of-gamut values from
@@ -507,13 +529,9 @@ void main() {
       color = sampleAny(int(a.y), uv);
       if (a.z > 0.5) color.rgb /= max(color.a, 1e-4);
     } else if (kind == OP_SMEAR) {
-      // a.y = texIdx, a.zw = smear offset, b.xz = per-axis jitter amp, b.y = FBO,
-      // b.w = reducer mode (.smearop). Taps wrap within the confine window (OP_WRAP).
-      color = smearSample(int(a.y), uv, a.zw, vec2(b.x, b.z), smearWinOff, smearWinSize, b.y > 0.5, b.w);
-    } else if (kind == OP_DILATE) {
-      // a.y = texIdx, a.zw = per-axis ring radius, b.xz = jitter amp, b.y = FBO,
-      // b.w = mode (+1 dilate / -1 erode). Same confine window as smear.
-      color = dilateSample(int(a.y), uv, a.zw, vec2(b.x, b.z), b.w, smearWinOff, smearWinSize, b.y > 0.5);
+      // Multi-tap resample (line/ring, any reducer). a/b carry the whole packing;
+      // taps wrap within the confine window set by OP_WRAP.
+      color = smearSample(uv, a, b, smearWinOff, smearWinSize);
     } else if (kind == OP_CONTRAST) {
       // Contrast centred at 0.5.
       color.rgb = (color.rgb - 0.5) * a.y + 0.5;
@@ -748,20 +766,13 @@ interface DrawCommand {
   modUVScaleX:  number;
   modUVScaleY:  number;
   modYDown:     number; // 1 = element-source consumer (y-down UVs), 0 = FBO-source
-  // Smear (source UV units, converted from screen pixels in drawTile).
-  smearOffX:    number;
-  smearOffY:    number;
-  // Per-axis jitter half-extent (UV) — constant screen size regardless of fit.
-  smearJitAmpX: number;
-  smearJitAmpY: number;
-  // Reducer over the smear taps (`.smearop`), int op code. 0 = avg (default).
-  smearMode:    number;
-  // Ring dilate/erode (source UV units, converted from screen pixels in drawTile).
-  dilRadUVx:    number;
-  dilRadUVy:    number;
-  dilJitAmpX:   number;
-  dilJitAmpY:   number;
-  dilMode:      number; // +1 dilate (max), -1 erode (min), 0 off
+  // Smear (polar+aspect; UV units converted from screen pixels in drawTile).
+  smearVecX:    number;   // X-referenced tap vector (dir baked in)
+  smearVecY:    number;
+  smearJitFactor: number; // disc-jitter radius on the X reference
+  smearShape:   number;   // 1 = circular ring, 0 = linear line
+  smearAspect:  number;   // uvPerPxY/uvPerPxX (scales Y of taps + jitter)
+  smearMode:    number;   // reducer op code (`.smearop`); 0 = avg
   // 1 when the main source is a (premultiplied) FBO texture — un-premultiply on read.
   sourceIsFbo:  number;
   transform:    Float32Array; // 16 floats, column-major
@@ -1150,50 +1161,43 @@ export class WebGLRenderer implements Renderer {
     const modSpace  = p.modSpace === 'screen' ? 2 : p.modSpace === 'tile' ? 1 : 0;
     const modYDown  = fboSource ? 0 : 1;
 
-    // Smear: convert the screen-pixel radius to a source-UV per-tap offset. The
-    // px→UV scale differs per fit branch (below), so this closure takes it as an
-    // argument — **signed** (uvSize/cell, not abs), so the smear direction follows
-    // any axis flip in the source→screen map: the FBO V-flip (`.render()` sources)
-    // and negative-crop flips. Passing abs made a baked source smear the opposite
-    // vertical direction from a raw element. Angle is in turns (0 = horizontal,
-    // .25 = vertical). Same convention as `pixelate` (screen pixels, texture space).
+    // Smear (polar + shared aspect). Sign of `smear` picks the tap shape: > 0
+    // linear line, < 0 circular ring; |smear| is the radius, `smearAngle` the line
+    // direction / ring rotation. The tap vector is stored X-referenced (both
+    // components scaled by uvPerPxX; the direction baked in here, CPU-side) and the
+    // shader scales Y by `aspect` (uvPerPxY/uvPerPxX, signed → carries FBO/crop
+    // flips) so the ring/line/jitter are all screen-correct at any cell aspect.
+    // Jitter is a first-class blur keyed off (|amount|+1) so a zero-amount jitter
+    // blur works and a negative (ring) amount doesn't zero it. The px→UV scale
+    // (uvPerPx) differs per fit branch, so this is a closure.
     const smear = p.smear ?? 0;
-    const smearAng = (smear > 0 ? (p.smearAngle ?? 0) : 0) * 2 * Math.PI;
+    const absS = Math.abs(smear);
+    const circular = smear < 0;
+    // Linear per-tap step |s|/2 → taps span ±2·|s| (same hard reach as the old
+    // 5-tap smear, so no new edge-wrap). The 9-tap weights (PD_GAUSS9, σ=2 steps)
+    // give the same Gaussian width as the old smear too — same look, just denser.
+    // Circular: the literal ring radius |s|.
+    const R = circular ? absS : 0.5 * absS;
+    const smearAng = (p.smearAngle ?? 0) * 2 * Math.PI;
     const smearCos = Math.cos(smearAng), smearSin = Math.sin(smearAng);
     const smearJit = p.smearJitter ?? 0;
     const smearMode = p.smearMode ?? 0;
-    const smearFields = (uvPerPxX: number, uvPerPxY: number) => ({
-      smearOffX:   smear > 0 ? smear * smearCos * uvPerPxX : 0,
-      smearOffY:   smear > 0 ? smear * smearSin * uvPerPxY : 0,
-      // Per-axis jitter half-extent in UV, so the positional dither is a constant
-      // screen size on each axis regardless of the fit's per-axis scale. The old
-      // `jit·|d1|` was isotropic in UV → anisotropic on screen, and differed between
-      // a cover element and its fill-fit `.render()` bake. Scale by `(smear + 1)` px
-      // (not just `smear`): keeps a ~1px dither floor as the radius →0, so at
-      // pixels 0 with jitter > 0 you get a *jitter-only* stochastic sample (5 taps
-      // randomly displaced, no directional streak). NOT gated on `smear > 0`; the
-      // compiler emits OP_SMEAR whenever offset OR jitter is non-zero.
-      smearJitAmpX: smearJit * (smear + 1) * Math.abs(uvPerPxX),
-      smearJitAmpY: smearJit * (smear + 1) * Math.abs(uvPerPxY),
-      smearMode,
-    });
-
-    // Ring dilate/erode: `amount` is the ring radius in screen px; its sign picks
-    // dilate (max) vs erode (min) via dilMode, so the ring offset magnitude uses
-    // |amount|. Same screen-px→UV conversion as smear (per-axis, so the ring stays
-    // a screen circle under an anisotropic fit); the ring is symmetric, so the
-    // uvPerPx sign (a source→screen flip) is cosmetically irrelevant.
-    const dilate = p.dilate ?? 0;
-    const dilAmt = Math.abs(dilate);
-    const dilJit = p.dilateJitter ?? 0.1;
-    const dilMode = Math.sign(dilate);
-    const dilateFields = (uvPerPxX: number, uvPerPxY: number) => ({
-      dilRadUVx:  dilate !== 0 ? dilAmt * uvPerPxX : 0,
-      dilRadUVy:  dilate !== 0 ? dilAmt * uvPerPxY : 0,
-      dilJitAmpX: dilate !== 0 ? dilJit * dilAmt * Math.abs(uvPerPxX) : 0,
-      dilJitAmpY: dilate !== 0 ? dilJit * dilAmt * Math.abs(uvPerPxY) : 0,
-      dilMode,
-    });
+    const smearShape = circular ? 1 : 0;
+    const smearFields = (uvPerPxX: number, uvPerPxY: number) => {
+      // Degenerate cell (zero UV extent on X) → no smear rather than a divide blow-up.
+      if (Math.abs(uvPerPxX) < 1e-9) {
+        return { smearVecX: 0, smearVecY: 0, smearJitFactor: 0, smearShape, smearAspect: 1, smearMode };
+      }
+      const ref = R * uvPerPxX;   // X-referenced magnitude (signed)
+      return {
+        smearVecX: ref * smearCos,
+        smearVecY: ref * smearSin,
+        smearJitFactor: smearJit * (absS + 1) * uvPerPxX,
+        smearShape,
+        smearAspect: uvPerPxY / uvPerPxX,
+        smearMode,
+      };
+    };
 
     // contain / none: shrink dest rect to the display area, UV covers the crop window.
     // The area outside the dest rect is simply not drawn → transparent letterbox.
@@ -1243,7 +1247,6 @@ export class WebGLRenderer implements Renderer {
         // Signed (uvSz, post-FBO-flip) so smear direction follows the flip; wrap
         // taps within the valid content extent (FBO sub-viewport, else 1).
         ...smearFields(uvSzX / dispW, uvSzY / dispH),
-        ...dilateFields(uvSzX / dispW, uvSzY / dispH),
         sourceIsFbo: fboSource ? 1 : 0,
         transform:    buildTransform(p),
       });
@@ -1307,7 +1310,6 @@ export class WebGLRenderer implements Renderer {
       // Signed (uvSize, post-FBO-flip) so smear direction follows the flip; wrap
       // taps within the valid content extent (FBO sub-viewport, else 1).
       ...smearFields(uvSizeX / cellW, uvSizeY / cellH),
-      ...dilateFields(uvSizeX / cellW, uvSizeY / cellH),
       sourceIsFbo: fboSource ? 1 : 0,
       transform:    buildTransform(p),
     });
@@ -1419,17 +1421,13 @@ export class WebGLRenderer implements Renderer {
         modUVScaleX:  cmd.modUVScaleX,
         modUVScaleY:  cmd.modUVScaleY,
         modYDown:     cmd.modYDown,
-        smearOffX:    cmd.smearOffX,
-        smearOffY:    cmd.smearOffY,
-        smearJitAmpX: cmd.smearJitAmpX,
-        smearJitAmpY: cmd.smearJitAmpY,
-        smearMode:    cmd.smearMode,
-        dilRadUVx:    cmd.dilRadUVx,
-        dilRadUVy:    cmd.dilRadUVy,
-        dilJitAmpX:   cmd.dilJitAmpX,
-        dilJitAmpY:   cmd.dilJitAmpY,
-        dilMode:      cmd.dilMode,
-        sourceIsFbo:  cmd.sourceIsFbo,
+        smearVecX:      cmd.smearVecX,
+        smearVecY:      cmd.smearVecY,
+        smearJitFactor: cmd.smearJitFactor,
+        smearShape:     cmd.smearShape,
+        smearAspect:    cmd.smearAspect,
+        smearMode:      cmd.smearMode,
+        sourceIsFbo:    cmd.sourceIsFbo,
       }, this.opsScratch, 0);
 
       // Build dedup key. Float-array join is allocation-y but cheap enough for

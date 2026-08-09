@@ -635,13 +635,14 @@ describe("FBO double-buffering (self-reference feedback)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Morphology: dilate() ring + smearop() reducers
+// Morphology: circular smear (ring dilate/erode) + smearop() reducers
 //
 // These need a source with spatial structure (max/min of a flat region is a
 // no-op), so we render a centred bright square on black and probe points on the
 // horizontal centre line (y=50) — robust to any V orientation. Jitter is set to 0
 // for deterministic taps. The source is a 100×100 canvas at 'fill', so 1 source
 // px ≈ 1 screen px and a radius in px maps 1:1 to the probe distances below.
+// A negative `smear` is the circular ring; smearMode 2 = max (dilate), 3 = min (erode).
 // ---------------------------------------------------------------------------
 
 /** 100×100 canvas: black background with a filled [x0,x1)×[y0,y1) rectangle in `color`. */
@@ -656,33 +657,31 @@ function squareCanvas(color: string, x0: number, y0: number, x1: number, y1: num
   return c;
 }
 
-describe("dilate() ring morphology", () => {
+describe("circular smear ring (dilate / erode)", () => {
+  // A circular smear of radius 8: smear = -8 (ring), smearMode 2 = max = dilate.
+  const dilate = { smear: -8, smearAngle: 0, smearMode: 2, smearJitter: 0 };
+  const erode  = { smear: -8, smearAngle: 0, smearMode: 3, smearJitter: 0 };
+
   it("dilate grows a bright square: a point 6px outside the left edge lights up", () => {
     const src = { kind: 'text' as const, canvas: squareCanvas("white", 40, 40, 60, 60) };
-    // Baseline: without dilate, (34,50) is 6px left of the square → dark.
-    const base = readPixel(renderTile(makeTile({ source: src })), 34, 50);
-    expect(base[0]).toBeLessThan(60);
-    // dilate radius 8 reaches its +X ring tap to (42,50), inside the white square.
-    const dil = readPixel(renderTile(makeTile({ source: src, dilate: 8, dilateJitter: 0 })), 34, 50);
-    expect(dil[0]).toBeGreaterThan(200);
+    // Baseline: no smear → (34,50), 6px left of the square, is dark.
+    expect(readPixel(renderTile(makeTile({ source: src })), 34, 50)[0]).toBeLessThan(60);
+    // ring radius 8 reaches its +X tap to (42,50), inside the white square.
+    expect(readPixel(renderTile(makeTile({ source: src, ...dilate })), 34, 50)[0]).toBeGreaterThan(200);
   });
 
-  it("erode (negative) shrinks a bright square: a point 3px inside the edge goes dark", () => {
+  it("erode shrinks a bright square: a point 3px inside the edge goes dark, the core survives", () => {
     const src = { kind: 'text' as const, canvas: squareCanvas("white", 40, 40, 60, 60) };
-    // (43,50) is 3px inside the left edge → white without erode.
-    const base = readPixel(renderTile(makeTile({ source: src })), 43, 50);
-    expect(base[0]).toBeGreaterThan(200);
-    // erode radius 8 pulls the -X ring tap to (35,50), outside → min = black.
-    const ero = readPixel(renderTile(makeTile({ source: src, dilate: -8, dilateJitter: 0 })), 43, 50);
-    expect(ero[0]).toBeLessThan(60);
-    // The core (10px from every edge > 8) survives erosion.
-    const core = readPixel(renderTile(makeTile({ source: src, dilate: -8, dilateJitter: 0 })), 50, 50);
-    expect(core[0]).toBeGreaterThan(200);
+    expect(readPixel(renderTile(makeTile({ source: src })), 43, 50)[0]).toBeGreaterThan(200);
+    // ring −X tap reaches (35,50), outside → min = black.
+    expect(readPixel(renderTile(makeTile({ source: src, ...erode })), 43, 50)[0]).toBeLessThan(60);
+    // the core (10px from every edge > 8) survives.
+    expect(readPixel(renderTile(makeTile({ source: src, ...erode })), 50, 50)[0]).toBeGreaterThan(200);
   });
 
   it("per-channel: dilating a red square grows red without inventing other channels", () => {
     const src = { kind: 'text' as const, canvas: squareCanvas("red", 40, 40, 60, 60) };
-    const [r, g, b] = readPixel(renderTile(makeTile({ source: src, dilate: 8, dilateJitter: 0 })), 34, 50);
+    const [r, g, b] = readPixel(renderTile(makeTile({ source: src, ...dilate })), 34, 50);
     expect(r).toBeGreaterThan(200);
     expect(g).toBeLessThan(60);
     expect(b).toBeLessThan(60);

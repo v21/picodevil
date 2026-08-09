@@ -2,7 +2,7 @@
  * Pixel-level visual effects registered on Pattern.prototype via createMixParam.
  * Colour effects (grey, tint, huerot) share one OKLab round-trip per frame.
  */
-import { Pattern } from "@strudel/core";
+import { Pattern, reify } from "@strudel/core";
 import { createMixParam } from "./create-mix-param";
 import { nextAutoModName, nextAutoRenderName, registerAutoHidden } from "./pattern-registry";
 import { splitEffects } from "./effect-fields";
@@ -215,25 +215,37 @@ const _smearAngle = createMixParam("smearAngle");
 const _smearJitter = createMixParam("smearJitter");
 
 /**
- * Directional (1-D) Gaussian blur — a 5-tap motion-blur streak along `angle`.
- * `angle` is in turns (0 = horizontal, 0.25 = vertical) and is patternable, so
- * the streak can sweep. `pixels` is the radius in screen pixels; `jitter`
- * randomises each sample point's position (weighted by strength) to dither
- * aliasing into noise.
+ * A 9-tap multi-tap resample — the general sampling primitive. The **sign of
+ * `pixels` picks the tap shape**: positive = a **linear** directional streak
+ * (motion blur) along `angle`; negative = a **circular** ring of radius `|pixels|`
+ * (see `.dilate`/`.erode`), which `angle` rotates. `pixels` = 0 is a jitter-only
+ * blur. `angle` is in turns (0 = horizontal, 0.25 = vertical) and patternable.
  *
- * @param {number | string | Pattern} [angle=0] streak direction in turns (0 = horizontal, 0.25 = vertical)
- * @param {number | string | Pattern} [pixels=8] smear radius in screen pixels; 0 = off
- * @param {number | string | Pattern} [jitter=0.1] per-sample positional jitter (fraction of tap step)
- * @returns {Pattern} pattern with directional smear applied
+ * `jitter` scatters each tap over a disc of radius `jitter·(|pixels|+1)` screen px
+ * — a **first-class blur**, not just a dither, so it works even at `pixels` 0. The
+ * disc and the ring are screen-correct at any tile aspect. What it *does* with the
+ * taps is set by `.smearop` (default: an average = a blur).
+ *
+ * **One smear per tile.** `.smear` and its aliases `.blur`, `.dilate`, `.erode` all
+ * share the single sampling slot, so they **override** each other (last one wins) —
+ * they don't stack. To apply two, put a `.render()` between them.
+ *
+ * @param {number | string | Pattern} [angle=0] direction / ring rotation in turns
+ * @param {number | string | Pattern} [pixels=20] signed radius in screen px: >0 linear, <0 circular ring, 0 jitter-only
+ * @param {number | string | Pattern} [jitter=0.5] per-tap disc-jitter (fraction of radius+1)
+ * @returns {Pattern} pattern with the smear applied
  * @example
- * // horizontal smear
+ * // horizontal motion blur
  * $: video("clip.mp4").smear(0, 30)
  *
  * // rotating streak
  * $: video("clip.mp4").smear(sine, 30)
  *
- * // vertical motion blur
- * $: video("clip.mp4").smear(0.25, 20)
+ * // circular blur (bokeh-ish ring)
+ * $: video("clip.mp4").smear(0, -20)
+ *
+ * // pure jitter blur (no streak)
+ * $: video("clip.mp4").smear(0, 0, slider(20, 0, 60))
  */
 PatternProto.smear = function (angle: any = 0, pixels: any = 20, jitter: any = 0.5) {
   return _smearJitter(jitter, _smearAngle(angle, _smear(pixels, this)));
@@ -242,23 +254,24 @@ PatternProto.smear = function (angle: any = 0, pixels: any = 20, jitter: any = 0
 const _smearMode = createMixParam("smearMode");
 
 /**
- * Selects the reducer smear applies over its 5 taps, so a directional smear can
- * do more than blur. Needs an active `.smear(...)` (it only supplies the reducer,
- * not the taps): `.smear(0, 20).smearop('max')`. Patternable, so the reducer can
+ * Selects the reducer smear applies over its 9 taps, so a smear (linear or
+ * circular) can do more than blur. Needs an active `.smear(...)` to supply the
+ * taps: `.smear(0, 20).smearop('max')`. Patternable, so the reducer can
  * alternate — `.smearop("<avg max range>")`.
  *
  * Naming: no suffix = per-channel, `l` suffix = luminance-keyed (returns the
  * whole colour of the tap chosen by luminance — no channel fringing).
- * - `avg` (default; also `average` / `ave` / `mean`) — weighted mean = today's
- *   smear/blur; `avgl` — luminance-weighted mean
- * - `max` / `min` — per-channel dilate / erode (bright grows / shrinks; colour fringe)
+ * - `avg` (default; also `average` / `ave` / `mean`) — weighted mean = a blur;
+ *   `avgl` — luminance-weighted mean
+ * - `max` (`dilate`) / `min` (`erode`) — per-channel morphology (bright grows / shrinks)
  * - `maxl` / `minl` — brightest / darkest tap's colour
  * - `median` (`med`) — per-channel median (denoise); `medianl` (`medl`) — median-luminance tap's colour
  * - `range` (`edge`) — per-channel max−min = edge detect; `rangel` (`edgel`) — coloured
  *   edge = abs(brightest − darkest tap colour)
  * - `sharpen` / `sharp` (= `sharpen3`), `sharpen1`…`sharpen9` (or `sharp1`…`sharp9`) — unsharp mask
  *
- * Compound morphology composes across `.render()`: opening =
+ * With a circular smear + `max`/`min` this is dilation/erosion — `.dilate`/`.erode`
+ * are aliases. Compound morphology composes across `.render()`: opening =
  * `.smearop('min').render().smearop('max')`, closing swaps the two.
  *
  * @param {string | Pattern} [mode='avg'] reducer name (see list); unknown → 'avg'
@@ -268,7 +281,7 @@ const _smearMode = createMixParam("smearMode");
  * $: video("clip.mp4").smear(0, 24).smearop('max')
  *
  * // edge outlines
- * $: video("clip.mp4").smear(0, 8).smearop('range')
+ * $: video("clip.mp4").smear(0, 8).smearop('edge')
  *
  * // punchy unsharp
  * $: video("clip.mp4").smear(0, 6).smearop('sharpen6')
@@ -277,37 +290,79 @@ PatternProto.smearop = function (mode: any = 'avg') {
   return _smearMode(mode, this);
 };
 
-const _dilate = createMixParam("dilate");
-const _dilateJitter = createMixParam("dilateJitter");
+// dilate()/erode() are thin aliases: a circular smear (negative radius) reduced
+// with max / min. Negating a possibly-patterned amount goes through reify().fmap
+// so `.dilate(sine.range(2,6))` works; `-Math.abs` keeps the radius circular
+// regardless of the passed sign (use `.erode` for the min reduction).
+function ringMorph(pat: any, amount: any, jitter: any, op: string) {
+  const radius = reify(amount).fmap((v: any) => -Math.abs(Number(v)));
+  return pat.smear(0, radius, jitter).smearop(op);
+}
 
 /**
- * Morphological dilation / erosion with a circular kernel — a single-pass 9-tap
- * ring (centre + one tap every 45°, radius-scaled). Positive `amount` dilates
- * (per-channel max: bright regions grow, dark specks fill in); negative erodes
- * (min: bright regions shrink, thin bright lines break up). `amount` is the ring
- * radius in screen pixels and is patternable, so it can morph. `jitter`
- * randomises each tap's position (as `.smear`), dithering the ring's dottiness at
- * large radius into noise.
+ * Morphological **dilation** — a circular 9-tap ring reduced with per-channel max:
+ * bright regions grow, dark specks fill in. `amount` is the ring radius in screen
+ * px (patternable, so it can morph); `jitter` scatters the ring taps. Sugar for
+ * `.smear(0, -amount, jitter).smearop('max')`.
  *
- * Cost is fixed (9 taps) regardless of radius. Reuses smear's sampling slot, so a
- * dilate and a smear on one tile don't combine — cross them via `.render()`
- * (`.dilate(4).render().smear(0, 20)`), the same way repeated effects compose.
+ * Being a `.smear`, it **overrides** any other `.smear`/`.blur`/`.dilate`/`.erode`
+ * on the same tile (one sampling slot, last one wins); combine via `.render()`.
  *
- * @param {number | string | Pattern} [amount=3] ring radius in screen px; >0 = dilate, <0 = erode, 0 = off
- * @param {number | string | Pattern} [jitter=0.5] per-tap positional jitter (fraction of radius)
- * @returns {Pattern} pattern with the ring morphology applied
+ * @param {number | string | Pattern} [amount=3] ring radius in screen px
+ * @param {number | string | Pattern} [jitter=0.5] per-tap disc-jitter
+ * @returns {Pattern} pattern with dilation applied
  * @example
  * // fatten bright regions
  * $: video("clip.mp4").dilate(4)
  *
- * // erode (thin bright detail)
- * $: video("clip.mp4").dilate(-4)
- *
- * // morph erode↔dilate
- * $: video("clip.mp4").dilate(sine.range(-6, 6))
+ * // morph the radius
+ * $: video("clip.mp4").dilate(sine.range(1, 8))
  */
 PatternProto.dilate = function (amount: any = 3, jitter: any = 0.5) {
-  return _dilateJitter(jitter, _dilate(amount, this));
+  return ringMorph(this, amount, jitter, 'max');
+};
+
+/**
+ * Morphological **erosion** — a circular 9-tap ring reduced with per-channel min:
+ * bright regions shrink, thin bright detail breaks up. Sugar for
+ * `.smear(0, -amount, jitter).smearop('min')`.
+ *
+ * Being a `.smear`, it **overrides** any other `.smear`/`.blur`/`.dilate`/`.erode`
+ * on the same tile (one sampling slot, last one wins); combine via `.render()`.
+ *
+ * @param {number | string | Pattern} [amount=3] ring radius in screen px
+ * @param {number | string | Pattern} [jitter=0.5] per-tap disc-jitter
+ * @returns {Pattern} pattern with erosion applied
+ * @example
+ * // thin bright detail
+ * $: video("clip.mp4").erode(4)
+ */
+PatternProto.erode = function (amount: any = 3, jitter: any = 0.5) {
+  return ringMorph(this, amount, jitter, 'min');
+};
+
+/**
+ * A soft **circular blur** — sugar for `.smear(0, -amount, jitter)` (a circular ring
+ * averaged; radius `amount` in screen px). Rounder than the directional `.smear`,
+ * and jitter fills in the ring for a smoother, bokeh-ish blur.
+ *
+ * Being a `.smear`, it **overrides** any other `.smear`/`.dilate`/`.erode`/`.blur`
+ * on the same tile (one sampling slot, last one wins); stack via `.render()`
+ * (`.blur(6).render().blur(6)` for a wider, smoother blur).
+ *
+ * @param {number | string | Pattern} [amount=8] blur radius in screen px
+ * @param {number | string | Pattern} [jitter=0.5] per-tap disc-jitter (fills the ring)
+ * @returns {Pattern} pattern with a circular blur applied
+ * @example
+ * // soft blur
+ * $: video("clip.mp4").blur(8)
+ *
+ * // pulsing blur
+ * $: video("clip.mp4").blur(sine.range(0, 20))
+ */
+PatternProto.blur = function (amount: any = 8, jitter: any = 0.5) {
+  const radius = reify(amount).fmap((v: any) => -Math.abs(Number(v)));
+  return this.smear(0, radius, jitter);
 };
 
 /**
@@ -317,7 +372,7 @@ PatternProto.dilate = function (amount: any = 3, jitter: any = 0.5) {
  */
 const SMEAR_MODE_CODES: Record<string, number> = {
   avg: 0, average: 0, ave: 0, mean: 0, avgl: 1,
-  max: 2, min: 3,
+  max: 2, dilate: 2, min: 3, erode: 3,
   maxl: 4, minl: 5,
   median: 6, med: 6,
   medianl: 7, medl: 7,
