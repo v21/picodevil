@@ -47,6 +47,19 @@ export interface HarnessOptions {
    * straight from the sibling `bunnycdn/content/` with no network fetch.
    */
   mediaDir?: string;
+  /**
+   * Pin the runtime media-server URL (localStorage `picodevil-server-url`) to the
+   * harness's own origin, before any page script runs. Seeded media uses bare
+   * relative paths (`/test-assets/…`, `/example-media/…`) which the runtime feeds
+   * through `resolveUrl()`; in Vite dev mode that defaults to
+   * `http://localhost:47426` (server-config.ts `DEFAULT_DEV_URL`). Those paths
+   * then 404 against whatever dev server happens to be listening on :47426 and the
+   * tiles render blank — silent, and dependent on external state. Pointing the
+   * server at the harness origin (which actually serves the media) makes media
+   * resolution hermetic. Opt-in: harnesses that render the server-status UI
+   * (sidebar-golden) must leave it off, as it flips the connection pill.
+   */
+  pinMediaToOrigin?: boolean;
 }
 
 export interface Harness {
@@ -85,6 +98,13 @@ export async function startHarness(opts: HarnessOptions): Promise<Harness> {
 
   const browser = await chromium.launch({ headless: opts.headless, args: GL_ARGS });
   const context = await browser.newContext({ viewport: opts.viewport });
+  if (opts.pinMediaToOrigin) {
+    // Runs before page scripts on every navigation, so the runtime reads it on
+    // its first boot and bare media paths resolve against the harness origin.
+    await context.addInitScript((origin) => {
+      try { localStorage.setItem("picodevil-server-url", origin); } catch { /* denied */ }
+    }, url);
+  }
   const page = await context.newPage();
 
   const reload = async () => {

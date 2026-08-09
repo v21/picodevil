@@ -186,7 +186,7 @@ async function main() {
   }
 
   console.log("Starting vite dev server + browser...");
-  const harness = await startHarness({ headless: HEADLESS, viewport: { width: vpw, height: vph } });
+  const harness = await startHarness({ headless: HEADLESS, viewport: { width: vpw, height: vph }, pinMediaToOrigin: true });
   const { page } = harness;
   console.log(`Harness ready at ${harness.url}`);
 
