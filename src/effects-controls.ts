@@ -25,15 +25,9 @@ const PatternProto = Pattern.prototype as any;
  */
 export const alpha = createMixParam("alpha");
 
-/**
- * Alias for alpha. Sets the transparency of the pattern.
- *
- * @param {number | string | Pattern} value opacity value (0–1)
- * @returns {Pattern} pattern with opacity applied
- * @example
- * $: video("clip.mp4").opacity(0.5)
- */
-export const opacity = createMixParam("opacity");
+// opacity is an alias for alpha — reuse the method that sets the real "alpha"
+// field (a fresh createMixParam("opacity") would write a field nothing reads).
+PatternProto.opacity = PatternProto.alpha;
 
 /**
  * Applies a pixelation (mosaic) effect to the tile, computed in texture space.
@@ -143,6 +137,7 @@ export const contrast = createMixParam("contrast");
  * $: video("clip.mp4").contrast(-1).brightness(0)
  */
 export const brightness = createMixParam("brightness");
+PatternProto.bright = PatternProto.brightness; // alias, like gray → grey
 
 const _tintHue      = createMixParam("tintHue");
 const _tintStrength = createMixParam("tintStrength");

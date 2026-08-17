@@ -73,6 +73,7 @@ declare global {
   interface Window {
     pdEval: (code: string) => { error: string | null; widgets: WidgetCallInfo[] };
     pdSetCode: (code: string, evaluate?: boolean) => void;
+    pdInsertAtCursor: (text: string) => void;
   }
 }
 
@@ -355,6 +356,20 @@ export function setupEditor(
       onCodeChange?.(code);
       evalAndDecorate(view, code);
     }
+  };
+
+  // Insert text at the caret / over the current selection (same primitive the
+  // Tab handler uses). Used by the Thumbs sidebar tab to paste a clip's short
+  // name where the user is typing. Doesn't evaluate — the user hits Ctrl-Enter.
+  window.pdInsertAtCursor = (text: string) => {
+    view.dispatch(
+      view.state.update(view.state.replaceSelection(text), {
+        scrollIntoView: true,
+        userEvent: "input",
+      }),
+    );
+    onCodeChange?.(view.state.doc.toString());
+    view.focus();
   };
 
   // evaluate initial code at startup

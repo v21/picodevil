@@ -300,7 +300,7 @@ $: color(mini("red blue").slow(2))
 
 All controls are methods you chain onto a pattern. Every control accepts patterns (including mininotation strings) as arguments.
 
-A few have shorthand aliases: `.w()`/`.h()` for `.width()`/`.height()`, `.opacity()` for `.alpha()`, `.gray()` for `.grey()`, `.dur()` for `.duration()`, and `.left()`/`.top()` for `.x()`/`.y()`.
+A few have shorthand aliases: `.w()`/`.h()` for `.width()`/`.height()`, `.opacity()` for `.alpha()`, `.gray()` for `.grey()`, `.bright()` for `.brightness()`, `.dur()` for `.duration()`, and `.left()`/`.top()` for `.x()`/`.y()`.
 
 ### Position and size
 

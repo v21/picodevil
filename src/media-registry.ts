@@ -574,17 +574,35 @@ export async function downloadYouTube(name: string, serverBase?: string) {
   }
 }
 
-const THUMB_W = 64;
-const THUMB_H = 48;
+// Longest edge of a captured thumb. The thumbs tab shows 120×90 cells, so 320
+// keeps a 16:9 clip's short edge at 180px = 2× the cell (retina-sharp) after
+// object-fit:cover crops it; the 40×30 videos-tab thumb just downscales it.
+// Already-cached thumbs keep their old size until cleared — see the cache-bust
+// snippet, or bump THUMB_STORAGE_PREFIX to force everyone to regenerate.
+const THUMB_MAX = 320;
+
+/** Fit (srcW×srcH) into a max-longest-edge box, preserving aspect, never
+ *  upscaling. Falls back to 4:3 when the intrinsic size isn't known yet (0). */
+export function thumbSize(srcW: number, srcH: number, max = THUMB_MAX): { w: number; h: number } {
+  const sw = srcW > 0 ? srcW : max;
+  const sh = srcH > 0 ? srcH : Math.round((max * 3) / 4);
+  const scale = Math.min(1, max / Math.max(sw, sh));
+  return { w: Math.max(1, Math.round(sw * scale)), h: Math.max(1, Math.round(sh * scale)) };
+}
 
 function captureThumbnail(source: HTMLVideoElement | HTMLImageElement, entry: MediaEntry) {
   try {
+    // Capture at the source's native aspect ratio — no stretch. Each tab's
+    // .thumb-cell/.vid-thumb crops to fill via object-fit:cover.
+    const iw = source instanceof HTMLVideoElement ? source.videoWidth : source.naturalWidth;
+    const ih = source instanceof HTMLVideoElement ? source.videoHeight : source.naturalHeight;
+    const { w, h } = thumbSize(iw, ih);
     const canvas = document.createElement("canvas");
-    canvas.width = THUMB_W;
-    canvas.height = THUMB_H;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext("2d")!;
-    ctx.drawImage(source, 0, 0, THUMB_W, THUMB_H);
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+    ctx.drawImage(source, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
     entry.thumbnail = dataUrl;
     // Decoded a frame → it's playable; clear any stale unavailable flag.
     if (entry.unavailable) entry.unavailable = false;

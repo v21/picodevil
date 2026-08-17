@@ -3,7 +3,7 @@ import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
   loadVideo, loadImage, uploadToServer, setOnChange, addFromServer, missingFromServer,
-  guessTypeFromFile, initRegistry, pruneOrphanThumbs,
+  guessTypeFromFile, initRegistry, pruneOrphanThumbs, thumbSize,
 } from "./media-registry";
 
 const THUMB_PREFIX = "picodevil:thumb:";
@@ -25,6 +25,24 @@ function waitFor(cond: () => boolean | undefined, timeout = 3000): Promise<void>
     tick();
   });
 }
+
+describe("thumbSize", () => {
+  it("preserves 16:9 landscape, capping the long edge", () => {
+    expect(thumbSize(1920, 1080, 320)).toEqual({ w: 320, h: 180 });
+  });
+  it("preserves 4:3", () => {
+    expect(thumbSize(640, 480, 320)).toEqual({ w: 320, h: 240 });
+  });
+  it("preserves portrait (caps the height)", () => {
+    expect(thumbSize(1080, 1920, 320)).toEqual({ w: 180, h: 320 });
+  });
+  it("never upscales a source smaller than the cap", () => {
+    expect(thumbSize(100, 75, 320)).toEqual({ w: 100, h: 75 });
+  });
+  it("falls back to 4:3 when the intrinsic size isn't known yet (0)", () => {
+    expect(thumbSize(0, 0, 320)).toEqual({ w: 320, h: 240 });
+  });
+});
 
 describe("media registry", () => {
   it("adds and resolves media", () => {

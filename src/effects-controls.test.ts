@@ -57,6 +57,30 @@ describe("dilate/erode aliases (circular smear + smearop)", () => {
   });
 });
 
+describe("opacity alias (→ alpha)", () => {
+  it(".opacity(n) writes the alpha field, same as .alpha(n)", () => {
+    const v = query(src("a.mp4").opacity(mini("0.5")), 0);
+    expect(Number(v.alpha)).toBeCloseTo(0.5);
+    expect(v.opacity).toBeUndefined(); // same field, not a dead one
+  });
+
+  it(".opacity and .alpha are the exact same method", () => {
+    expect((src("a.mp4") as any).opacity).toBe((src("a.mp4") as any).alpha);
+  });
+});
+
+describe("bright alias (→ brightness)", () => {
+  it(".bright(n) writes the brightness field, same as .brightness(n)", () => {
+    const v = query(src("a.mp4").bright(mini("0.3")), 0);
+    expect(Number(v.brightness)).toBeCloseTo(0.3);
+    expect(v.bright).toBeUndefined(); // it's the same field, not a new one
+  });
+
+  it(".bright and .brightness are the exact same method", () => {
+    expect((src("a.mp4") as any).bright).toBe((src("a.mp4") as any).brightness);
+  });
+});
+
 describe("smearop control", () => {
   it(".smearop(mode) merges the mode string onto the value", () => {
     const v = query(src("a.mp4").smearop(mini("max")), 0);

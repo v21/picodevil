@@ -1,5 +1,6 @@
 import { setupReference } from "./reference";
 import { setupMediaLoader } from "./media-loader";
+import { setupThumbs } from "./thumbs";
 import { setupPerfPanel } from "./perf-panel";
 import { setupAudioTab } from "./audio-sidebar";
 import { setupExamples } from "./examples";
@@ -89,6 +90,8 @@ export function setupSidebar(isFreshSession = false) {
   if (refTab) setupReference(refTab);
   const videosTab = document.getElementById("tab-videos");
   if (videosTab) setupMediaLoader(videosTab, isFreshSession);
+  const thumbsTab = document.getElementById("tab-thumbs");
+  if (thumbsTab) setupThumbs(thumbsTab);
   const perfTab = document.getElementById("tab-perf");
   if (perfTab) setupPerfPanel(perfTab);
   const audioTab = document.getElementById("tab-audio");
