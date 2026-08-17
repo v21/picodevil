@@ -27,7 +27,8 @@ export type TileSource =
   | { kind: 'image'; el: HTMLImageElement }
   | { kind: 'color'; r: number; g: number; b: number }
   | { kind: 'pattern'; name: string }
-  | { kind: 'text'; canvas: HTMLCanvasElement };
+  | { kind: 'text'; canvas: HTMLCanvasElement }
+  | { kind: 'qr'; canvas: HTMLCanvasElement };
 
 /**
  * All parameters needed to render a single tile.

@@ -78,6 +78,11 @@ const TEXT_STRINGS = [
   "line one\\nline two", "A", "42",
 ];
 
+/** Payloads for qr() source — single-quoted literals (URLs and short strings, no quotes). */
+const QR_PAYLOADS = [
+  "https://picodevil.com", "https://example.com/a/b?x=1", "hello world", "42", "test",
+];
+
 /** Underscore-joined words for s("text:word_word") tokens. */
 const TEXT_TOKENS = [
   "hello", "hello_world", "foo_bar", "test_text", "line_one",
@@ -841,6 +846,16 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       fc.array(sharedMethod, { minLength: 0, maxLength: 3 }),
     ).map(([str, methods]) => ({
       code: `text('${str}')${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // qr() — single-quoted literal payload (usually a URL)
+  {
+    weight: 1, arbitrary: fc.tuple(
+      fc.constantFrom(...QR_PAYLOADS),
+      fc.array(sharedMethod, { minLength: 0, maxLength: 3 }),
+    ).map(([str, methods]) => ({
+      code: `qr('${str}')${methods.map(m => m.code).join("")}`,
     }))
   },
 

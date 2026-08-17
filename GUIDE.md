@@ -173,6 +173,28 @@ The preset list includes web-safe generics (`sans-serif`, `serif`, `monospace`, 
 
 Unlike slider, fontPicker has no "drag" phase — selecting from the dropdown always adds a single undo step.
 
+### `qr(url)`
+
+Renders a QR code as a source tile — **white modules on a transparent background** (the quiet zone is transparent too, so Picodevil's black canvas shows through by default). Error correction is level Q (~25% recovery), and the default `objectfit` is `'contain'`, so it fills the tile as a square.
+
+```js
+$: qr('https://picodevil.com')                              // fills the screen, ready to scan
+$: qr('https://picodevil.com').width(0.3).x(0.35).y(0.35)   // small, tucked top-left
+$: s('clip.mp4'); qr('https://picodevil.com').tint(0.5, 1)  // over video, recoloured
+```
+
+**Use single quotes.** The payload is a literal string. A double-quoted URL is transpiled to mininotation, where the `/` parses as the "slow" operator and mangles the address — the same reason `.urlBase()` needs single quotes.
+
+**No QR-specific style controls.** Recolour or transform the code with the universal controls that work on any source — `.brightness()`, `.tint()`, `.huerot()`, `.grey()`, `.contrast()`, `.alpha()`, `.blend()`, `.width()`, `.grid()`, and so on. The modules start white, so `.tint()` gives them a colour that `.huerot()` alone can't shift (white has no hue to rotate).
+
+```js
+$: qr('https://picodevil.com').tint(0.33, 1)   // green modules
+$: qr('https://picodevil.com').alpha(0.6)      // semi-transparent overlay
+$: qr('https://picodevil.com').grid(2, 2, 3)   // placed in the last cell of a 2×2 grid
+```
+
+> **Scannability note:** white-on-black (the look when it's over the default black canvas) is *inverted* from a standard dark-on-light QR. Modern phone cameras read inverted codes fine; some older or third-party scanners don't.
+
 ### `screen(mininotation)` / `s(mininotation)`
 
 Auto-detects the type of each token: looks up the media registry first, then checks file extension, then falls back to treating it as a CSS color.

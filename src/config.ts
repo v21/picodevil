@@ -54,6 +54,8 @@ export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
  * any real pattern, so the cap never bites a static tile — it only bounds the churn.
  */
 export const MAX_TEXT_CANVASES = 256;
+/** LRU cap on cached QR canvases (keyed by payload). Codes are few and large. */
+export const MAX_QR_CANVASES = 64;
 
 /** How far ahead to query patterns for video prewarming, in milliseconds. */
 export const PREWARM_LOOKAHEAD_MS = 500;

@@ -63,11 +63,22 @@ export class TextureCache {
     if (source.kind === 'color') {
       return this.getColor(source.r, source.g, source.b);
     }
-    if (source.kind === 'text') {
+    if (source.kind === 'text' || source.kind === 'qr') {
       const { canvas } = source;
       let tex = this.canvasTextures.get(canvas);
       if (!tex) {
         tex = this.createTexture();
+        if (source.kind === 'qr') {
+          // A QR is a hard-edged module grid, not a photo: sample it NEAREST so
+          // module edges stay crisp. LINEAR would bilinearly blend each white
+          // module edge toward the straight-alpha (0,0,0,0) background — a dark
+          // fringe (and the premultiplied 2D canvas can't carry white into its
+          // transparent texels to prevent it).
+          const { gl } = this;
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        }
         this.canvasTextures.set(canvas, tex);
       }
       if (!this.uploadedCanvases.has(canvas)) {

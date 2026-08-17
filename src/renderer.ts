@@ -1,4 +1,4 @@
-import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME, MAX_DRAW_TIME_MS, MAX_TEXT_CANVASES } from './config';
+import { PREWARM_LOOKAHEAD_MS, PREWARM_NEW_ELEMENTS_PER_FRAME, MAX_DRAW_TIME_MS, MAX_TEXT_CANVASES, MAX_QR_CANVASES } from './config';
 import { eventBeginFromHap } from './event-begin';
 import { computeExpectedFromEvent } from './video-pool';
 import { renderVideoFrame } from './video-playback';
@@ -14,6 +14,7 @@ import { smearModeCode, normModSpace } from './effects-controls';
 import type { VideoEl } from './video-element-state';
 import type { createVideoPoolManager } from './video-pool-manager';
 import { buildFontString, renderTextToCanvas } from './text-render';
+import { renderQrToCanvas } from './qr-render';
 import { resolveAxisTag } from './text-render-opentype';
 
 import { getHarfbuzzFace, renderTextHarfbuzz } from './text-render-harfbuzz';
@@ -57,6 +58,7 @@ export class FrameRenderer {
   private readonly colorCache = new Map<string, [number, number, number]>();
   /** Rendered text canvases keyed by render inputs. Insertion-ordered for LRU. */
   private readonly textCanvasCache = new Map<string, HTMLCanvasElement>();
+  private readonly qrCanvasCache = new Map<string, HTMLCanvasElement>();
   /** Memoised @font-face lookups, invalidated when a stylesheet is added/removed. */
   private fontSrcCache = new Map<string, string | null>();
   private fontSrcSheetCount = -1;
@@ -416,6 +418,36 @@ export class FrameRenderer {
   }
 
   /**
+   * Rendered canvas for a QR tile, cached by its payload. Deterministic in the
+   * payload alone (no QR styling controls), so it's reusable across frames — and,
+   * like text, it must be: TextureCache keys the GL texture by canvas identity, so
+   * a fresh canvas per frame would leak a texture per frame. LRU-capped; evicted
+   * canvases go back to the backend so their texture is released.
+   */
+  private getQrCanvas(ev: any): HTMLCanvasElement {
+    const key = typeof ev.data === 'string' ? ev.data : String(ev.data ?? '');
+
+    const cached = this.qrCanvasCache.get(key);
+    if (cached) {
+      // LRU touch: re-insert so the most-recently-drawn QR sits at the tail.
+      this.qrCanvasCache.delete(key);
+      this.qrCanvasCache.set(key, cached);
+      return cached;
+    }
+
+    const canvas = renderQrToCanvas(key);
+
+    while (this.qrCanvasCache.size >= MAX_QR_CANVASES) {
+      const oldestKey = this.qrCanvasCache.keys().next().value as string;
+      const oldest = this.qrCanvasCache.get(oldestKey)!;
+      this.qrCanvasCache.delete(oldestKey);
+      this.renderer.releaseSource?.(oldest);
+    }
+    this.qrCanvasCache.set(key, canvas);
+    return canvas;
+  }
+
+  /**
    * Scan document @font-face rules to find a .ttf src URL for a given font family.
    * Returns the woff2 path with extension replaced by .ttf — opentype.js parses TTF
    * natively without a browser decompressor.
@@ -680,6 +712,8 @@ export class FrameRenderer {
       source = { kind: 'pattern', name: String(ev.src) };
     } else if (ev._type === 'text') {
       source = { kind: 'text', canvas: this.getTextCanvas(ev) };
+    } else if (ev._type === 'qr') {
+      source = { kind: 'qr', canvas: this.getQrCanvas(ev) };
     } else {
       warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);
       return null;
@@ -692,7 +726,7 @@ export class FrameRenderer {
       cropy: ev.cropy ?? 0.5,
       cropw: ev.cropw ?? 1,
       croph: ev.croph ?? 1,
-      fit: ev.objectfit ?? (ev._type === 'text' ? 'none' : 'cover'),
+      fit: ev.objectfit ?? (ev._type === 'text' ? 'none' : ev._type === 'qr' ? 'contain' : 'cover'),
       alpha,
       blend: ev.blend !== undefined ? String(ev.blend) : 'source-over',
       rotateZ,
