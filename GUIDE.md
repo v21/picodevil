@@ -327,6 +327,8 @@ $: video("clip.mp4").alpha(0.5)
 $: color("red").alpha("1 0.5 0")   // patterned alpha
 ```
 
+For a soft radial fade rather than a flat one, see [vignette](#vignette).
+
 ### Colour effects
 
 `.grey(amount)` controls saturation: 0 = full colour, 1 = fully greyscale. Values outside [0,1] also work — negative values boost saturation beyond the original, and values above 1 invert the chroma deviation (complementary hues).
@@ -382,6 +384,24 @@ $: video("clip.mp4").objectfit("fill").barrel(0.5) // barrel on a single video
 $: s("all").barrel(sine.range(0, 0.6))             // pulsing warp
 $: s("clip.mp4").cropStack(3,3).tile().barrel(0.5)          // per-tile: each cell warps on its own centre
 $: s("clip.mp4").barrel(0.5).render().cropStack(3,3).tile() // whole-frame warp, THEN sliced
+```
+
+### Vignette
+
+`.vignette(n)` fades the tile out radially towards transparency. Like the warps above it works in the drawn tile's **own** `[0,1]` frame, so on a rectangular source the region it leaves alone is the **ellipse inscribed in the tile** — an oval, not a circle in screen pixels.
+
+`n` is how far the fade has closed in. `0` is off. At `1` the middle of each edge is still fully opaque and the corners have gone completely, with a smooth falloff between the two. Above that it keeps eating inward — `2` takes the edge midpoints, and by about `4.4` the whole tile has gone. Negative values sweep the same soft band the other way, out from the centre: the middle fades and the corners stay. No argument defaults to 1.
+
+Only transparency is touched, so it composites like `.alpha()` (and multiplies with it). Like the warps, it's per-tile on a crop — and the same [`.render()`](#bake-a-chain-with-render) trick moves it: `.vignette(1).render().cropStack(2,3)` ovals the whole frame and *then* slices it, where `.cropStack(2,3).vignette(1)` gives each tile its own oval. (Grids are geometry rather than a crop, so `.gridMod()` is always one oval per cell, wherever you write it.)
+
+```js
+$: video("clip.mp4").vignette(1)                      // classic corner fade
+$: video("clip.mp4").vignette(2)                      // tighter — closes in on the centre
+$: video("clip.mp4").vignette(-1.5)                   // inverted: hole in the middle
+$: s("all").vignette(sine.range(0, 3))                // breathing iris over everything
+$: video("clip.mp4").gridMod(3, 2).vignette(1)        // an oval per cell
+$: video("clip.mp4").cropStack(2, 3).tile().vignette(1)          // an oval per crop tile
+$: video("clip.mp4").vignette(1).render().cropStack(2, 3).tile() // whole-frame oval, THEN sliced
 ```
 
 ### Smear — the multi-tap sampler

@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { mini } from "@strudel/mini";
 import { smearModeCode, normModSpace } from "./effects-controls";
+import { splitEffects } from "./effect-fields";
 import "./effects-controls";
 
 function query(pat: any, t: number) {
@@ -78,6 +79,33 @@ describe("bright alias (→ brightness)", () => {
 
   it(".bright and .brightness are the exact same method", () => {
     expect((src("a.mp4") as any).bright).toBe((src("a.mp4") as any).brightness);
+  });
+});
+
+describe("vignette control", () => {
+  it(".vignette(n) writes the vignette field", () => {
+    const v = query(src("a.mp4").vignette(mini("1.5")), 0);
+    expect(v.src).toBe("a.mp4");
+    expect(Number(v.vignette)).toBeCloseTo(1.5);
+  });
+
+  it("defaults to 1 — the corners-transparent oval", () => {
+    expect(Number(query(src("a.mp4").vignette(), 0).vignette)).toBe(1);
+  });
+
+  it("amount is patternable, including negatives", () => {
+    const pat = src("a.mp4").vignette(mini("1 -2"));
+    expect(Number(query(pat, 0.1).vignette)).toBe(1);
+    expect(Number(query(pat, 0.6).vignette)).toBe(-2);
+  });
+
+  it("is a pixel effect — it bakes at a .render() boundary", () => {
+    // In EFFECT_FIELDS, so splitEffects sends it to the bake segment rather than
+    // leaving it on the composited tile (unlike .alpha(), which is compositing).
+    const { effects, rest } = splitEffects(query(src("a.mp4").vignette(mini("1")).alpha(mini("0.5")), 0));
+    expect(Number(effects.vignette)).toBe(1);
+    expect(rest.vignette).toBeUndefined();
+    expect(Number(rest.alpha)).toBeCloseTo(0.5);
   });
 });
 

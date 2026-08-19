@@ -543,6 +543,7 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
+  numericArg.map(a => ({ code: `.vignette(${a})` })),
   // signed radius: >0 linear line, <0 circular ring, 0 jitter-only
   fc.tuple(rotArg, fc.double({ min: -64, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
@@ -603,6 +604,7 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
+  numericArg.map(a => ({ code: `.vignette(${a})` })),
   fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
   fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }), fc.constantFrom(...SMEAR_OP_MODES))

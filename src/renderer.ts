@@ -742,6 +742,7 @@ export class FrameRenderer {
       tintHue:       ev.tintHue       !== undefined ? Number(ev.tintHue)       : 0,
       tintStrength:  ev.tintStrength  !== undefined ? Number(ev.tintStrength)  : 0,
       barrel:        ev.barrel        !== undefined ? Number(ev.barrel)        : 0,
+      vignette:      ev.vignette      !== undefined ? Number(ev.vignette)      : 0,
       // Signed: sign selects the tap shape (+ linear line, − circular ring), so
       // NOT abs'd — the shape is meaningful, unlike a bare directional smear where
       // sign was redundant with `angle`.

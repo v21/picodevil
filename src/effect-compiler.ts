@@ -14,7 +14,8 @@
  *   6. BRIGHTNESS (additive offset)
  *   7. CONTRAST  (centred contrast)
  *   8. COLOR_OKLAB (grey + tint + huerot, one OKLab round-trip)
- *   9. ALPHA     (final multiply; always emitted)
+ *   9. VIGNETTE  (radial alpha falloff in the cell's own frame)
+ *  10. ALPHA     (final multiply; always emitted)
  *
  * Op layout: every op is exactly 8 floats (2 vec4s in std140), packed:
  *   [0] kind
@@ -45,6 +46,9 @@ export const OP_MODULATE    = 8;
  *  — and any reducer via `smearMode` (`.smearop`): avg / min / max / median /
  *  range / sharpen etc. */
 export const OP_SMEAR       = 9;
+/** Radial alpha falloff in cell-local space (`.vignette`). Multiplies alpha only,
+ *  so it sits with the colour ops, just before the final ALPHA multiply. */
+export const OP_VIGNETTE    = 10;
 
 /** Number of floats per op (one kind + 7 args). */
 export const OP_FLOATS = 8;
@@ -52,8 +56,8 @@ export const OP_FLOATS = 8;
 /** Maximum ops one tile can compile to (the fully-loaded chain). Sizes every
  *  scratch buffer that holds a single chain — compile(), the renderer's
  *  opsScratch, and the UBO-overflow retry all rely on it. SMEAR occupies the
- *  SAMPLE slot rather than adding one, so the ceiling is unchanged. */
-export const MAX_OPS = 9;
+ *  SAMPLE slot rather than adding one, so it doesn't count toward the ceiling. */
+export const MAX_OPS = 10;
 
 /**
  * Inputs the compiler needs from a DrawCommand. Mirrors the fields the
@@ -71,6 +75,10 @@ export interface EffectInputs {
   tintHue:      number;
   tintStrength: number;
   barrel:       number;
+  /** Vignette amount: 0 = off, 1 = corners transparent with the inscribed
+   *  ellipse untouched, higher eats inward, negative fades the centre instead.
+   *  Mapped to a band of q by vignetteBand(). */
+  vignette:     number;
   cropOffX:     number;
   cropOffY:     number;
   cropSizeX:    number;
@@ -119,6 +127,31 @@ export interface EffectInputs {
    *  (a `.render()` on an image/video visibly erodes its edges). Element textures
    *  are straight-alpha → 0. */
   sourceIsFbo?: number;
+}
+
+/**
+ * Map a vignette amount to the smooth band it fades across, in cell-local radius
+ * units (q = 0 at the centre, 1 at the middle of each edge, √2 at the corners —
+ * so a fade that starts at q = 1 leaves exactly the ellipse inscribed in the cell).
+ *
+ * The band is one corner-overshoot wide (W = √2 − 1) and slides inward at that
+ * rate per unit of amount:
+ *   0    → band parked at [√2, √2+W]: nothing fades (the corner is the largest q).
+ *   1    → band [1, √2]: edge midpoints fully opaque, corners fully transparent.
+ *   >1   → keeps eating inward; ≈4.41 has swept the band past the centre (all gone).
+ *   <0   → same band swept outward from the centre with the opacity inverted:
+ *          the centre fades out and the corners stay.
+ *
+ * Exported for tests — the shader just consumes [lo, hi] and the invert flag.
+ */
+export function vignetteBand(amount: number): { lo: number; hi: number; invert: boolean } {
+  const W = Math.SQRT2 - 1;
+  if (amount >= 0) {
+    const lo = Math.SQRT2 - amount * W;
+    return { lo, hi: lo + W, invert: false };
+  }
+  const hi = -amount * W;
+  return { lo: hi - W, hi, invert: true };
 }
 
 /**
@@ -256,6 +289,18 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
     out[i + 3] = e.tintStrength;
     out[i + 4] = e.hueRot;
     out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+    i += OP_FLOATS;
+    count++;
+  }
+
+  // VIGNETTE: radial alpha falloff. Only emit when non-zero (0 = no fade at all).
+  if (e.vignette !== 0) {
+    const { lo, hi, invert } = vignetteBand(e.vignette);
+    out[i] = OP_VIGNETTE;
+    out[i + 1] = lo;
+    out[i + 2] = hi;
+    out[i + 3] = invert ? 1 : 0;
+    out[i + 4] = 0; out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
     i += OP_FLOATS;
     count++;
   }

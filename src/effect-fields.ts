@@ -27,6 +27,7 @@ export const EFFECT_FIELDS: ReadonlySet<string> = new Set([
   'tintHue',
   'tintStrength',
   'barrel',
+  'vignette',
   'pixelate',
   'smear',
   'smearAngle',

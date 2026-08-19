@@ -6,7 +6,7 @@ import {
   compileInto, OP_FLOATS, MAX_OPS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR,
+  OP_MODULATE, OP_SMEAR, OP_VIGNETTE,
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
@@ -211,6 +211,7 @@ out vec4 fragColor;
 #define OP_ALPHA       ${OP_ALPHA}
 #define OP_MODULATE    ${OP_MODULATE}
 #define OP_SMEAR       ${OP_SMEAR}
+#define OP_VIGNETTE    ${OP_VIGNETTE}
 
 vec4 sampleAny(int texIdx, vec2 uv) {
   ${sampleChain}
@@ -557,6 +558,17 @@ void main() {
                       sinA * lab.yz.x + cosA * lab.yz.y);
       }
       color.rgb = linear_to_srgb(oklab_to_linear_rgb(lab));
+    } else if (kind == OP_VIGNETTE) {
+      // Radial alpha falloff in the cell's own [0,1] frame (v_local), NOT the
+      // working uv — so the fade is centred on and scaled to the visible cell,
+      // and it stays put whatever a barrel/modulate did to the sample coord.
+      // q = 0 at the centre, 1 at the middle of each edge, √2 at the corners:
+      // on a non-square cell that makes the untouched region an ellipse.
+      // a.y/a.z = the smooth band [lo,hi] in q (computed CPU-side from the
+      // amount — see vignetteBand); a.w = 1 to invert (fade the centre out).
+      float q = length((v_local - 0.5) * 2.0);
+      float s = smoothstep(a.y, a.z, q);
+      color.a *= a.w > 0.5 ? s : 1.0 - s;
     } else if (kind == OP_ALPHA) {
       color.a *= a.y;
     }
@@ -765,6 +777,7 @@ interface DrawCommand {
   tintHue:      number;
   tintStrength: number;
   barrel:       number;
+  vignette:     number;
   cropOffX:     number;
   cropOffY:     number;
   cropSizeX:    number;
@@ -1249,6 +1262,7 @@ export class WebGLRenderer implements Renderer {
         tintHue:      p.tintHue      ?? 0,
         tintStrength: p.tintStrength ?? 0,
         barrel:       p.barrel       ?? 0,
+        vignette:     p.vignette     ?? 0,
         cropOffX: 0, cropOffY: 0, cropSizeX: 1, cropSizeY: 1,
         tileMode:     0,
         modTexture, modAmt, modSpace,
@@ -1312,6 +1326,7 @@ export class WebGLRenderer implements Renderer {
       tintHue:      p.tintHue      ?? 0,
       tintStrength: p.tintStrength ?? 0,
       barrel:       p.barrel       ?? 0,
+      vignette:     p.vignette     ?? 0,
       cropOffX, cropOffY, cropSizeX, cropSizeY,
       tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
       modTexture, modAmt, modSpace,
@@ -1419,6 +1434,7 @@ export class WebGLRenderer implements Renderer {
         tintHue:      cmd.tintHue,
         tintStrength: cmd.tintStrength,
         barrel:       cmd.barrel,
+        vignette:     cmd.vignette,
         cropOffX:     cmd.cropOffX,
         cropOffY:     cmd.cropOffY,
         cropSizeX:    cmd.cropSizeX,

@@ -74,6 +74,10 @@ export interface TileParams {
   tintStrength: number;
   /** Barrel (>0) / pincushion (<0) distortion coefficient. 0 = off (default). */
   barrel: number;
+  /** Radial alpha falloff over the cell: 0 = off (default), 1 = corners fully
+   *  transparent with the inscribed ellipse untouched, higher eats inward,
+   *  negative fades the centre out and leaves the corners. */
+  vignette: number;
   /** Signed smear radius in screen px (9-tap). **Sign = tap shape**: > 0 linear (a
    *  directional line), < 0 circular (a rotated ring — `.dilate`/`.erode`), 0 =
    *  jitter-only. `|value|` is the radius; `smearAngle` is the line direction / ring

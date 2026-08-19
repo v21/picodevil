@@ -3,8 +3,9 @@ import {
   compile,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR,
+  OP_MODULATE, OP_SMEAR, OP_VIGNETTE,
   OP_FLOATS, MAX_OPS,
+  vignetteBand,
   type EffectInputs,
 } from "./effect-compiler";
 
@@ -20,6 +21,7 @@ function defaults(): EffectInputs {
     brightness: 0,
     tintHue: 0, tintStrength: 0,
     barrel: 0,
+    vignette: 0,
     cropOffX: 0, cropOffY: 0,
     cropSizeX: 1, cropSizeY: 1,
     tileMode: 0,
@@ -72,6 +74,7 @@ describe("effect-compiler", () => {
         brightness: 0.2,
         tintHue: 0.3, tintStrength: 0.6,
         barrel: 0.2,
+        vignette: 0,
         cropOffX: 0.1, cropOffY: 0.1,
         cropSizeX: 0.8, cropSizeY: 0.8,
         tileMode: 1,
@@ -202,6 +205,7 @@ describe("effect-compiler", () => {
         brightness: 0.2,
         tintHue: 0.3, tintStrength: 0.6,
         barrel: 0.2,
+        vignette: 1,
         cropOffX: 0.1, cropOffY: 0.1,
         cropSizeX: 0.8, cropSizeY: 0.8,
         tileMode: 1,
@@ -211,9 +215,101 @@ describe("effect-compiler", () => {
       const ks = kinds(compile(e));
       expect(ks).toEqual([
         OP_BARREL, OP_MODULATE, OP_PIXELATE, OP_WRAP, OP_SAMPLE,
-        OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_ALPHA,
+        OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_VIGNETTE, OP_ALPHA,
       ]);
       expect(ks.length).toBe(MAX_OPS);
+    });
+  });
+
+  describe("VIGNETTE", () => {
+    const SQ2 = Math.SQRT2, W = SQ2 - 1;
+
+    it("not emitted at 0 — an unvignetted tile pays nothing", () => {
+      expect(kinds(compile(defaults()))).not.toContain(OP_VIGNETTE);
+    });
+
+    it("sits between the colour ops and the final ALPHA", () => {
+      const ks = kinds(compile({ ...defaults(), vignette: 1, grey: 1 }));
+      const vi = ks.indexOf(OP_VIGNETTE);
+      expect(ks[vi - 1]).toBe(OP_COLOR_OKLAB);
+      expect(ks[vi + 1]).toBe(OP_ALPHA);
+    });
+
+    it("packs [lo, hi, invert]", () => {
+      const ops = compile({ ...defaults(), vignette: 1 });
+      const o = 2 * OP_FLOATS; // WRAP, SAMPLE, VIGNETTE
+      expect(ops[o]).toBe(OP_VIGNETTE);
+      expect(ops[o + 1]).toBeCloseTo(1);    // lo: the inscribed ellipse
+      expect(ops[o + 2]).toBeCloseTo(SQ2);  // hi: the corners
+      expect(ops[o + 3]).toBe(0);           // not inverted
+    });
+
+    it("negative amounts invert and sweep outward from the centre", () => {
+      const ops = compile({ ...defaults(), vignette: -1 });
+      const o = 2 * OP_FLOATS;
+      expect(ops[o + 1]).toBeCloseTo(0);    // lo: the centre
+      expect(ops[o + 2]).toBeCloseTo(W);
+      expect(ops[o + 3]).toBe(1);           // inverted: opaque outside the band
+    });
+  });
+
+  describe("vignetteBand", () => {
+    const SQ2 = Math.SQRT2, W = SQ2 - 1;
+    /** Alpha the shader would produce at radius q (0 centre, 1 edge mid, √2 corner). */
+    const at = (amount: number, q: number) => {
+      const { lo, hi, invert } = vignetteBand(amount);
+      const t = Math.min(1, Math.max(0, (q - lo) / (hi - lo)));
+      const s = t * t * (3 - 2 * t);
+      return invert ? s : 1 - s;
+    };
+
+    it("0 leaves even the corners fully opaque", () => {
+      expect(at(0, 0)).toBeCloseTo(1);
+      expect(at(0, 1)).toBeCloseTo(1);
+      expect(at(0, SQ2)).toBeCloseTo(1);
+    });
+
+    it("1 = opaque ellipse, transparent corners, falloff between", () => {
+      expect(at(1, 0)).toBeCloseTo(1);      // centre
+      expect(at(1, 1)).toBeCloseTo(1);      // middle of an edge
+      expect(at(1, SQ2)).toBeCloseTo(0);    // corner
+      const mid = at(1, (1 + SQ2) / 2);
+      expect(mid).toBeGreaterThan(0.2);
+      expect(mid).toBeLessThan(0.8);
+    });
+
+    it("is monotone in the amount at every radius", () => {
+      for (const q of [0.2, 0.7, 1, 1.2, SQ2]) {
+        for (const v of [0, 0.5, 1, 2, 3, 4]) {
+          expect(at(v + 0.5, q)).toBeLessThanOrEqual(at(v, q) + 1e-9);
+        }
+      }
+    });
+
+    it("keeps eating inward until the whole tile is transparent", () => {
+      expect(at(2, 1)).toBeCloseTo(0);           // edge midpoints gone
+      expect(at(2, 0)).toBeCloseTo(1);           // centre still there
+      const gone = (SQ2 + W) / W;                // band swept fully past q=0
+      expect(gone).toBeCloseTo(4.414);
+      expect(at(gone, 0)).toBeCloseTo(0);
+      expect(at(gone, SQ2)).toBeCloseTo(0);
+    });
+
+    it("negative fades the centre and leaves the corners", () => {
+      expect(at(-1, 0)).toBeCloseTo(0);          // centre gone
+      expect(at(-1, 1)).toBeCloseTo(1);          // edge midpoints intact
+      expect(at(-1, SQ2)).toBeCloseTo(1);        // corners intact
+      // same sweep rate as the positive side: -√2/W is the exact inverse of +1
+      const mirror = -SQ2 / W;
+      expect(mirror).toBeCloseTo(-3.414);
+      expect(at(mirror, 1)).toBeCloseTo(0);
+      expect(at(mirror, SQ2)).toBeCloseTo(1);
+      expect(at(-(SQ2 + W) / W, SQ2)).toBeCloseTo(0);
+    });
+
+    it("is continuous through 0 — no jump between the two branches", () => {
+      expect(at(0.001, SQ2)).toBeGreaterThan(0.98);
+      expect(at(-0.001, 0)).toBeGreaterThan(0.98);
     });
   });
 

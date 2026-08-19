@@ -749,3 +749,88 @@ describe("smearop() reducers", () => {
     expect(b).toBeLessThan(60);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Vignette: radial alpha falloff in the cell's own frame. Radius q is 0 at the
+// centre, 1 at the middle of each edge and √2 at the corners, so the untouched
+// region at vignette=1 is the ellipse inscribed in the cell — not a screen circle.
+// ---------------------------------------------------------------------------
+
+describe("vignette", () => {
+  const red = { kind: 'color' as const, r: 1, g: 0, b: 0 };
+  const alphaAt = (tile: Parameters<typeof makeTile>[0], x: number, y: number) =>
+    readPixel(renderTile(makeTile({ source: red, fit: 'fill', ...tile })), x, y)[3];
+
+  it("0 is identity — corners still fully opaque", () => {
+    expect(alphaAt({ vignette: 0 }, 50, 50)).toBe(255);
+    expect(alphaAt({ vignette: 0 }, 0, 0)).toBe(255);
+  });
+
+  it("1 keeps the inscribed ellipse and clears the corners", () => {
+    const v = { vignette: 1 };
+    expect(alphaAt(v, 50, 50)).toBe(255);   // centre
+    expect(alphaAt(v, 50, 1)).toBe(255);    // middle of the top edge (q ≈ 1)
+    expect(alphaAt(v, 1, 50)).toBe(255);    // middle of the left edge
+    expect(alphaAt(v, 0, 0)).toBeLessThan(12);        // corners (q ≈ √2)
+    expect(alphaAt(v, W - 1, H - 1)).toBeLessThan(12);
+  });
+
+  it("1 falls off smoothly between the ellipse and the corner", () => {
+    // On the diagonal at q ≈ 1.2 — a bit over halfway across the band.
+    const a = alphaAt({ vignette: 1 }, 92, 92);
+    expect(a).toBeGreaterThan(80);
+    expect(a).toBeLessThan(180);
+    // Monotone outward along the diagonal.
+    expect(alphaAt({ vignette: 1 }, 85, 85)).toBeGreaterThan(a);
+    expect(alphaAt({ vignette: 1 }, 97, 97)).toBeLessThan(a);
+  });
+
+  it("the mask is an ellipse on a rectangular cell, not a screen circle", () => {
+    // A 100×40 cell. A circle in screen pixels would have cleared the far left
+    // and right of it (they're 2.5× further out than the top/bottom); the cell's
+    // own frame makes them the ellipse's own extremes, so they stay opaque.
+    const flat = { vignette: 1, w: 1, h: 0.4 };
+    expect(alphaAt(flat, 50, 50)).toBe(255);   // centre
+    expect(alphaAt(flat, 1, 50)).toBe(255);    // left edge midpoint (q ≈ 1)
+    expect(alphaAt(flat, 50, 31)).toBe(255);   // top edge midpoint
+    expect(alphaAt(flat, 1, 31)).toBeLessThan(30);  // the cell's top-left corner
+  });
+
+  it("above 1 keeps eating inward — edge midpoints go, then everything", () => {
+    expect(alphaAt({ vignette: 2 }, 50, 1)).toBeLessThan(6);   // edge midpoint gone
+    expect(alphaAt({ vignette: 2 }, 50, 50)).toBe(255);        // centre still there
+    expect(alphaAt({ vignette: 5 }, 50, 50)).toBe(0);          // whole tile gone
+    expect(alphaAt({ vignette: 5 }, 25, 50)).toBe(0);
+  });
+
+  it("negative fades the centre out and leaves the corners", () => {
+    const v = { vignette: -1 };
+    expect(alphaAt(v, 50, 50)).toBeLessThan(3);  // centre gone (the exact centre pixel is a hair off q=0)
+    expect(alphaAt(v, 0, 0)).toBe(255);        // corners intact
+    expect(alphaAt(v, 50, 1)).toBe(255);       // edge midpoint intact
+    // -√2/(√2−1) ≈ -3.414 is the exact inverse of vignette(1): corners only.
+    expect(alphaAt({ vignette: -3.414 }, 50, 1)).toBeLessThan(6);
+    expect(alphaAt({ vignette: -3.414 }, 0, 0)).toBeGreaterThan(243);
+  });
+
+  it("multiplies with .alpha() rather than replacing it", () => {
+    expect(alphaAt({ vignette: 1, alpha: 0.5 }, 50, 50)).toBeGreaterThan(120);
+    expect(alphaAt({ vignette: 1, alpha: 0.5 }, 50, 50)).toBeLessThan(136);
+  });
+
+  it("is centred on the cell, not the source, under a crop", () => {
+    // Right-half crop: the vignette lives in the drawn cell's frame like every
+    // other cell-local effect, so it stays symmetric about the cell centre.
+    const cropped = { vignette: 1, cropx: 0.75, cropw: 0.5 };
+    expect(alphaAt(cropped, 50, 50)).toBe(255);
+    const l = alphaAt(cropped, 3, 3), r = alphaAt(cropped, W - 4, 3);
+    expect(Math.abs(l - r)).toBeLessThan(20);
+  });
+
+  it("does not follow the barrel warp — the oval stays put", () => {
+    // Barrel moves the sample coord, not v_local: the centre of a barrelled tile
+    // is still the centre of the vignette.
+    expect(alphaAt({ vignette: 1, barrel: 0.5 }, 50, 50)).toBe(255);
+    expect(alphaAt({ vignette: 1, barrel: 0.5 }, 0, 0)).toBeLessThan(12);
+  });
+});
