@@ -156,6 +156,20 @@ describe("media registry", () => {
     expect(resolveMedia("testimg")!.thumbnail!.startsWith("data:image/jpeg")).toBe(true);
   });
 
+  it("generates thumbnails for imported entries (not just on reload)", async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2; canvas.height = 2;
+    canvas.getContext("2d")!.fillStyle = "lime";
+    canvas.getContext("2d")!.fillRect(0, 0, 2, 2);
+    const dataUrl = canvas.toDataURL("image/png");
+
+    importAll(JSON.stringify([{ name: "imgimport", url: dataUrl, type: "image" }]));
+    expect(resolveMedia("imgimport")!.thumbnail).toBeUndefined(); // async — not instant
+
+    await waitFor(() => !!resolveMedia("imgimport")?.thumbnail);
+    expect(resolveMedia("imgimport")!.thumbnail!.startsWith("data:image/jpeg")).toBe(true);
+  });
+
   it("clears downloading flag after rename mid-download", async () => {
     let resolveFetch!: (r: Response) => void;
     const fetchPromise = new Promise<Response>(resolve => { resolveFetch = resolve; });

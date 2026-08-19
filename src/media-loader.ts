@@ -291,24 +291,56 @@ function makeFooter(): HTMLElement {
   return footer;
 }
 
-/** Stable key representing all visually-relevant fields of an entry.
- *  If the key is unchanged, the row DOM node is reused without modification. */
-function entryRenderKey(entry: MediaEntry): string {
+/** Stable key representing the *structural* fields of an entry — if unchanged,
+ *  the row DOM node is reused as-is. Progress percentages (`uploadProgress`,
+ *  `phasePercent`) and `phase` are deliberately excluded: a transcode/download
+ *  tick shouldn't rebuild the row, because that tears out the name/url input the
+ *  user may be typing in. Those are refreshed in place by `updateRowProgress`. */
+export function entryRenderKey(entry: MediaEntry): string {
   return [
     entry.url,
     entry.type ?? "",
     entry.thumbnail ?? "",
     String(!!entry.downloading),
-    entry.phase ?? "",
-    String(entry.phasePercent ?? ""),
     String(!!entry.uploading),
-    String(entry.uploadProgress ?? ""),
     entry.error ?? "",
     String(!!entry.unavailable),
     entry.streamKind ?? "",
     entry.deviceId ?? "",
     String(entry.type === "stream" ? isStreamActive(entry.name) : false),
   ].join("\0");
+}
+
+/** Indicator text/title for an in-progress upload or download, or null when the
+ *  entry isn't uploading/downloading. Single source of truth for both the
+ *  initial build (makeRow) and the in-place refresh (updateRowProgress). */
+function progressText(entry: MediaEntry): { text: string; title: string; small: boolean } | null {
+  if (entry.uploading) {
+    const pct = entry.uploadProgress != null ? Math.round(entry.uploadProgress * 100) : null;
+    return pct != null && pct < 100
+      ? { text: `↑${pct}%`, title: "Uploading…", small: false }
+      : { text: "⚙", title: "Transcoding…", small: false };
+  }
+  if (entry.downloading) {
+    // Two-phase YouTube progress: "downloading: 45%" then "transcoding: 13%".
+    // Falls back to ⏳ before the first /ready poll reports a phase.
+    if (entry.phase && entry.phasePercent != null) {
+      const label = entry.phase === "transcode" ? "transcoding" : "downloading";
+      return { text: `${label}: ${Math.round(entry.phasePercent * 100)}%`, title: `${label} in progress`, small: false };
+    }
+    return { text: "⏳", title: "", small: true };
+  }
+  return null;
+}
+
+/** Refresh just the progress indicator's text/title in place, without rebuilding
+ *  the row — so typing in the row's inputs isn't interrupted by progress ticks. */
+function updateRowProgress(row: HTMLElement, entry: MediaEntry) {
+  const indicator = row.querySelector<HTMLElement>(".vid-indicator");
+  const p = progressText(entry);
+  if (!indicator || !p) return;
+  if (indicator.textContent !== p.text) indicator.textContent = p.text;
+  indicator.title = p.title;
 }
 
 function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
@@ -343,6 +375,9 @@ function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
       row.dataset.entryKey = key;
       byName.set(entry.name, row);
     }
+
+    // Refresh progress text in place (row was reused, key excludes percentages).
+    updateRowProgress(row, entry);
 
     // Ensure the row sits at position i without moving it unnecessarily.
     const atI = list.children[i] as HTMLElement | undefined;
@@ -460,27 +495,15 @@ function makeRow(entry: MediaEntry): HTMLElement {
     });
     row.appendChild(urlInput);
 
-    // Status indicators
-    if (entry.uploading) {
+    // Status indicators. Progress text comes from progressText() so the initial
+    // build and the in-place updateRowProgress() refresh never diverge.
+    const progress = progressText(entry);
+    if (progress) {
       const indicator = document.createElement("span");
-      const pct = entry.uploadProgress != null ? Math.round(entry.uploadProgress * 100) : null;
-      indicator.textContent = pct != null && pct < 100 ? `↑${pct}%` : "⚙";
-      indicator.title = pct != null && pct < 100 ? "Uploading…" : "Transcoding…";
-      indicator.className = "vid-indicator";
-      row.appendChild(indicator);
-    } else if (entry.downloading) {
-      // Two-phase YouTube progress: "downloading: 45%" then "transcoding: 13%".
-      // Falls back to ⏳ before the first /ready poll reports a phase.
-      const indicator = document.createElement("span");
-      indicator.className = "vid-indicator dl";
-      if (entry.phase && entry.phasePercent != null) {
-        const label = entry.phase === "transcode" ? "transcoding" : "downloading";
-        indicator.textContent = `${label}: ${Math.round(entry.phasePercent * 100)}%`;
-        indicator.title = `${label} in progress`;
-      } else {
-        indicator.textContent = "⏳";
-        indicator.style.fontSize = "16px";
-      }
+      indicator.className = entry.downloading ? "vid-indicator dl" : "vid-indicator";
+      indicator.textContent = progress.text;
+      indicator.title = progress.title;
+      if (progress.small) indicator.style.fontSize = "16px";
       row.appendChild(indicator);
     } else if (entry.error) {
       const retryBtn = document.createElement("button");

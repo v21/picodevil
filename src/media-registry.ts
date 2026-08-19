@@ -238,10 +238,17 @@ export function exportAll(): string {
 
 export function importAll(json: string) {
   const arr: MediaEntry[] = JSON.parse(json);
-  for (const entry of arr) {
-    if (entry.name && entry.url) {
-      const name = uniqueName(entry.name);
-      registry.push({ id: entry.id ?? crypto.randomUUID(), ...entry, name });
+  for (const raw of arr) {
+    if (raw.name && raw.url) {
+      const name = uniqueName(raw.name);
+      const entry = { id: raw.id ?? crypto.randomUUID(), ...raw, name } as MediaEntry;
+      registry.push(entry);
+      // Generate a thumbnail now rather than only on the next reload (via
+      // initRegistry). Same guard: skip blobs, streams, YouTube links, and any
+      // entry that already carried a thumbnail in the imported JSON.
+      if (!entry.thumbnail && !entry.url.startsWith("blob:") && entry.type !== "stream" && !isYouTubeUrl(entry.url)) {
+        generateThumbnail(entry);
+      }
     }
   }
   save();
