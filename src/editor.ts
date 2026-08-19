@@ -5,8 +5,8 @@ import {
 } from "@codemirror/view";
 import { EditorState, Prec, Transaction, type Extension } from "@codemirror/state";
 import { javascriptLanguage } from "@codemirror/lang-javascript";
-import { indentOnInput, syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
-import { history, defaultKeymap, historyKeymap, historyField, indentMore, indentLess } from "@codemirror/commands";
+import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from "@codemirror/language";
+import { history, defaultKeymap, historyKeymap, historyField, indentMore, indentLess, insertNewline } from "@codemirror/commands";
 import { highlightSelectionMatches, searchKeymap } from "@codemirror/search";
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import { lintKeymap } from "@codemirror/lint";
@@ -31,10 +31,26 @@ export const tabIndentsOrInserts: Command = (view) => {
   return true;
 };
 
+/**
+ * Pad an inserted token with surrounding spaces so it doesn't fuse with
+ * neighbouring text — used when clicking a Thumbs clip to build a mininotation
+ * sequence like `s("ducks canalboat")`. `before`/`after` are the chars adjacent
+ * to the caret, or `null` at a document boundary (no padding needed there).
+ * A `"` counts as already-separated too, so inserting inside `s("")` gives
+ * `s("ducks")`, not `s(" ducks ")`.
+ */
+export function padInsert(text: string, before: string | null, after: string | null): string {
+  const lead = before !== null && !/[\s"]/.test(before) ? " " : "";
+  const trail = after !== null && !/[\s"]/.test(after) ? " " : "";
+  return lead + text + trail;
+}
+
 // Reconstruction of codemirror's `basicSetup` WITHOUT code folding — picodevil
 // has no fold support, so foldGutter()/foldKeymap are dropped (the fold gutter
-// otherwise adds an unused, distracting column). Everything else matches the
-// upstream `basicSetup` (codemirror 6.0.2).
+// otherwise adds an unused, distracting column). Also drops `indentOnInput()`:
+// auto-indentation is disabled entirely (see the Enter binding below), so the
+// editor never chooses indentation for you — you indent manually with Tab.
+// Everything else matches the upstream `basicSetup` (codemirror 6.0.2).
 const basicSetup: Extension = [
   lineNumbers(),
   highlightActiveLineGutter(),
@@ -43,7 +59,6 @@ const basicSetup: Extension = [
   drawSelection(),
   dropCursor(),
   EditorState.allowMultipleSelections.of(true),
-  indentOnInput(),
   syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
   bracketMatching(),
   closeBrackets(),
@@ -53,6 +68,11 @@ const basicSetup: Extension = [
   highlightSelectionMatches(),
   keymap.of([
     ...closeBracketsKeymap,
+    // Enter inserts a plain newline (column 0), not `insertNewlineAndIndent`.
+    // Placed before defaultKeymap so it wins (first binding to return true), and
+    // insertNewline always returns true. With indentOnInput() also dropped, the
+    // editor does no automatic indentation at all.
+    { key: "Enter", run: insertNewline },
     ...defaultKeymap,
     ...searchKeymap,
     ...historyKeymap,
@@ -360,10 +380,15 @@ export function setupEditor(
 
   // Insert text at the caret / over the current selection (same primitive the
   // Tab handler uses). Used by the Thumbs sidebar tab to paste a clip's short
-  // name where the user is typing. Doesn't evaluate — the user hits Ctrl-Enter.
+  // name where the user is typing. Pads with surrounding spaces so names don't
+  // fuse with adjacent text. Doesn't evaluate — the user hits Ctrl-Enter.
   window.pdInsertAtCursor = (text: string) => {
+    const { state } = view;
+    const { from, to } = state.selection.main;
+    const before = from > 0 ? state.doc.sliceString(from - 1, from) : null;
+    const after = to < state.doc.length ? state.doc.sliceString(to, to + 1) : null;
     view.dispatch(
-      view.state.update(view.state.replaceSelection(text), {
+      state.update(state.replaceSelection(padInsert(text, before, after)), {
         scrollIntoView: true,
         userEvent: "input",
       }),
