@@ -715,6 +715,32 @@ body {
   visibility: hidden; /* empty the slot but keep its size */
 }
 
+/* view⇄edit flip: fade the incoming pane's chrome (row text/buttons, grid labels)
+   in while the thumbnails fly, so the edit fields / labels don't pop. Duration
+   matches FLIP_MS in media-loader.ts. */
+@keyframes pd-chrome-fade { from { opacity: 0; } to { opacity: 1; } }
+[data-list].pd-chrome-in .vid-name,
+[data-list].pd-chrome-in .vid-url,
+[data-list].pd-chrome-in .vid-row > button,
+[data-list].pd-chrome-in .vid-stream-label,
+[data-list].pd-chrome-in .vid-indicator,
+[data-grid].pd-chrome-in .thumb-label,
+[data-grid].pd-chrome-in .thumb-progress {
+  animation: pd-chrome-fade 300ms linear;
+}
+
+/* Snapshot of the outgoing list, fading out during the list → thumbs flip so the
+   row text eases away instead of snapping to transparent (position/size in JS). */
+.pd-fade-out-clone {
+  position: fixed;
+  z-index: 50;
+  margin: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 300ms linear;
+}
+
 /* The clone that follows the cursor while dragging (size/position set in JS). */
 .drag-clone {
   position: fixed;

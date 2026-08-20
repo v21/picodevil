@@ -37,12 +37,127 @@ function saveGridScroll() {
   }, 200);
 }
 
+// The view⇄edit "thumbs fly" animation. Flip FLIP_MODE_SWITCH to false to kill it.
+const FLIP_MODE_SWITCH = true;
+const FLIP_MS = 300;
+let flipping = false;
+let flipToken = 0; // bumped per flip so a superseded flip's cleanup can bow out
+
+function flipEnabled(): boolean {
+  return FLIP_MODE_SWITCH && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function setViewMode(mode: ViewMode) {
   if (mode === viewMode) return;
+  flipping = false; // let a re-toggle mid-animation swap the panes
+  const first = flipEnabled() ? measureFlipRects() : null; // outgoing thumbnail positions
+  // Going list → thumbs, fade the outgoing list text out (rather than snapping to
+  // transparent when the pane is hidden). The grid has no separate text chrome
+  // (the label rides the flying cell), so only this direction needs it.
+  if (first && mode === "view") {
+    const list = container.querySelector<HTMLElement>("[data-list]");
+    if (list) fadeOutPane(list);
+  }
   viewMode = mode;
   try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { /* storage disabled */ }
   if (mode === "view") restoreGridScroll = true; // re-restore where they left off
-  render(); // Stage C wraps this transition; the swap itself lives in render()
+  render(); // swaps the panes
+  if (first?.size) playFlip(first);
+}
+
+/** Snapshot a pane as a fixed-position clone over its current spot and fade it
+ *  out — so its text eases away instead of vanishing when the real pane is
+ *  hidden. Thumbnails are hidden on the clone (the real flying/incoming ones
+ *  cover that area). Cleans up on transitionend, with a fallback. */
+function fadeOutPane(pane: HTMLElement) {
+  const rect = pane.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const clone = pane.cloneNode(true) as HTMLElement;
+  clone.removeAttribute("data-list");
+  clone.removeAttribute("data-grid");
+  clone.classList.add("pd-fade-out-clone");
+  clone.style.left = `${rect.left}px`;
+  clone.style.top = `${rect.top}px`;
+  clone.style.width = `${rect.width}px`;
+  clone.style.height = `${rect.height}px`;
+  clone.querySelectorAll<HTMLElement>(".vid-thumb, .thumb-cell > img").forEach(t => { t.style.visibility = "hidden"; });
+  // cloneNode copies input attributes, not live values — mirror name/url over.
+  const src = pane.querySelectorAll("input");
+  const dst = clone.querySelectorAll("input");
+  src.forEach((inp, i) => { if (dst[i]) dst[i].value = inp.value; });
+  document.body.appendChild(clone);
+  clone.scrollTop = pane.scrollTop; // align rows with the original
+  requestAnimationFrame(() => { clone.style.opacity = "0"; });
+  const remove = () => clone.remove();
+  clone.addEventListener("transitionend", remove);
+  setTimeout(remove, 4000);
+}
+
+/** Screen rects of every laid-out thumbnail (grid cell / row thumb), keyed by
+ *  flip-key. Only the visible pane has non-zero rects, so this captures it. */
+function measureFlipRects(): Map<string, DOMRect> {
+  const m = new Map<string, DOMRect>();
+  container.querySelectorAll<HTMLElement>("[data-flip-key]").forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.width && r.height) m.set(el.dataset.flipKey!, r);
+  });
+  return m;
+}
+
+/** FLIP: fly each incoming thumbnail from where its counterpart sat in the old
+ *  pane to its new spot, scaling between the grid (120×90) and row (40×30). */
+function playFlip(first: Map<string, DOMRect>) {
+  const pane = container.querySelector<HTMLElement>(viewMode === "view" ? "[data-grid]" : "[data-list]");
+  const view = pane?.getBoundingClientRect();
+  const hit = (a: DOMRect, b: DOMRect) =>
+    a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+  const anims: HTMLElement[] = [];
+  container.querySelectorAll<HTMLElement>("[data-flip-key]").forEach(el => {
+    const f = first.get(el.dataset.flipKey!);
+    if (!f) return;
+    const l = el.getBoundingClientRect();
+    if (!l.width || !l.height) return;                   // the now-hidden old pane
+    if (view && !hit(f, view) && !hit(l, view)) return;  // both off-screen — skip
+    const dx = f.left - l.left, dy = f.top - l.top;
+    const sx = f.width / l.width, sy = f.height / l.height;
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.02 && Math.abs(sy - 1) < 0.02) return;
+    el.style.transition = "none";
+    el.style.transformOrigin = "top left";
+    el.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
+    anims.push(el);
+  });
+  if (!anims.length) return;
+  flipping = true; // pause render() so a playback save() can't reconcile mid-flight
+  pane?.classList.add("pd-chrome-in"); // fade the incoming pane's text/labels in
+  const token = ++flipToken;
+
+  // Release on the NEXT frame, not after a layout read: a composited transform
+  // isn't committed by reading offsetWidth, so inverting-then-clearing in the same
+  // frame coalesces into a no-op and the motion collapses to a jump. rAF lets the
+  // browser paint the inverted (First) state once, then animate it to identity.
+  requestAnimationFrame(() => {
+    for (const el of anims) {
+      el.style.transition = `transform ${FLIP_MS}ms cubic-bezier(0.33, 1, 0.68, 1)`;
+      el.style.transform = "";
+    }
+  });
+
+  // Clean up when the motion actually finishes (transitionend), not on a fixed
+  // timer — so cleanup can never clear a still-running transform and snap it,
+  // whatever the playback speed (e.g. slow-mo in the Animations inspector). The
+  // fallback only covers a genuinely missed transitionend.
+  const done = () => {
+    clearTimeout(fallback);
+    anims[0].removeEventListener("transitionend", done);
+    if (token !== flipToken) return; // superseded by a newer toggle — leave it be
+    for (const el of anims) { el.style.transition = ""; el.style.transformOrigin = ""; el.style.transform = ""; }
+    pane?.classList.remove("pd-chrome-in");
+    flipping = false;
+    render(); // catch up on anything deferred during the flight
+  };
+  anims[0].addEventListener("transitionend", done);
+  const fallback = setTimeout(done, 4000);
 }
 
 // Toggle icons (inline SVG so nothing is fetched at runtime; stroke inherits the
@@ -161,11 +276,11 @@ export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
 }
 
 function render() {
-  // Don't reflow the panes mid-drag: a save() from playback (durations loading,
-  // thumbnails finishing, progress ticks) would otherwise reconcile the dragged
-  // element out of its previewed slot and flicker. finishDrag() re-renders once
-  // the drag ends, picking up whatever changed in the meantime.
-  if (drag?.active) return;
+  // Don't reflow the panes mid-drag or mid-flip: a save() from playback (durations
+  // loading, thumbnails finishing, progress ticks) would otherwise reconcile an
+  // animating element (snapping it to its final spot) and break the motion. Both
+  // finishDrag() and the flip's cleanup re-render once the animation ends.
+  if (drag?.active || flipping) return;
 
   // First render: build the persistent structure (add bar + both view panes).
   // These are never torn down so scroll positions and the add bar's input value
