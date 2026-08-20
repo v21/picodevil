@@ -3,7 +3,7 @@ import {
   addMedia, removeMedia, renameMedia, resolveMedia, getAllEntries,
   exportAll, importAll, clearAll, isYouTubeUrl, updateUrl, downloadYouTube,
   loadVideo, loadImage, uploadToServer, setOnChange, addFromServer, missingFromServer,
-  guessTypeFromFile, initRegistry, pruneOrphanThumbs, thumbSize,
+  guessTypeFromFile, initRegistry, pruneOrphanThumbs, thumbSize, moveMediaBefore,
 } from "./media-registry";
 
 const THUMB_PREFIX = "picodevil:thumb:";
@@ -25,6 +25,41 @@ function waitFor(cond: () => boolean | undefined, timeout = 3000): Promise<void>
     tick();
   });
 }
+
+describe("moveMediaBefore", () => {
+  const names = () => getAllEntries().map(e => e.name);
+  const seed = () => { addMedia("http://x/a.mp4", "a"); addMedia("http://x/b.mp4", "b"); addMedia("http://x/c.mp4", "c"); };
+
+  it("moves an entry before another", () => {
+    seed();
+    moveMediaBefore("c", "a"); // c ahead of a
+    expect(names()).toEqual(["c", "a", "b"]);
+  });
+
+  it("moves an entry to the end when beforeName is null", () => {
+    seed();
+    moveMediaBefore("a", null);
+    expect(names()).toEqual(["b", "c", "a"]);
+  });
+
+  it("moving before a later sibling reinserts correctly (no off-by-one)", () => {
+    seed();
+    moveMediaBefore("a", "c"); // a should land just before c
+    expect(names()).toEqual(["b", "a", "c"]);
+  });
+
+  it("is a no-op when moving an entry before itself", () => {
+    seed();
+    moveMediaBefore("b", "b");
+    expect(names()).toEqual(["a", "b", "c"]);
+  });
+
+  it("ignores an unknown dragged name", () => {
+    seed();
+    moveMediaBefore("zzz", "a");
+    expect(names()).toEqual(["a", "b", "c"]);
+  });
+});
 
 describe("thumbSize", () => {
   it("preserves 16:9 landscape, capping the long edge", () => {

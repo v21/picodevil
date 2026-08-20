@@ -1,7 +1,7 @@
 import {
   getAllEntries, addMedia, removeMedia, renameMedia, updateUrl, updateEntry,
   isYouTubeUrl, downloadYouTube, exportAll, importAll, clearAll, setOnChange,
-  uploadToServer, addFromServer, missingFromServer, guessTypeFromFile,
+  uploadToServer, addFromServer, missingFromServer, guessTypeFromFile, moveMediaBefore,
   type MediaEntry, type SourceItem,
 } from "./media-registry";
 import { getServerUrl, getServerStatus, subscribe as subscribeServer } from "./server-config";
@@ -161,6 +161,12 @@ export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
 }
 
 function render() {
+  // Don't reflow the panes mid-drag: a save() from playback (durations loading,
+  // thumbnails finishing, progress ticks) would otherwise reconcile the dragged
+  // element out of its previewed slot and flicker. finishDrag() re-renders once
+  // the drag ends, picking up whatever changed in the meantime.
+  if (drag?.active) return;
+
   // First render: build the persistent structure (add bar + both view panes).
   // These are never torn down so scroll positions and the add bar's input value
   // survive subsequent renders; only the active pane is shown.
@@ -520,6 +526,8 @@ export function reconcileGrid(grid: HTMLElement, entries: MediaEntry[]) {
       const newCell = makeThumbCell(entry, insertName);
       newCell.dataset.entryId = entry.id;
       newCell.dataset.cellKey = key;
+      // Drag the cell to reorder (shared registry order → the list reorders too).
+      attachReorder(newCell, newCell, entry, "x");
       if (cell) grid.replaceChild(newCell, cell);
       cell = newCell;
       byId.set(entry.id, cell);
@@ -549,6 +557,142 @@ export function reconcileGrid(grid: HTMLElement, entries: MediaEntry[]) {
   } else if (entries.length > 0 && emptyEl) {
     emptyEl.remove();
   }
+}
+
+// --- Drag to reorder (Pointer Events → mouse, touch, and pen alike), with a
+// live preview: the dragged element is moved among its siblings as you drag, so
+// you see where it lands. The registry isn't touched until release, when
+// moveMediaBefore commits the previewed order (so both panes + the URL update);
+// a cancelled drag is restored by the final render().
+//
+// Touch: a short press-and-hold lifts the item (so ordinary finger-scrolling of
+// the list still works — moving before the hold aborts to a scroll), and page
+// scroll is suppressed only while a drag is actually active. ---
+const DRAG_THRESHOLD = 6;   // px of movement to start a mouse drag / abort a touch hold
+const TOUCH_HOLD_MS = 220;  // press-and-hold before a touch drag lifts
+
+type DragState = {
+  name: string; el: HTMLElement; pane: HTMLElement; axis: "x" | "y";
+  pointerId: number; startX: number; startY: number;
+  isTouch: boolean; active: boolean; holdTimer?: ReturnType<typeof setTimeout>;
+  offsetX: number; offsetY: number; clone?: HTMLElement;
+};
+let drag: DragState | null = null;
+
+function preventTouchScroll(e: TouchEvent) { if (drag?.active) e.preventDefault(); }
+
+/** Position the floating clone so the same point stays under the cursor. */
+function moveClone(x: number, y: number) {
+  if (!drag?.clone) return;
+  drag.clone.style.left = `${x - drag.offsetX}px`;
+  drag.clone.style.top = `${y - drag.offsetY}px`;
+}
+
+function beginActive() {
+  if (!drag || drag.active) return;
+  clearTimeout(drag.holdTimer);
+  drag.active = true;
+  // The real element becomes an empty placeholder (holding the slot); a fixed-
+  // position clone rides the cursor. Only the placeholder moves in flow, so
+  // there's no reflow-vs-hit-test churn.
+  const rect = drag.el.getBoundingClientRect();
+  drag.offsetX = drag.startX - rect.left;
+  drag.offsetY = drag.startY - rect.top;
+  const clone = drag.el.cloneNode(true) as HTMLElement;
+  clone.classList.add("drag-clone");
+  clone.style.width = `${rect.width}px`;
+  clone.style.height = `${rect.height}px`;
+  // cloneNode copies input *attributes*, not live values (name/url are set as
+  // properties), so mirror them over — otherwise the row clone shows blank fields.
+  const src = drag.el.querySelectorAll("input");
+  const dst = clone.querySelectorAll("input");
+  src.forEach((inp, i) => { if (dst[i]) dst[i].value = inp.value; });
+  document.body.appendChild(clone);
+  drag.clone = clone;
+  moveClone(drag.startX, drag.startY);
+  drag.el.classList.add("drag-placeholder");
+  document.addEventListener("touchmove", preventTouchScroll, { passive: false });
+}
+
+/** Slot the dragged element before/after whichever item is under the pointer. */
+function previewAt(x: number, y: number) {
+  if (!drag) return;
+  const under = document.elementFromPoint(x, y) as HTMLElement | null;
+  const target = under?.closest<HTMLElement>(drag.axis === "x" ? ".thumb-cell" : ".vid-row");
+  // Only react when over an actual item. Over a gap/empty area elementFromPoint
+  // returns the pane (target null) → do nothing, rather than flinging it to the
+  // end. The end is still reachable by hovering the last item (it's "after" the
+  // dragged one, so the direction rule appends).
+  if (!target || target === drag.el || target.parentElement !== drag.pane) return;
+  // Just hovering an item moves the dragged one to that slot; the side is set by
+  // direction (is the target currently after or before the dragged element), not
+  // the target's midpoint — so there's no dead half. After the move the dragged
+  // element sits under the cursor, so the early-return above stops it oscillating.
+  const after = !!(drag.el.compareDocumentPosition(target) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const ref = after ? target.nextElementSibling : target;
+  if (ref !== drag.el && drag.el.nextElementSibling !== ref) drag.pane.insertBefore(drag.el, ref);
+}
+
+function onPointerMove(e: PointerEvent) {
+  if (!drag || e.pointerId !== drag.pointerId) return;
+  if (!drag.active) {
+    const moved = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+    if (moved <= DRAG_THRESHOLD) return;
+    if (drag.isTouch) { finishDrag(false); return; } // moved before the hold → let it scroll
+    beginActive();
+  }
+  moveClone(e.clientX, e.clientY);
+  previewAt(e.clientX, e.clientY);
+}
+
+function onPointerUp(e: PointerEvent) {
+  if (drag && e.pointerId === drag.pointerId) finishDrag(true);
+}
+function onPointerCancel(e: PointerEvent) {
+  if (drag && e.pointerId === drag.pointerId) finishDrag(false);
+}
+
+function finishDrag(commit: boolean) {
+  if (!drag) return;
+  const { el, name, active, clone } = drag;
+  clearTimeout(drag.holdTimer);
+  document.removeEventListener("pointermove", onPointerMove);
+  document.removeEventListener("pointerup", onPointerUp);
+  document.removeEventListener("pointercancel", onPointerCancel);
+  document.removeEventListener("touchmove", preventTouchScroll);
+  drag = null;
+  if (!active) return; // never lifted → it was a tap/scroll; leave the click alone
+  clone?.remove();
+  el.classList.remove("drag-placeholder");
+  if (commit) {
+    const next = el.nextElementSibling as HTMLElement | null;
+    const beforeName = next ? (next.dataset.entryName ?? next.dataset.flipKey ?? null) : null;
+    moveMediaBefore(name, beforeName);
+  }
+  // Swallow the click that a mouse-up/tap fires right after a real drag, so the
+  // drop doesn't also insert the clip's name.
+  const swallow = (ev: Event) => { ev.stopPropagation(); ev.preventDefault(); clearTimeout(t); };
+  document.addEventListener("click", swallow, { capture: true, once: true });
+  const t = setTimeout(() => document.removeEventListener("click", swallow, { capture: true }), 350);
+  render(); // normalise DOM to the registry (commit applied it; a cancel restores it)
+}
+
+/** Wire `handle` to start a reorder of `item` (the row or cell) on press. */
+function attachReorder(handle: HTMLElement, item: HTMLElement, entry: MediaEntry, axis: "x" | "y") {
+  handle.addEventListener("pointerdown", (e) => {
+    if (drag || e.button !== 0 || !e.isPrimary) return;
+    const pane = item.parentElement;
+    if (!pane) return;
+    drag = {
+      name: entry.name, el: item, pane, axis,
+      pointerId: e.pointerId, startX: e.clientX, startY: e.clientY,
+      isTouch: e.pointerType === "touch", active: false, offsetX: 0, offsetY: 0,
+    };
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointercancel", onPointerCancel);
+    if (drag.isTouch) drag.holdTimer = setTimeout(beginActive, TOUCH_HOLD_MS);
+  });
 }
 
 function makeRow(entry: MediaEntry): HTMLElement {
@@ -583,6 +727,7 @@ function makeRow(entry: MediaEntry): HTMLElement {
   } else if (entry.thumbnail) {
     const img = document.createElement("img");
     img.src = entry.thumbnail; // styled via `.vid-thumb img`
+    img.draggable = false; // so dragging the thumb reorders the row, not the image
     thumb.appendChild(img);
   }
   row.appendChild(thumb);
@@ -682,6 +827,10 @@ function makeRow(entry: MediaEntry): HTMLElement {
     else removeMedia(entry.name);
   });
   row.appendChild(delBtn);
+
+  // Drag by the thumbnail to reorder the row up/down (shared registry order → the
+  // grid reorders too). On touch, press-and-hold the thumbnail to lift it.
+  attachReorder(thumb, row, entry, "y");
 
   return row;
 }

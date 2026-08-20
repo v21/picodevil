@@ -192,6 +192,21 @@ export function renameMedia(oldName: string, newName: string): string | null {
   return finalName;
 }
 
+/** Reorder: move `name` to sit immediately before `beforeName`, or to the end
+ *  when `beforeName` is null/absent. Registry order is what both the videos list
+ *  and the thumbnail grid render (and it persists via the URL state on save()),
+ *  so a drag-reorder in either view goes through here. No-op if `name` is unknown
+ *  or equals `beforeName`. @internal */
+export function moveMediaBefore(name: string, beforeName: string | null) {
+  if (name === beforeName) return;
+  const from = registry.findIndex(e => e.name === name);
+  if (from < 0) return;
+  const [entry] = registry.splice(from, 1);
+  const to = beforeName == null ? registry.length : registry.findIndex(e => e.name === beforeName);
+  registry.splice(to < 0 ? registry.length : to, 0, entry);
+  save();
+}
+
 export function updateUrl(name: string, url: string) {
   const entry = registry.find(e => e.name === name);
   if (!entry) return;
