@@ -10,8 +10,47 @@ import {
   startWebcam, startScreenCapture, stopStream, removeStream,
   isStreamActive, setStreamOnChange, reconnectStreams,
 } from "./stream-manager";
+import { makeThumbCell, cellKey, insertName } from "./thumbs";
 
 let container: HTMLElement;
+
+// The videos tab has two modes over the same media: "edit" (the row list, with
+// rename/url/delete) and "view" (a read-only grid of thumbnails, click to insert
+// a name). Persisted separately from, but in the same spirit as, the sidebar
+// state. Defaults to "view".
+const VIEW_MODE_KEY = "picodevil-videos-view";
+type ViewMode = "edit" | "view";
+let viewMode: ViewMode = localStorage.getItem(VIEW_MODE_KEY) === "edit" ? "edit" : "view";
+
+// Persisted scroll offset of the grid ("view") pane — restored across mode
+// toggles and reloads. `restoreGridScroll` gates a one-shot restore on the next
+// view render so ordinary re-renders (progress ticks, etc.) don't fight the user.
+const GRID_SCROLL_KEY = "picodevil-videos-scroll";
+let gridScroll = Number(localStorage.getItem(GRID_SCROLL_KEY)) || 0;
+let restoreGridScroll = true;
+let gridScrollTimer: ReturnType<typeof setTimeout> | undefined;
+
+function saveGridScroll() {
+  clearTimeout(gridScrollTimer);
+  gridScrollTimer = setTimeout(() => {
+    try { localStorage.setItem(GRID_SCROLL_KEY, String(Math.round(gridScroll))); } catch { /* storage disabled */ }
+  }, 200);
+}
+
+function setViewMode(mode: ViewMode) {
+  if (mode === viewMode) return;
+  viewMode = mode;
+  try { localStorage.setItem(VIEW_MODE_KEY, mode); } catch { /* storage disabled */ }
+  if (mode === "view") restoreGridScroll = true; // re-restore where they left off
+  render(); // Stage C wraps this transition; the swap itself lives in render()
+}
+
+// Toggle icons (inline SVG so nothing is fetched at runtime; stroke inherits the
+// button's currentColor). Feather/Lucide "grid" and "edit-3", 24×24 stroke paths.
+const ICON_GRID =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>';
+const ICON_EDIT =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
 
 /** Curated starter media, hosted on the static CDN (sources.json import/export shape). */
 const DEFAULTS_URL = "https://videoclip.picodevil.com/sources.json";
@@ -122,23 +161,52 @@ export function setupMediaLoader(el: HTMLElement, isFreshSession = false) {
 }
 
 function render() {
-  // First render: build the persistent structure (add bar + scrollable list).
-  // These are never torn down so the list's scroll position and the add bar's
-  // input value survive subsequent renders.
+  // First render: build the persistent structure (add bar + both view panes).
+  // These are never torn down so scroll positions and the add bar's input value
+  // survive subsequent renders; only the active pane is shown.
   if (!container.querySelector("[data-add-bar]")) {
     container.appendChild(makeAddBar());
   }
-
   if (!container.querySelector("[data-list]")) {
     const list = document.createElement("div");
     list.dataset.list = "1";
     list.className = "vid-list";
     container.appendChild(list);
   }
+  if (!container.querySelector("[data-grid]")) {
+    const grid = document.createElement("div");
+    grid.dataset.grid = "1";
+    grid.className = "thumbs-grid";
+    // Persist scroll as the user scrolls (skip the programmatic restore below,
+    // which would otherwise re-save a possibly-clamped value).
+    grid.addEventListener("scroll", () => {
+      if (restoreGridScroll) return;
+      gridScroll = grid.scrollTop;
+      saveGridScroll();
+    }, { passive: true });
+    container.appendChild(grid);
+  }
 
-  // Reconcile list items in place — no scroll position lost.
   const list = container.querySelector<HTMLElement>("[data-list]")!;
-  reconcileList(list, getAllEntries());
+  const grid = container.querySelector<HTMLElement>("[data-grid]")!;
+  const editing = viewMode === "edit";
+  list.style.display = editing ? "" : "none";
+  grid.style.display = editing ? "none" : "";
+
+  // Reconcile only the visible pane in place — no scroll position lost. The
+  // hidden pane is left stale and refreshed the next time it's shown.
+  const entries = getAllEntries();
+  if (editing) {
+    reconcileList(list, entries);
+  } else {
+    reconcileGrid(grid, entries);
+    // One-shot restore of the persisted scroll, once entries exist (rows are
+    // fixed-height, so the grid's full height is known as soon as they're added).
+    if (restoreGridScroll && entries.length > 0) {
+      grid.scrollTop = gridScroll;
+      restoreGridScroll = false;
+    }
+  }
 
   // Footer has conditional buttons (Defaults, Load all, server status) and lives
   // outside the scrollable area, so it's cheap and safe to rebuild each time.
@@ -219,6 +287,15 @@ function makeFooter(): HTMLElement {
   const rightGroup = document.createElement("div");
   rightGroup.className = "vid-footer-right";
   footer.appendChild(rightGroup);
+
+  // Mode toggle — icon shows the mode you'd switch *to* (grid vs edit).
+  const goEdit = viewMode === "view";
+  const toggle = makeFooterBtn("", () => setViewMode(goEdit ? "edit" : "view"));
+  toggle.classList.add("vid-view-toggle");
+  toggle.innerHTML = goEdit ? ICON_EDIT : ICON_GRID;
+  toggle.title = goEdit ? "Switch to edit view" : "Switch to grid view";
+  toggle.setAttribute("aria-label", toggle.title);
+  leftGroup.appendChild(toggle);
 
   leftGroup.appendChild(makeFooterBtn("Export", () => {
     navigator.clipboard.writeText(exportAll()).then(
@@ -311,24 +388,26 @@ export function entryRenderKey(entry: MediaEntry): string {
   ].join("\0");
 }
 
-/** Indicator text/title for an in-progress upload or download, or null when the
- *  entry isn't uploading/downloading. Single source of truth for both the
- *  initial build (makeRow) and the in-place refresh (updateRowProgress). */
-function progressText(entry: MediaEntry): { text: string; title: string; small: boolean } | null {
+/** Indicator text for an in-progress upload or download, or null when the entry
+ *  isn't uploading/downloading. Single source of truth for the edit-row indicator
+ *  (`text`) and the compact grid-cell badge (`short`). */
+function progressText(entry: MediaEntry): { text: string; short: string; title: string; small: boolean } | null {
   if (entry.uploading) {
     const pct = entry.uploadProgress != null ? Math.round(entry.uploadProgress * 100) : null;
     return pct != null && pct < 100
-      ? { text: `↑${pct}%`, title: "Uploading…", small: false }
-      : { text: "⚙", title: "Transcoding…", small: false };
+      ? { text: `↑${pct}%`, short: `↑${pct}%`, title: "Uploading…", small: false }
+      : { text: "⚙", short: "⚙", title: "Transcoding…", small: false };
   }
   if (entry.downloading) {
     // Two-phase YouTube progress: "downloading: 45%" then "transcoding: 13%".
     // Falls back to ⏳ before the first /ready poll reports a phase.
     if (entry.phase && entry.phasePercent != null) {
       const label = entry.phase === "transcode" ? "transcoding" : "downloading";
-      return { text: `${label}: ${Math.round(entry.phasePercent * 100)}%`, title: `${label} in progress`, small: false };
+      const pct = Math.round(entry.phasePercent * 100);
+      const glyph = entry.phase === "transcode" ? "⚙" : "⬇";
+      return { text: `${label}: ${pct}%`, short: `${glyph}${pct}%`, title: `${label} in progress`, small: false };
     }
-    return { text: "⏳", title: "", small: true };
+    return { text: "⏳", short: "⏳", title: "", small: true };
   }
   return null;
 }
@@ -341,6 +420,23 @@ function updateRowProgress(row: HTMLElement, entry: MediaEntry) {
   if (!indicator || !p) return;
   if (indicator.textContent !== p.text) indicator.textContent = p.text;
   indicator.title = p.title;
+}
+
+/** Show/refresh (or remove) the compact progress badge in a grid cell's
+ *  bottom-right corner. Managed here rather than in makeThumbCell so the cell
+ *  isn't rebuilt each progress tick (which would reload its <img>). */
+function updateCellProgress(cell: HTMLElement, entry: MediaEntry) {
+  const p = progressText(entry);
+  let badge = cell.querySelector<HTMLElement>(".thumb-progress");
+  if (!p) { badge?.remove(); return; }
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "thumb-progress";
+    // Into the flex bottom bar so the label shrinks to make room (no overlap).
+    (cell.querySelector(".thumb-bar") ?? cell).appendChild(badge);
+  }
+  if (badge.textContent !== p.short) badge.textContent = p.short;
+  badge.title = p.title;
 }
 
 function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
@@ -404,15 +500,70 @@ function reconcileList(list: HTMLElement, entries: MediaEntry[]) {
   }
 }
 
+/** Reconcile the "view"-mode thumbnail grid in place — mirror of reconcileList,
+ *  keyed by entry id, reusing cells whose cellKey is unchanged (no img reload). */
+export function reconcileGrid(grid: HTMLElement, entries: MediaEntry[]) {
+  const byId = new Map<string, HTMLElement>();
+  for (const child of Array.from(grid.children) as HTMLElement[]) {
+    if (child.dataset.entryId) byId.set(child.dataset.entryId, child);
+  }
+
+  const seen = new Set<string>();
+
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    seen.add(entry.id);
+    const key = cellKey(entry);
+    let cell = byId.get(entry.id);
+
+    if (!cell || cell.dataset.cellKey !== key) {
+      const newCell = makeThumbCell(entry, insertName);
+      newCell.dataset.entryId = entry.id;
+      newCell.dataset.cellKey = key;
+      if (cell) grid.replaceChild(newCell, cell);
+      cell = newCell;
+      byId.set(entry.id, cell);
+    }
+
+    // Progress badge (bottom-right) refreshed in place — cellKey excludes
+    // progress, so the cell (and its <img>) isn't rebuilt each tick.
+    updateCellProgress(cell, entry);
+
+    const atI = grid.children[i] as HTMLElement | undefined;
+    if (atI !== cell) grid.insertBefore(cell, atI ?? null);
+  }
+
+  for (const [id, el] of byId) {
+    if (!seen.has(id)) el.remove();
+  }
+
+  // Empty-state placeholder (spans the whole grid width).
+  const emptyEl = grid.querySelector<HTMLElement>("[data-empty]");
+  if (entries.length === 0 && !emptyEl) {
+    const empty = document.createElement("p");
+    empty.dataset.empty = "1";
+    empty.textContent = "No media added yet";
+    empty.className = "vid-empty";
+    empty.style.gridColumn = "1 / -1";
+    grid.appendChild(empty);
+  } else if (entries.length > 0 && emptyEl) {
+    emptyEl.remove();
+  }
+}
+
 function makeRow(entry: MediaEntry): HTMLElement {
   const row = document.createElement("div");
   row.className = "vid-row";
 
   const isStream = entry.type === "stream";
 
-  // Thumbnail / stream status dot
+  // Thumbnail / stream status dot. Clicking it inserts the name at the cursor
+  // (same as the grid); flip-key pairs it with the grid cell for the transition.
   const thumb = document.createElement("div");
   thumb.className = "vid-thumb";
+  thumb.dataset.flipKey = entry.name;
+  thumb.title = `Insert "${entry.name}"`;
+  thumb.addEventListener("click", () => insertName(entry.name));
   if (isStream) {
     const active = isStreamActive(entry.name);
     const dot = document.createElement("span");
