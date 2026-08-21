@@ -666,13 +666,16 @@ body {
    =========================================================================== */
 .thumbs-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 120px);
-  /* Definite row height — otherwise grid's default align-items:stretch leaves the
-     cell height indefinite and .thumb-cell img{height:100%} falls back to each
-     image's (now native-aspect, varying) intrinsic height → uneven rows. */
-  grid-auto-rows: 90px;
+  /* Same column count as fixed 120px cells would give (the "breakpoints"), but
+     the leftover width is shared out so the cells grow past 120px instead of a
+     right-hand gap. Row height then comes from the cell's aspect-ratio (below). */
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  /* align-items:start (not the default stretch) so the cell keeps its
+     aspect-ratio height instead of being stretched to an indefinite row — which
+     would let .thumb-cell img{height:100%} fall back to each image's varying
+     intrinsic height and give uneven rows. */
+  align-items: start;
   gap: 8px;
-  justify-content: start;
   align-content: start;
   flex: 1;
   min-height: 0;
@@ -682,17 +685,19 @@ body {
 
 .thumb-cell {
   position: relative;
-  width: 120px;
-  aspect-ratio: 4 / 3; /* 120×90 box */
-  padding: 0;
+  /* 4:3 via the padding-ratio hack, NOT aspect-ratio. In a scrolling grid an
+     aspect-ratio cell + auto rows + align-items:start collapses the row TRACK to
+     min-content, so the cells overflow it and overlap (fine in a 2-row grid, ugly
+     with 160). padding-bottom (relative to the column width) gives the cell a
+     definite height the track respects, and still grows with the column. All
+     content (img, placeholder, bar) is absolutely positioned to fill it. */
+  height: 0;
+  padding-bottom: 75%;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--bg-btn-alt);
   overflow: hidden;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: var(--fg-dimmer);
   font-family: inherit;
 }
@@ -754,6 +759,8 @@ body {
 }
 
 .thumb-cell img {
+  position: absolute; /* fill the padding-ratio box (cell content-box is 0-height) */
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -761,6 +768,11 @@ body {
 }
 
 .thumb-placeholder {
+  position: absolute; /* overlay so it doesn't affect the cell's aspect-ratio height */
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 22px;
 }
 
