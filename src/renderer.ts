@@ -141,13 +141,22 @@ export class FrameRenderer {
     const drawStart = performance.now();
     let drawAborted = false;
 
-    let i = 0;
-    while (i < allEvents.length) {
+    // Group events by screen, then walk screens in declaration order. Driving the
+    // loop by screen (not by runs of events) is what lets a named layer with NO
+    // events this frame — a silent/degraded pattern like `Hm: s("~")` — still run
+    // its pass, leaving a cleared, transparent FBO. Skipping it entirely meant the
+    // FBO was never created, and any consumer (`.modulate`, `.matte`, `s("m")`)
+    // hit the "missing at draw time" internal-bug path instead of reading empty.
+    const groups = new Map<number, FrameEvent[]>();
+    for (const fe of allEvents) {
+      const g = groups.get(fe.screenIndex);
+      if (g) g.push(fe);
+      else groups.set(fe.screenIndex, [fe]);
+    }
+
+    for (let si = 0; si < screens.length; si++) {
       if (performance.now() - drawStart > this.maxDrawTimeMs) { drawAborted = true; break; }
-      const si = allEvents[i].screenIndex;
-      const groupStart = i;
-      while (i < allEvents.length && allEvents[i].screenIndex === si) i++;
-      const group = allEvents.slice(groupStart, i);
+      const group = groups.get(si) ?? [];
 
       const fboName = namedByIndex.get(si);
       if (fboName !== undefined) {
@@ -174,8 +183,9 @@ export class FrameRenderer {
         if (!isHOnly) {
           this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, true);
         }
-      } else {
-        // Anonymous pattern: draw directly to main canvas.
+      } else if (group.length > 0) {
+        // Anonymous pattern: draw directly to main canvas. Nothing to do when it
+        // produced no events — it has no FBO that needs clearing.
         this.drawFrame(group, t, cps, nowWall, videoFrameProcessed, true);
       }
     }

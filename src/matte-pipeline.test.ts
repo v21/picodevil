@@ -106,6 +106,35 @@ describe("matte pipeline", () => {
     expect(flushWarnings().some(m => /NaN matte amount/.test(m))).toBe(true);
   });
 
+  it("a matte source with NO events renders an empty FBO and hides the tile", () => {
+    // The matte layer produces no events this frame (silence). Its pass must
+    // still run, leaving a cleared (transparent) FBO — which, under the
+    // premultiplied-luminance rule, reads as black and masks the tile out.
+    // Before the empty-pass fix the FBO was never created at all and the tile
+    // drew unmatted with an "FBO missing at draw time" internal warning.
+    (color("red") as any).matte(screen("~")).p("$");
+    renderFrames(1, (canvas) => {
+      expect(readPixel(canvas, 50, 50)[3]).toBe(0);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
+  it("a matte source that is silent only SOME frames still renders its pass", () => {
+    // "white ~" is present for the first half-cycle, silent for the second.
+    // (White, not red: luminance keys the alpha, and red is only 0.2126.)
+    (color("red") as any).matte(screen("white ~")).p("$");
+    const screens = collectScreens();
+    const named = getNamedScreenIndices();
+    withRenderer((renderer, canvas) => {
+      const fr = new FrameRenderer(renderer, makePool() as any, createMetrics());
+      fr.render(screens as any, named, 0.25, 1, 0);   // matte present → visible
+      expect(readPixel(canvas, 50, 50)[3]).toBe(255);
+      fr.render(screens as any, named, 0.75, 1, 0);   // matte silent → hidden
+      expect(readPixel(canvas, 50, 50)[3]).toBe(0);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
   it("matte and modulate on one chain both resolve", () => {
     registerSplitMatte("m");
     // Grey modulator = no displacement, so the matte result is unchanged —

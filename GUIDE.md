@@ -580,6 +580,12 @@ Values above 1 extrapolate rather than clamp, which is what sharpens the key; on
 $: s("clip.mp4").stackN(9).rowscols(3).gridMod().matte(s("m")).mattespace('screen')
 ```
 
+A source that falls silent counts as transparent, and therefore as black — so `s("white ~")` flickers the tile in and out, and a fully silent matte hides it entirely:
+
+```js
+$: s("clip.mp4").matte(s("white ~"))   // visible on the first half-cycle only
+```
+
 `.matte` shares `.modulate`'s one-call-one-framebuffer rule, and both can sit on the same chain with independent spaces.
 
 > Note: `.matte` is unrelated to Strudel's `.mask("1 0 1 0")`, which silences *events* rather than shading pixels.

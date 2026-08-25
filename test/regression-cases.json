@@ -99,5 +99,21 @@
       "Failed to load resource: the server responded with a status of 404 (Not Found)"
     ],
     "timestamp": "2026-06-02T22:07:59.711Z"
+  },
+  {
+    "code": "$: s(\"red\").modulate(s(\"~\"), 0.5)",
+    "description": "auto-FBO source with no events: the modulator layer never renders, so its FBO is missing when the consumer samples it (hand-minimised from monkey rounds 14/27/59)",
+    "errors": [
+      "[runtime warning] internal: modulator FBO \"__auto_mod_0\" missing at draw time — tile drawn unmodulated"
+    ],
+    "timestamp": "2026-08-25T08:49:32.559Z"
+  },
+  {
+    "code": "$: s(\"red\").matte(s(\"~\"))",
+    "description": "same auto-FBO-with-no-events bug reached through .matte (hand-minimised from monkey rounds 10/27/58)",
+    "errors": [
+      "[runtime warning] internal: matte FBO \"__auto_mod_0\" missing at draw time — tile drawn unmatted"
+    ],
+    "timestamp": "2026-08-25T08:49:32.559Z"
   }
 ]

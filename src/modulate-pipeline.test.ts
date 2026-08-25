@@ -86,6 +86,47 @@ describe("modulate pipeline", () => {
     expect(flushWarnings()).toEqual([]);
   });
 
+  it("a modulator with NO events renders an empty FBO and displaces nothing", () => {
+    registerTwoTone("src");
+    // The modulator layer is silent this frame. Its pass must still run so the
+    // consumer samples a cleared FBO (alpha 0 → no displacement) rather than
+    // warning that the FBO is missing at draw time.
+    (screen("src") as any).modulate(screen("~"), 0.5).p("$");
+    const screens = collectScreens();
+    const named = getNamedScreenIndices();
+    withRenderer((renderer, canvas) => {
+      const fr = new FrameRenderer(renderer, makePool() as any, createMetrics());
+      fr.render(screens as any, named, 0, 1, 0);
+      // Undisplaced: x=40 is still the left (red) half.
+      const [r, , bl] = readPixel(canvas, 40, 50);
+      expect(r).toBeGreaterThan(150);
+      expect(bl).toBeLessThan(100);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
+  it("a self-referencing layer that goes silent stays coherent across frames", () => {
+    registerTwoTone("src");
+    // Hq feeds back on itself, so it is double-buffered — but only on frames
+    // where it HAS events (selfRef is derived from the event group). On a silent
+    // frame it takes the non-double-buffered path and clears the front buffer
+    // directly. That must not corrupt the ping-pong or warn.
+    (screen("src ~") as any).modulate(screen("q"), 0.5).p("Hq");
+    (screen("q") as any).p("$");
+    const screens = collectScreens();
+    const named = getNamedScreenIndices();
+    withRenderer((renderer, canvas) => {
+      const fr = new FrameRenderer(renderer, makePool() as any, createMetrics());
+      fr.render(screens as any, named, 0.25, 1, 0);        // present
+      expect(readPixel(canvas, 40, 50)[3]).toBe(255);
+      fr.render(screens as any, named, 0.75, 1, 0);        // silent → cleared
+      expect(readPixel(canvas, 40, 50)[3]).toBe(0);
+      fr.render(screens as any, named, 0.25, 1, 0);        // present again
+      expect(readPixel(canvas, 40, 50)[3]).toBe(255);
+    });
+    expect(flushWarnings()).toEqual([]);
+  });
+
   it("failed-eval style restore discards auto screens (registry snapshot)", () => {
     // Simulates EvalController's failure path: snapshot → new registrations →
     // restore. The auto layer registered after the snapshot must be gone.
