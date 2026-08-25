@@ -6,7 +6,7 @@ import {
   compileInto, OP_FLOATS, MAX_OPS,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR, OP_VIGNETTE,
+  OP_MODULATE, OP_SMEAR, OP_VIGNETTE, OP_MATTE,
 } from './effect-compiler';
 
 // ---------------------------------------------------------------------------
@@ -212,6 +212,7 @@ out vec4 fragColor;
 #define OP_MODULATE    ${OP_MODULATE}
 #define OP_SMEAR       ${OP_SMEAR}
 #define OP_VIGNETTE    ${OP_VIGNETTE}
+#define OP_MATTE       ${OP_MATTE}
 
 vec4 sampleAny(int texIdx, vec2 uv) {
   ${sampleChain}
@@ -455,6 +456,11 @@ void main() {
   // source the off-window texels are the cropped-off overflow, which a .render()
   // bake discards; confining both to the same window keeps render() transparent.
   vec2 smearWinOff = vec2(0.0), smearWinSize = vec2(1.0);
+  // The working coord as it stood just before OP_WRAP mapped it onto the source
+  // crop window — i.e. cell-local, with every UV warp (barrel/modulate/pixelate)
+  // already applied. OP_MATTE runs after the sample, by which point uv is
+  // source-space, so it needs this to give 'uv' space the same meaning modulate gives it.
+  vec2 warpLocal = v_local;
 
   // effectStart is already in vec4 slots; each op spans 2 vec4 slots.
   for (int i = 0; i < v_effectCount; ++i) {
@@ -485,6 +491,7 @@ void main() {
       // Map the cell-local working coord onto the source crop window (offset +
       // size, carried from the vertex). This is where "local space" becomes
       // "source space" — everything before this ran in the cell's [0,1] frame.
+      warpLocal = uv;
       uv = v_uvOffset + uv * v_uvSize;
       // a.yz = cropOff, a.w/b.x = cropSize.x/y, b.y = tileMode (1 = wrap within crop subregion)
       if (b.y > 0.5) {
@@ -558,6 +565,30 @@ void main() {
                       sinA * lab.yz.x + cosA * lab.yz.y);
       }
       color.rgb = linear_to_srgb(oklab_to_linear_rgb(lab));
+    } else if (kind == OP_MATTE) {
+      // Alpha keyed off a matte texture's luminance (always an FBO: y-up texels).
+      // a.y = texIdx, a.z = amount, a.w = space (0 uv / 1 tile / 2 screen)
+      // b.xy = lookup scale (auto-sizing sub-viewport). b.z/b.w reserved (0).
+      // Lookup mirrors OP_MODULATE exactly, but off warpLocal rather than uv —
+      // this op runs post-sample, so uv is already source-space by now.
+      vec2 ML;
+      if (a.w > 1.5) {
+        ML = gl_FragCoord.xy / u_resolution;
+      } else if (a.w > 0.5) {
+        ML = vec2(v_local.x, 1.0 - v_local.y);
+      } else {
+        ML = fract(vec2(warpLocal.x, 1.0 - warpLocal.y));
+      }
+      ML *= b.xy;
+      vec4 mt = sampleAny(int(a.y), ML);
+      // NOT un-premultiplied, deliberately: FBO rgb is premultiplied, so this
+      // luminance is already lum(straight rgb)·matte.a — a transparent matte
+      // region reads as black and masks out, making the matte the layer's shape.
+      float mlum = pdLum(mt.rgb);
+      float mk = a.z >= 0.0 ? mlum : 1.0 - mlum;
+      // |amt| is NOT clamped — > 1 extrapolates into a harder key; only the
+      // resulting alpha is clamped.
+      color.a *= clamp(mix(1.0, mk, abs(a.z)), 0.0, 1.0);
     } else if (kind == OP_VIGNETTE) {
       // Radial alpha falloff in the cell's own [0,1] frame (v_local), NOT the
       // working uv — so the fade is centred on and scaled to the visible cell,
@@ -789,6 +820,12 @@ interface DrawCommand {
   modSpace:     number; // 0 uv / 1 tile / 2 screen
   modUVScaleX:  number;
   modUVScaleY:  number;
+  // Matte: third sampled texture (an FBO tex) + op args. null = no matte.
+  matteTexture:   WebGLTexture | null;
+  matteAmt:       number;
+  matteSpace:     number; // 0 uv / 1 tile / 2 screen
+  matteUVScaleX:  number;
+  matteUVScaleY:  number;
   // Smear (polar+aspect; UV units converted from screen pixels in drawTile).
   smearVecX:    number;   // X-referenced tap vector (dir baked in)
   smearVecY:    number;
@@ -1117,6 +1154,33 @@ export class WebGLRenderer implements Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
+  /**
+   * Resolve an auxiliary FBO a tile samples alongside its own source — the
+   * `.modulate` modulator or the `.matte` matte. Returns its texture plus the
+   * sub-viewport lookup scale (the auto-sizing ladder renders into a corner of a
+   * quantised texture, so a consumer must read only `viewW/w` of it).
+   *
+   * Both failure modes are internal bugs rather than user errors, so they warn
+   * and fall back to "no texture" (the op is then never emitted) instead of
+   * dropping the tile. `noun` names the FBO in the message, `without` names the
+   * degraded result ("unmodulated" / "unmatted").
+   */
+  private resolveAuxFbo(
+    name: string | undefined, noun: string, without: string,
+  ): { tex: WebGLTexture | null; uvScaleX: number; uvScaleY: number } {
+    if (name === undefined) return { tex: null, uvScaleX: 1, uvScaleY: 1 };
+    const entry = this.fbos.get(name);
+    if (!entry) {
+      warn(`internal: ${noun} FBO "${name}" missing at draw time — tile drawn ${without}`);
+    } else if (entry.fbo === this.currentFBO) {
+      warn(`internal: ${noun} FBO "${name}" is the current render target — tile drawn ${without}`);
+    } else {
+      entry.touched = true; // liveness for the auto-FBO sweep
+      return { tex: entry.tex, uvScaleX: entry.viewW / entry.w, uvScaleY: entry.viewH / entry.h };
+    }
+    return { tex: null, uvScaleX: 1, uvScaleY: 1 };
+  }
+
   drawTile(p: TileParams): void {
     let tex: WebGLTexture | null;
     let srcW: number, srcH: number;
@@ -1160,28 +1224,20 @@ export class WebGLRenderer implements Renderer {
     const cellW = p.w * this.currentViewW;
     const cellH = p.h * this.currentViewH;
 
-    // Modulator resolution. A miss is impossible by construction (the auto FBO
-    // registers and renders before its consumer in the same frame), as is the
-    // modulator being the current render target (auto FBOs are never consumers'
-    // targets) — both are internal bugs: warn + draw unmodulated, never drop
-    // the tile. Deduped by message in warn().
-    let modTexture: WebGLTexture | null = null;
-    let modUVScaleX = 1, modUVScaleY = 1;
-    if (p.modSrc !== undefined) {
-      const modEntry = this.fbos.get(p.modSrc);
-      if (!modEntry) {
-        warn(`internal: modulator FBO "${p.modSrc}" missing at draw time — tile drawn unmodulated`);
-      } else if (modEntry.fbo === this.currentFBO) {
-        warn(`internal: modulator FBO "${p.modSrc}" is the current render target — tile drawn unmodulated`);
-      } else {
-        modTexture = modEntry.tex;
-        modEntry.touched = true; // liveness for the auto-FBO sweep
-        modUVScaleX = modEntry.viewW / modEntry.w;
-        modUVScaleY = modEntry.viewH / modEntry.h;
-      }
-    }
+    // Auxiliary FBO resolution (modulator, matte). A miss is impossible by
+    // construction (the auto FBO registers and renders before its consumer in
+    // the same frame), as is the FBO being the current render target (auto FBOs
+    // are never consumers' targets) — both are internal bugs: warn + draw
+    // without the effect, never drop the tile. Deduped by message in warn().
+    const { tex: modTexture, uvScaleX: modUVScaleX, uvScaleY: modUVScaleY } =
+      this.resolveAuxFbo(p.modSrc, 'modulator', 'unmodulated');
     const modAmt    = p.modAmt ?? 0.1;
     const modSpace  = p.modSpace === 'screen' ? 2 : p.modSpace === 'tile' ? 1 : 0;
+
+    const { tex: matteTexture, uvScaleX: matteUVScaleX, uvScaleY: matteUVScaleY } =
+      this.resolveAuxFbo(p.matteSrc, 'matte', 'unmatted');
+    const matteAmt   = p.matteAmt ?? 1;
+    const matteSpace = p.matteSpace === 'screen' ? 2 : p.matteSpace === 'tile' ? 1 : 0;
 
     // Smear (polar + shared aspect). Sign of `smear` picks the tap shape: > 0
     // linear line, < 0 circular ring; |smear| is the radius, `smearAngle` the line
@@ -1267,6 +1323,8 @@ export class WebGLRenderer implements Renderer {
         tileMode:     0,
         modTexture, modAmt, modSpace,
         modUVScaleX, modUVScaleY,
+        matteTexture, matteAmt, matteSpace,
+        matteUVScaleX, matteUVScaleY,
         // Signed (uvSz, post-FBO-flip) so smear direction follows the flip; wrap
         // taps within the valid content extent (FBO sub-viewport, else 1).
         ...smearFields(uvSzX / dispW, uvSzY / dispH),
@@ -1331,6 +1389,8 @@ export class WebGLRenderer implements Renderer {
       tileMode:     (p.fit === 'tile' || p.fit === 'tilecenter') ? 1 : 0,
       modTexture, modAmt, modSpace,
       modUVScaleX, modUVScaleY,
+      matteTexture, matteAmt, matteSpace,
+      matteUVScaleX, matteUVScaleY,
       // Signed (uvSize, post-FBO-flip) so smear direction follows the flip; wrap
       // taps within the valid content extent (FBO sub-viewport, else 1).
       ...smearFields(uvSizeX / cellW, uvSizeY / cellH),
@@ -1420,7 +1480,7 @@ export class WebGLRenderer implements Renderer {
     /** Compile cmd's effects with the supplied texIdx/modTexIdx, dedup against
      *  this batch's ops buffer, and write the result's (offset, count) into the
      *  per-instance arrays. Returns false if ops would overflow the UBO. */
-    const tryCompileForBatch = (i: number, cmd: DrawCommand, texIdx: number, modTexIdx: number): boolean => {
+    const tryCompileForBatch = (i: number, cmd: DrawCommand, texIdx: number, modTexIdx: number, matteTexIdx: number): boolean => {
       // Compile into scratch with the batch-local texIdx.
       const opCount = compileInto({
         texIndex:     texIdx,
@@ -1445,6 +1505,11 @@ export class WebGLRenderer implements Renderer {
         modSpace:     cmd.modSpace,
         modUVScaleX:  cmd.modUVScaleX,
         modUVScaleY:  cmd.modUVScaleY,
+        matteTexIndex: matteTexIdx,
+        matteAmt:      cmd.matteAmt,
+        matteSpace:    cmd.matteSpace,
+        matteUVScaleX: cmd.matteUVScaleX,
+        matteUVScaleY: cmd.matteUVScaleY,
         smearVecX:      cmd.smearVecX,
         smearVecY:      cmd.smearVecY,
         smearJitFactor: cmd.smearJitFactor,
@@ -1481,14 +1546,25 @@ export class WebGLRenderer implements Renderer {
       return true;
     };
 
+    // Every texture one tile samples: its own source plus any auxiliary FBOs
+    // (modulator, matte). All of them must be bound in the SAME batch, so both
+    // the unit-budget check and the overflow retry work off this list.
+    const tileTextures = (cmd: DrawCommand): WebGLTexture[] => {
+      const out: WebGLTexture[] = [cmd.texture];
+      if (cmd.modTexture && !out.includes(cmd.modTexture)) out.push(cmd.modTexture);
+      if (cmd.matteTexture && !out.includes(cmd.matteTexture)) out.push(cmd.matteTexture);
+      return out;
+    };
+
     for (let i = 0; i < draws.length; i++) {
       const cmd = draws[i];
       const blendChange  = cmd.blend !== blendMode;
-      // A modulated tile needs TWO units (source + modulator) — count how many
-      // of them are new to this batch before deciding whether they still fit.
-      const newUnits =
-        (texUnits.has(cmd.texture) ? 0 : 1) +
-        (cmd.modTexture && cmd.modTexture !== cmd.texture && !texUnits.has(cmd.modTexture) ? 1 : 0);
+      // A modulated and/or matted tile needs up to THREE units (source +
+      // modulator + matte) — count how many are new to this batch before
+      // deciding whether they still fit.
+      const textures = tileTextures(cmd);
+      let newUnits = 0;
+      for (const t of textures) if (!texUnits.has(t)) newUnits++;
       const needsNewUnit = texUnits.size + newUnits > this.maxTexUnits;
 
       if (blendChange || needsNewUnit) {
@@ -1500,34 +1576,23 @@ export class WebGLRenderer implements Renderer {
         opsDedup   = new Map();
       }
 
-      if (!texUnits.has(cmd.texture)) {
-        texUnits.set(cmd.texture, texUnits.size);
-      }
-      if (cmd.modTexture && !texUnits.has(cmd.modTexture)) {
-        texUnits.set(cmd.modTexture, texUnits.size);
-      }
-      const texIdx = texUnits.get(cmd.texture)!;
-      const modTexIdx = cmd.modTexture ? texUnits.get(cmd.modTexture)! : -1;
+      for (const t of textures) if (!texUnits.has(t)) texUnits.set(t, texUnits.size);
+      const unitOf = (t: WebGLTexture | null) => (t ? texUnits.get(t)! : -1);
 
       // Try to compile this command's ops into the current batch's UBO.
       // If it overflows, flush the batch and retry with a fresh ops buffer.
-      if (!tryCompileForBatch(i, cmd, texIdx, modTexIdx)) {
+      if (!tryCompileForBatch(i, cmd, unitOf(cmd.texture), unitOf(cmd.modTexture), unitOf(cmd.matteTexture))) {
         flush(i);
         batchStart = i;
         texUnits   = new Map();
         blendMode  = cmd.blend;
         opsLen     = 0;
         opsDedup   = new Map();
-        // Seed the fresh batch with BOTH of this tile's textures.
-        texUnits.set(cmd.texture, 0);
-        if (cmd.modTexture && !texUnits.has(cmd.modTexture)) {
-          texUnits.set(cmd.modTexture, texUnits.size);
-        }
-        const retryTexIdx = texUnits.get(cmd.texture)!;
-        const retryModTexIdx = cmd.modTexture ? texUnits.get(cmd.modTexture)! : -1;
+        // Seed the fresh batch with ALL of this tile's textures.
+        for (const t of textures) if (!texUnits.has(t)) texUnits.set(t, texUnits.size);
         // Should always succeed on retry — a single tile can produce at most
         // MAX_OPS ops = 2·MAX_OPS vec4s, far under UBO_VEC4_CAPACITY=1024.
-        tryCompileForBatch(i, cmd, retryTexIdx, retryModTexIdx);
+        tryCompileForBatch(i, cmd, unitOf(cmd.texture), unitOf(cmd.modTexture), unitOf(cmd.matteTexture));
       }
     }
 

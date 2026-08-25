@@ -14,8 +14,9 @@
  *   6. BRIGHTNESS (additive offset)
  *   7. CONTRAST  (centred contrast)
  *   8. COLOR_OKLAB (grey + tint + huerot, one OKLab round-trip)
- *   9. VIGNETTE  (radial alpha falloff in the cell's own frame)
- *  10. ALPHA     (final multiply; always emitted)
+ *   9. MATTE     (alpha keyed off a matte texture's luminance)
+ *  10. VIGNETTE  (radial alpha falloff in the cell's own frame)
+ *  11. ALPHA     (final multiply; always emitted)
  *
  * Op layout: every op is exactly 8 floats (2 vec4s in std140), packed:
  *   [0] kind
@@ -49,6 +50,9 @@ export const OP_SMEAR       = 9;
 /** Radial alpha falloff in cell-local space (`.vignette`). Multiplies alpha only,
  *  so it sits with the colour ops, just before the final ALPHA multiply. */
 export const OP_VIGNETTE    = 10;
+/** Alpha keyed off a matte texture's luminance (`.matte`). Like VIGNETTE it only
+ *  multiplies alpha, so it sits with the colour ops, just before VIGNETTE. */
+export const OP_MATTE       = 11;
 
 /** Number of floats per op (one kind + 7 args). */
 export const OP_FLOATS = 8;
@@ -57,7 +61,7 @@ export const OP_FLOATS = 8;
  *  scratch buffer that holds a single chain — compile(), the renderer's
  *  opsScratch, and the UBO-overflow retry all rely on it. SMEAR occupies the
  *  SAMPLE slot rather than adding one, so it doesn't count toward the ceiling. */
-export const MAX_OPS = 10;
+export const MAX_OPS = 11;
 
 /**
  * Inputs the compiler needs from a DrawCommand. Mirrors the fields the
@@ -94,6 +98,16 @@ export interface EffectInputs {
   /** Modulator lookup scale (auto-sizing sub-viewport: view/tex). 1 = full texture. */
   modUVScaleX:  number;
   modUVScaleY:  number;
+  /** Texture unit of the matte FBO texture; -1 = no matte op. */
+  matteTexIndex: number;
+  /** Matte strength. 1 = full key, 0 = no-op, negative inverts, >1 hardens
+   *  (the mix extrapolates; only the resulting alpha is clamped). */
+  matteAmt:      number;
+  /** Lookup space: 0 = uv (cell-local working UV), 1 = tile (v_local), 2 = screen. */
+  matteSpace:    number;
+  /** Matte lookup scale (auto-sizing sub-viewport: view/tex). 1 = full texture. */
+  matteUVScaleX: number;
+  matteUVScaleY: number;
   // Smear — one multi-tap op covering both tap shapes. The tap vector is stored
   // X-referenced (direction baked in CPU-side: one cos/sin per tile, none per
   // fragment) and a single shared aspect scales Y, so ring/line/jitter are all
@@ -289,6 +303,22 @@ export function compileInto(e: EffectInputs, out: Float32Array, offset: number):
     out[i + 3] = e.tintStrength;
     out[i + 4] = e.hueRot;
     out[i + 5] = 0; out[i + 6] = 0; out[i + 7] = 0;
+    i += OP_FLOATS;
+    count++;
+  }
+
+  // MATTE: alpha keyed off the matte texture's luminance. Emitted whenever a
+  // matte texture is bound — NOT gated on amt, for the same reason MODULATE
+  // isn't: a patterned amount crossing zero must not churn the chain identity.
+  if (e.matteTexIndex >= 0) {
+    out[i] = OP_MATTE;
+    out[i + 1] = e.matteTexIndex;
+    out[i + 2] = e.matteAmt;
+    out[i + 3] = e.matteSpace;
+    out[i + 4] = e.matteUVScaleX;
+    out[i + 5] = e.matteUVScaleY;
+    out[i + 6] = 0; // b.z: reserved
+    out[i + 7] = 0; // b.w: reserved
     i += OP_FLOATS;
     count++;
   }

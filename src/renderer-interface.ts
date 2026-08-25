@@ -99,6 +99,12 @@ export interface TileParams {
   modAmt?: number;
   /** Where the modulator is sampled: working UV (default), tile-local 0..1, or canvas space. */
   modSpace?: 'uv' | 'tile' | 'screen';
+  /** Name of the FBO whose luminance keys this tile's alpha (`.matte`). */
+  matteSrc?: string;
+  /** Matte strength: 1 = full key, 0 = no-op, negative inverts, >1 hardens. */
+  matteAmt?: number;
+  /** Where the matte is sampled: working UV (default), tile-local 0..1, or canvas space. */
+  matteSpace?: 'uv' | 'tile' | 'screen';
 }
 
 /**

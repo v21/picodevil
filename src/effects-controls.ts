@@ -521,6 +521,57 @@ PatternProto.modspace = function (value: any) {
   return _modSpace(value, this);
 };
 
+// Internal mix params for .matte — ev.matteSrc always carries an auto-FBO name
+// minted by .matte; there is no user-facing string form.
+const _matteSrc = createMixParam("matteSrc");
+const _matteAmt = createMixParam("matteAmt");
+const _matteSpace = createMixParam("matteSpace");
+
+/**
+ * Keys this pattern's alpha off another pattern's luminance — a matte. Bright
+ * areas of the source stay visible, dark areas are hidden. The source renders to
+ * a hidden auto framebuffer; its **transparent regions count as black**, so an
+ * un-drawn part of the matte masks out and the matte becomes the layer's shape.
+ * One written call = one shared matte, even across stacked instances.
+ *
+ * @param {Pattern} source matte pattern — always a pattern; wrap names in s(): .matte(s('mylayer'))
+ * @param {number | string | Pattern} [amount=1] strength; patternable. 0 = no-op, 0.5 = half, negative inverts, >1 hardens the key
+ * @returns {Pattern} pattern with the matte applied
+ * @example
+ * // punch a clip through a high-contrast copy of another
+ * Hm: s("noise.mp4").grey(1).contrast(3)
+ * $: s("clip.mp4").matte(s("m"))
+ *
+ * // inverted — bright areas of the matte are the ones that vanish
+ * $: s("clip.mp4").matte(s("m"), -1)
+ *
+ * // audio-driven dissolve
+ * $: s("clip.mp4").matte(s("m"), fft.bass)
+ */
+PatternProto.matte = function (src: any, amt: any = 1) {
+  assertScreenPattern(src, 'matte');
+  const name = nextAutoModName();
+  registerAutoHidden(name, src);
+  return _matteAmt(amt, _matteSrc(name, this));
+};
+
+/**
+ * Sets where a `.matte` source is sampled — the same three spaces `.modspace`
+ * offers. Default `'uv'` follows the tile's working UV (so a barrel or modulate
+ * warps the matte with the image); `'tile'` squeezes the matte into each tile
+ * unwarped; `'screen'` fixes the matte to the canvas so each tile is keyed by the
+ * region under itself.
+ *
+ * @param {string | Pattern} value 'uv' | 'tile' | 'screen' — patternable
+ * @returns {Pattern} pattern with the lookup space applied
+ * @example
+ * // one canvas-wide matte cutting across a whole grid
+ * $: s("clip.mp4").stackN(9).rowscols(3).gridMod().matte(s("m")).mattespace('screen')
+ */
+PatternProto.mattespace = function (value: any) {
+  return _matteSpace(value, this);
+};
+
 /**
  * Bakes the effect chain so far into a hidden framebuffer and returns a pattern
  * that samples it — a genuine resampling boundary. Everything before `.render()`

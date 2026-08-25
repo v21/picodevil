@@ -300,11 +300,15 @@ export class FrameRenderer {
       const ev = fe.ev;
       if (!ev) continue;
       addConsumer(ev.modSrc, ev);
-      // A `.modulate()` before `.render()` lands modSrc inside a bake segment —
-      // the tile is still the consumer (its footprint sizes the modulator), so
-      // scan segments too, else the modulator is wrongly skipped as unread.
+      addConsumer(ev.matteSrc, ev);
+      // A `.modulate()` / `.matte()` before `.render()` lands its src inside a
+      // bake segment — the tile is still the consumer (its footprint sizes the
+      // auto FBO), so scan segments too, else it is wrongly skipped as unread.
       if (Array.isArray(ev._bakeSegments)) {
-        for (const seg of ev._bakeSegments) addConsumer(seg?.effects?.modSrc, ev);
+        for (const seg of ev._bakeSegments) {
+          addConsumer(seg?.effects?.modSrc, ev);
+          addConsumer(seg?.effects?.matteSrc, ev);
+        }
       }
     }
     for (const name of autoNames) {
@@ -665,6 +669,24 @@ export class FrameRenderer {
       modSrc = undefined;
     }
 
+    // Matte amount: NaN → 0 (draw unmatted rather than a NaN'd alpha).
+    let matteAmt = ev.matteAmt !== undefined ? Number(ev.matteAmt) : undefined;
+    if (matteAmt !== undefined && isNaN(matteAmt)) {
+      warn(`screen ${screenIndex} event ${eventIndex}: NaN matte amount (raw=${ev.matteAmt})`);
+      matteAmt = 0;
+    }
+
+    // Skipped matte source (zero-footprint): same reasoning as the modulator
+    // above — drop the op so it can never sample stale content.
+    let matteSrc = ev.matteSrc !== undefined ? String(ev.matteSrc) : undefined;
+    if (matteSrc !== undefined && this.skippedModulators.has(matteSrc)) {
+      if (this.modPlanVp && consumerFootprint(ev, this.modPlanVp.w, this.modPlanVp.h).visible) {
+        this.modSkipViolations++;
+        warn(`internal: matte "${matteSrc}" was skipped but its consumer (screen ${screenIndex} event ${eventIndex}) is visible — footprint bug; tile drawn unmatted`);
+      }
+      matteSrc = undefined;
+    }
+
     // Rotation
     let rotateZ = ev.rotateZ !== undefined ? Number(ev.rotateZ) : 0;
     let rotateXScale = 1;
@@ -757,6 +779,9 @@ export class FrameRenderer {
       modSrc,
       modAmt,
       modSpace:      ev.modSpace      !== undefined ? normModSpace(ev.modSpace) : undefined,
+      matteSrc,
+      matteAmt,
+      matteSpace:    ev.matteSpace    !== undefined ? normModSpace(ev.matteSpace) : undefined,
     };
   }
 

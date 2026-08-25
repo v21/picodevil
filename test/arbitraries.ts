@@ -581,6 +581,10 @@ const modulatorExpr: fc.Arbitrary<string> = fc.oneof(
 );
 const modAmtArg = fc.constantFrom("0.05", "0.1", "0.3", "-0.2", "sine", "rand");
 const modSpaceArg = fc.constantFrom("'uv'", "'tile'", "'screen'", '"uv screen"', '"tile screen"');
+// .matte() reuses modulatorExpr (same "always a pattern" rule) but keys alpha off
+// the source's luminance. Amounts span the interesting range: no-op, partial,
+// full, inverted, over-driven, and patterned.
+const matteAmtArg = fc.constantFrom("0", "0.5", "1", "-1", "2", "sine", "rand");
 
 const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   alphaArg.map(a => ({ code: `.alpha(${a})` })),
@@ -614,6 +618,11 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   fc.tuple(modulatorExpr, modAmtArg).map(([src, amt]) => ({ code: `.modulate(${src}, ${amt})` })),
   fc.tuple(modulatorExpr, modAmtArg, modSpaceArg)
     .map(([src, amt, sp]) => ({ code: `.modulate(${src}, ${amt}).modspace(${sp})` })),
+  // luminance matte — inline pattern arg, optionally with a lookup space
+  fc.tuple(modulatorExpr, matteAmtArg).map(([src, amt]) => ({ code: `.matte(${src}, ${amt})` })),
+  modulatorExpr.map(src => ({ code: `.matte(${src})` })),
+  fc.tuple(modulatorExpr, matteAmtArg, modSpaceArg)
+    .map(([src, amt, sp]) => ({ code: `.matte(${src}, ${amt}).mattespace(${sp})` })),
   // render() — bake the chain so far into an FBO and keep chaining on the result
   fc.constant({ code: `.render()` }),
   // crop controls

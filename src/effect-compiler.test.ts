@@ -3,7 +3,7 @@ import {
   compile,
   OP_SAMPLE, OP_BARREL, OP_PIXELATE, OP_WRAP,
   OP_CONTRAST, OP_BRIGHTNESS, OP_COLOR_OKLAB, OP_ALPHA,
-  OP_MODULATE, OP_SMEAR, OP_VIGNETTE,
+  OP_MODULATE, OP_SMEAR, OP_VIGNETTE, OP_MATTE,
   OP_FLOATS, MAX_OPS,
   vignetteBand,
   type EffectInputs,
@@ -29,6 +29,10 @@ function defaults(): EffectInputs {
     modAmt: 0,
     modSpace: 0,
     modUVScaleX: 1, modUVScaleY: 1,
+    matteTexIndex: -1,
+    matteAmt: 1,
+    matteSpace: 0,
+    matteUVScaleX: 1, matteUVScaleY: 1,
   };
 }
 
@@ -194,7 +198,7 @@ describe("effect-compiler", () => {
       expect(ops[7]).toBe(0); // b.w reserved
     });
 
-    it("MAX_OPS covers the fully-loaded chain including MODULATE", () => {
+    it("MAX_OPS covers the fully-loaded chain including MODULATE + MATTE", () => {
       const e: EffectInputs = {
         texIndex: 2,
         alpha: 0.5,
@@ -211,13 +215,55 @@ describe("effect-compiler", () => {
         tileMode: 1,
         modTexIndex: 1, modAmt: 0.1, modSpace: 0,
         modUVScaleX: 1, modUVScaleY: 1,
+        matteTexIndex: 3, matteAmt: 1, matteSpace: 0,
+        matteUVScaleX: 1, matteUVScaleY: 1,
       };
       const ks = kinds(compile(e));
       expect(ks).toEqual([
         OP_BARREL, OP_MODULATE, OP_PIXELATE, OP_WRAP, OP_SAMPLE,
-        OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_VIGNETTE, OP_ALPHA,
+        OP_BRIGHTNESS, OP_CONTRAST, OP_COLOR_OKLAB, OP_MATTE, OP_VIGNETTE, OP_ALPHA,
       ]);
       expect(ks.length).toBe(MAX_OPS);
+    });
+  });
+
+  describe("MATTE", () => {
+    it("not emitted when matteTexIndex = -1", () => {
+      expect(kinds(compile(defaults()))).not.toContain(OP_MATTE);
+    });
+
+    it("emitted whenever matteTexIndex >= 0, even at matteAmt = 0 (no amt gating)", () => {
+      expect(kinds(compile({ ...defaults(), matteTexIndex: 2, matteAmt: 0 }))).toContain(OP_MATTE);
+    });
+
+    it("slot: after COLOR_OKLAB, before VIGNETTE", () => {
+      const e = { ...defaults(), grey: 0.5, vignette: 1, matteTexIndex: 1 };
+      expect(kinds(compile(e))).toEqual([
+        OP_WRAP, OP_SAMPLE, OP_COLOR_OKLAB, OP_MATTE, OP_VIGNETTE, OP_ALPHA,
+      ]);
+    });
+
+    it("sits between SAMPLE and ALPHA when nothing else is set", () => {
+      const e = { ...defaults(), matteTexIndex: 1 };
+      expect(kinds(compile(e))).toEqual([OP_WRAP, OP_SAMPLE, OP_MATTE, OP_ALPHA]);
+    });
+
+    it("packs [texIdx, amt, space, uvScaleX, uvScaleY]; b.z/b.w reserved 0", () => {
+      const e = {
+        ...defaults(),
+        matteTexIndex: 3, matteAmt: -0.25, matteSpace: 2,
+        matteUVScaleX: 0.5, matteUVScaleY: 0.75,
+      };
+      const ops = compile(e);
+      const i = kinds(ops).indexOf(OP_MATTE) * OP_FLOATS;
+      expect(ops[i]).toBe(OP_MATTE);
+      expect(ops[i + 1]).toBe(3);
+      expect(ops[i + 2]).toBeCloseTo(-0.25);
+      expect(ops[i + 3]).toBe(2);
+      expect(ops[i + 4]).toBeCloseTo(0.5);
+      expect(ops[i + 5]).toBeCloseTo(0.75);
+      expect(ops[i + 6]).toBe(0); // b.z reserved
+      expect(ops[i + 7]).toBe(0); // b.w reserved
     });
   });
 

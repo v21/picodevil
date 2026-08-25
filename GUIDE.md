@@ -541,7 +541,50 @@ $: s("clip.mp4").stackN(25).modulate(s("clip.mp4").scale(rand), .1).tile()
 
 produces 25 identically-modulated tiles under the default `'uv'` space — the `rand` inside the modulator resolves once, not per instance. Use `.modspace('screen')` to differentiate them positionally (each tile then reads the region of the shared field under itself). Per-instance modulators are a planned follow-up.
 
-Only `.modulate` (UV displacement) exists today; the wider modulation vocabulary (`.modulateScale`, `.lumaMask`, generated `noise()`/`osc()` sources, …) is planned.
+### Luminance mattes
+
+`.matte(source, amount?)` keys a pattern's **alpha** off another pattern's luminance, where `.modulate` keys its UV. Bright areas of the source stay visible, dark areas are hidden — so anything you can render becomes a mask.
+
+It takes the same kind of argument as `.modulate`: **always a pattern**, wrapped in `s(...)`, rendering to a hidden auto framebuffer. `.matte("mylayer")` throws the same teaching error.
+
+```js
+Hm: s("noise.mp4").grey(1).contrast(3)   // a hidden high-contrast layer...
+$: s("clip.mp4").matte(s("m"))           // ...punches the clip through it
+
+$: s("clip.mp4").matte(s("m"), -1)       // inverted — bright areas vanish instead
+$: s("clip.mp4").matte(s("prev"), fft.bass)
+```
+
+**Transparent counts as black.** The matte's own alpha is folded into the luminance, so a region the matte never drew into masks out — the matte becomes the layer's *shape*, with no extra work:
+
+```js
+Hm: s("logo.png")                        // transparent everywhere but the logo
+$: s("clip.mp4").matte(s("m"))           // clip appears only inside the logo
+```
+
+`amount` defaults to `1` and is fully patternable:
+
+| `amount` | Effect                                                            |
+| --------- | ----------------------------------------------------------------- |
+| `0`       | No-op — the matte is ignored                                      |
+| `0.5`     | Half strength; even black areas keep half their alpha             |
+| `1`       | Full key                                                          |
+| `-1`      | Inverted — bright areas are the ones that vanish                   |
+| `2`       | Harder key — the falloff steepens and mid-grey goes fully out      |
+
+Values above 1 extrapolate rather than clamp, which is what sharpens the key; only the resulting alpha is clamped.
+
+`.mattespace('uv' | 'tile' | 'screen')` chooses where the matte is sampled, with exactly the same three meanings as `.modspace` (default `'uv'`, so a `.barrel` or `.modulate` earlier in the chain warps the matte along with the image). `'screen'` is the one to reach for when a single matte should cut across a whole grid:
+
+```js
+$: s("clip.mp4").stackN(9).rowscols(3).gridMod().matte(s("m")).mattespace('screen')
+```
+
+`.matte` shares `.modulate`'s one-call-one-framebuffer rule, and both can sit on the same chain with independent spaces.
+
+> Note: `.matte` is unrelated to Strudel's `.mask("1 0 1 0")`, which silences *events* rather than shading pixels.
+
+The wider modulation vocabulary (`.modulateScale`, generated `noise()`/`osc()` sources, a colour-keyed `chromakey()`, …) is still planned.
 
 ### Bake a chain with `.render()`
 
