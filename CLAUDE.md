@@ -216,6 +216,7 @@ Example (nested grid): `$: stack(stack(color("cyan"), color("magenta")).index().
   buffered) — see `docs/reports/firefox-cors.md` for the full analysis and the
   parked full-file-prefetch plan.
 - `setPlaybackRate()` in `src/playback-rate.ts` catches `NotSupportedError` to prevent the render loop from breaking
+- **Seek economy on the native path** (`updateVideoPlayback`): every seek on a playing element flushes the decoder and freezes the tile for ~a frame, so seeks that don't move the playhead are pure judder. (1) A new event only seeks when the element is more than `NEW_EVENT_SEEK_TOLERANCE` (1/30 s) from its start position — prewarm parks elements at the activation position, and back-to-back events often leave the playhead there already. It's **raw** distance, not loop-adjusted `computeDrift`: a playhead at loopEnd is *not* at loopStart for a fresh event ("0 0" retriggers must restart). (2) A loop wrap (`detectLoopWrap`) is a discontinuity, not a velocity: that frame takes its rate from nominal speed, because `computeEffectiveRate` only unwraps whole-clip boundary crossings — a short slice's ~loopLen backward jump otherwise reads as a large negative rate and drops into pause + manual seek. Regression tests: "no redundant seeks on retrigger / loop wrap" in `src/video-playback.test.ts`.
 
 ## Continuous playback modes: sync() vs rolling()
 

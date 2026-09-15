@@ -86,6 +86,9 @@ export const DRIFT_THRESHOLD = 0.15;
 /** Drift threshold for rolling mode. Large enough to ignore natural timing jitter
  *  but small enough to catch a failed initial seek (e.g. browser resetting after loadeddata). */
 export const ROLLING_DRIFT_THRESHOLD = 3.0;
+/** A new event skips its start seek when the element is already within this many seconds of the
+ *  start position — about one frame of 30fps video. */
+export const NEW_EVENT_SEEK_TOLERANCE = 1 / 30;
 
 /**
  * Convert a video position to loop-space offset (0 to loopLen).
@@ -314,8 +317,14 @@ function updateVideoPlayback(
   const now = frameWallTime ?? performance.now();
   const prevExpected = st.lastExpected;
   const wallDt = st.lastExpectedWall != null ? (now - st.lastExpectedWall) / 1000 : 0;
+  // A loop wrap is a discontinuity, not a velocity: the ~loopLen backward jump would read as a large
+  // negative rate (computeEffectiveRate only unwraps whole-clip boundary crossings) and drop a short
+  // looping slice into pause + manual seek for a frame. Take the rate from nominal speed instead.
+  const loopWrapped = detectLoopWrap({
+    expected, prevExpected, loopStart, loopEnd, loopLen, duration: dur,
+  });
   const effectiveRate = computeEffectiveRate({
-    expected, prevExpected, wallDt, duration: dur, nominalSpeed: speed,
+    expected, prevExpected: loopWrapped ? undefined : prevExpected, wallDt, duration: dur, nominalSpeed: speed,
   });
   st.lastExpected = expected;
   st.lastExpectedWall = now;
@@ -332,9 +341,6 @@ function updateVideoPlayback(
     // when begin/end are dynamic, e.g. begin(saw) produces effective rate ~5)
     if (el.paused) el.play().catch((e: DOMException) => { if (e.name !== "AbortError") throw e; });
     if (Math.abs(el.playbackRate - effectiveRate) > 0.01) setPlaybackRate(el, effectiveRate);
-    const loopWrapped = detectLoopWrap({
-      expected, prevExpected, loopStart, loopEnd, loopLen, duration: dur,
-    });
     if (rolling) {
       // Rolling: position is stateful — only seek on fresh element assignment (isNewEvent)
       // or genuine loop-boundary wrap (needed for custom begin/end ranges).
@@ -355,8 +361,13 @@ function updateVideoPlayback(
       const drift = computeDrift({
         currentTime: el.currentTime, expected, loopStart, loopEnd, loopLen, duration: dur,
       });
-      if (isNewEvent || loopWrapped || drift > DRIFT_THRESHOLD) {
-        const reason = isNewEvent ? "new" : loopWrapped ? "wrap" : "drift";
+      // A new event (retrigger or fresh assignment) must start on its frame — but if the element is
+      // already there (prewarm parked it at the activation position, or the previous event carried
+      // it there) the seek moves nothing and still flushes the decoder, freezing the tile for about
+      // a frame. Raw distance, not loop-adjusted drift: a playhead at loopEnd is not at loopStart.
+      const newEventSeek = isNewEvent && Math.abs(el.currentTime - expected) > NEW_EVENT_SEEK_TOLERANCE;
+      if (newEventSeek || loopWrapped || drift > DRIFT_THRESHOLD) {
+        const reason = newEventSeek ? "new" : loopWrapped ? "wrap" : "drift";
         st.lastSeekReason = reason;
         el.currentTime = expected;
         if (onSeek) onSeek(reason);

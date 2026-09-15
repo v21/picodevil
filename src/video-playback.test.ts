@@ -449,6 +449,71 @@ describe("renderVideoFrame stateful behavior", () => {
 });
 
 /**
+ * Seek economy on the slice/retrigger path. Numbers from the lever2 case: a 1.7s clip cut with
+ * slice(4) gives 0.425s slices; at cps 0.5 each step is 0.5s, so every step also wraps its loop.
+ * Each seek on a playing element freezes the picture for ~a frame, so a seek that doesn't move
+ * the playhead is pure judder.
+ */
+describe("renderVideoFrame: no redundant seeks on retrigger / loop wrap", () => {
+  const cps = 0.5;
+  const DUR = 1.7;
+  const FRAME_CYC = cps / 60; // one 60fps frame, in cycles
+
+  function seekLog() {
+    const reasons: string[] = [];
+    return { reasons, onSeek: (r?: string) => { reasons.push(r ?? "?"); } };
+  }
+
+  it("new event: element already parked at the start frame is not re-seeked", () => {
+    // Prewarm parked a paused element exactly at slice 1's start (0.25 * 1.7 = 0.425).
+    const el = mockVideoEl({ duration: DUR, currentTime: 0.425 });
+    const ev = { speed: 1, begin: 0.25, end: 0.5 };
+    const { reasons, onSeek } = seekLog();
+    // First frame of the event lands one frame after its onset: expected ≈ 0.442.
+    renderVideoFrame({ ev, el, currentCycle: 1 + FRAME_CYC, eventBegin: 1, cps, onSeek });
+    expect(reasons).toEqual([]);
+    expect(el.currentTime).toBeCloseTo(0.425, 5);
+    expect(el.paused).toBe(false);
+  });
+
+  it("new event: element more than a frame away still seeks", () => {
+    const el = mockVideoEl({ duration: DUR, currentTime: 0.3 });
+    const ev = { speed: 1, begin: 0.25, end: 0.5 };
+    const { reasons, onSeek } = seekLog();
+    renderVideoFrame({ ev, el, currentCycle: 1 + FRAME_CYC, eventBegin: 1, cps, onSeek });
+    expect(reasons).toEqual(["new"]);
+  });
+
+  it("new event: a playhead at loopEnd is not treated as being at loopStart", () => {
+    // Retrigger of the same slice ("0 0"): the previous event left the playhead at the slice end.
+    // Loop-adjusted drift would call 0.424 ≈ 0.001 (one loopLen apart); a fresh event must restart.
+    const el = mockVideoEl({ duration: DUR, currentTime: 0.424 });
+    const ev = { speed: 1, begin: 0, end: 0.25 };
+    const { reasons, onSeek } = seekLog();
+    renderVideoFrame({ ev, el, currentCycle: 1 + FRAME_CYC / 10, eventBegin: 1, cps, onSeek });
+    expect(reasons).toEqual(["new"]);
+    expect(el.currentTime).toBeLessThan(0.01);
+  });
+
+  it("loop wrap inside a short slice stays native (seek while playing, no pause)", () => {
+    // Slice [0, 0.425) at speed 1: expected jumps back ~0.425s at 0.425s in. With real frame
+    // timing that jump must not read as a ~-25x velocity and drop into pause + manual seek.
+    const el = mockVideoEl({ duration: DUR, currentTime: 0 });
+    const ev = { speed: 1, begin: 0, end: 0.25 };
+    const { reasons, onSeek } = seekLog();
+    const pausedFrames: number[] = [];
+    for (let i = 0; i < 40; i++) { // 40 frames ≈ 0.667s: crosses the wrap at 0.425s
+      renderVideoFrame({ ev, el, currentCycle: i * FRAME_CYC, eventBegin: 0, cps, onSeek, frameWallTime: 1000 + i * (1000 / 60) });
+      if (el.paused) pausedFrames.push(i);
+      else el.currentTime = el.currentTime + el.playbackRate / 60; // browser advances between frames
+    }
+    expect(reasons).toContain("wrap");
+    expect(reasons).not.toContain("nonnative");
+    expect(pausedFrames).toEqual([]);
+  });
+});
+
+/**
  * rolling().sync() simulation tests.
  *
  * Two elements with the same src but different sync offsets should always be
