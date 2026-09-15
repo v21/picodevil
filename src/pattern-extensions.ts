@@ -266,6 +266,9 @@ function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }
  * As in Strudel, the index pattern sets the rhythm: each index event takes whichever source
  * event is playing at that moment, so `s("a b").slice(4, "0 1 2 3")` is 4 events (a, a, b, b).
  *
+ * Out-of-range indices wrap, as in Tidal: with 4 slices, 4 plays slice 0 and -1 plays slice 3.
+ * (Strudel doesn't wrap.) `n` can also be an array of cut points; the last runs to the end.
+ *
  * @param {number | Pattern} n number of slices to divide the video into
  * @param {number | string | Pattern} ipat index pattern selecting which slices to play
  * @returns {Pattern} pattern playing the selected slices
@@ -276,25 +279,28 @@ function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }
  * // all slices reversed
  * $: s("clip.mp4").slice(8, "0 1 2 3 4 5 6 7".rev())
  *
+ * // indices wrap: 4 → 0, -1 → 3
+ * $: s("clip.mp4").slice(4, "<0 4 2 -1>")
+ *
  */
 PatternProto.slice = function (n: any, ipat: any) {
   const pat = this;
   const idxPat = reify(ipat);
-  return reify(n).innerBind((nVal: number) =>
-    idxPat.outerBind((i: number) =>
-      pat.fmap((o: any) => {
-        const begin = Array.isArray(nVal) ? nVal[i] : i / nVal;
-        const end = Array.isArray(nVal) ? nVal[i + 1] : (i + 1) / nVal;
-        return mergeSlice(o, { begin, end });
-      })
-    )
+  return reify(n).innerBind((nVal: any) =>
+    idxPat.outerBind((i: number) => {
+      const count = Array.isArray(nVal) ? nVal.length : nVal;
+      const w = ((Number(i) % count) + count) % count;
+      const begin = Array.isArray(nVal) ? nVal[w] : w / nVal;
+      const end = Array.isArray(nVal) ? (nVal[w + 1] ?? 1) : (w + 1) / nVal;
+      return pat.fmap((o: any) => mergeSlice(o, { begin, end }));
+    })
   ).setSteps(idxPat._steps);
 };
 
 /**
  * Like slice, but adjusts speed so each slice fills its event duration.
  * Combines slicing with speed-fitting — each selected slice plays at the right speed
- * to complete within its time slot.
+ * to complete within its time slot. Out-of-range indices wrap, like slice.
  *
  * For video, uses the real video duration from the media registry for accurate speed.
  *

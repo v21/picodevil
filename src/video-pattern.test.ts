@@ -329,6 +329,21 @@ describe("slice integration", () => {
       expect(Number(ev.whole.end) - Number(ev.whole.begin)).toBeCloseTo(0.25);
     }
   });
+
+  // Out-of-range indices wrap, as in Tidal (Strudel doesn't: index n of n asks for
+  // 1–1.25 of the clip — silence in audio, a drift-seek storm in video).
+  it("out-of-range indices wrap around the slice count", () => {
+    const at = (idx: string) => video("a.mp4").slice(4, mini(idx)).queryArc(0, 1)[0].value;
+    expect([at("4").begin, at("4").end]).toEqual([0, 0.25]);      // 4 of 4 → slice 0
+    expect([at("7").begin, at("7").end]).toEqual([0.75, 1]);      // 7 → 3
+    expect([at("-1").begin, at("-1").end]).toEqual([0.75, 1]);    // -1 → 3
+  });
+
+  it("an array of cut points wraps too, and its last slice runs to the end", () => {
+    const at = (idx: string) => video("a.mp4").slice([0, 0.25, 0.5, 0.75], mini(idx)).queryArc(0, 1)[0].value;
+    expect([at("5").begin, at("5").end]).toEqual([0.25, 0.5]);    // 5 of 4 → slice 1
+    expect([at("3").begin, at("3").end]).toEqual([0.75, 1]);      // last cut point → end of clip
+  });
 });
 
 describe("splice integration", () => {
@@ -383,6 +398,11 @@ describe("splice integration", () => {
     for (const ev of evs) {
       expect(ev.value.speed).toBeCloseTo(1);
     }
+  });
+
+  it("splice wraps out-of-range indices like slice", () => {
+    const v = video("a.mp4").splice(4, mini("4")).queryArc(0, 1)[0].value;
+    expect([v.begin, v.end]).toEqual([0, 0.25]);
   });
 
 });

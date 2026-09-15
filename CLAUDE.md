@@ -452,5 +452,6 @@ Don't edit `src/about.html` either — it's a human-written file, same rule as R
 - The transpiler wraps double-quoted strings in `mini()`. Use single quotes for literal string arguments like `.urlBase('/path/')` — double quotes would parse `/` as mininotation
 - Strudel Fraction types produce repeating-decimal strings — always use `Number(v)` before arithmetic
 - The `videoPool` and `imagePool` Maps cache media elements by full URL to avoid re-creation
+- `.slice(n, idx)` / `.splice(n, idx)` ([src/pattern-extensions.ts](src/pattern-extensions.ts)): the index pattern owns the structure (Strudel's `outerBind`), the source is sampled **per frame** (so a long index event can cut between source events — deliberate, not onset-sampled), and out-of-range indices **wrap** modulo the slice count (Tidal-style; Strudel doesn't, and index n of n would ask for 1–1.25 of the clip)
 - Config constants live in `src/config.ts` — timing values are in milliseconds
 - **`_onset` is baked into video event values** for playback timing — `eventBeginFromHap` in main.ts uses it to determine where the video should be playing from. Any function that produces video events (`video()`, `screen()`) must wrap in `new PatternClass((state) => ...)` and set `_onset: Number(hap.whole.begin)` on the value
