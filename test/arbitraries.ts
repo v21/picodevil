@@ -415,6 +415,10 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
     { weight: 3, arbitrary: fc.constant(".rev()") },
     { weight: 2, arbitrary: periodArg.map((n: string) => `.chop(${n})`) },
     { weight: 2, arbitrary: periodArg.map((n: string) => `.chop(${n}).rev()`) },
+    { weight: 1, arbitrary: fc.tuple(periodArg, miniArb(["0", "1", "2", "3", "7"], 1))
+        .map(([n, i]: [string, string]) => `.slice(${n}, "${i}")`) },
+    { weight: 1, arbitrary: fc.tuple(periodArg, miniArb(["0", "1", "2", "3", "7"], 1))
+        .map(([n, i]: [string, string]) => `.splice(${n}, "${i}")`) },
     { weight: 2, arbitrary: fc.tuple(periodArg, tie("simpleTransformFn") as fc.Arbitrary<string>)
         .map(([n, fn]: [string, string]) => `.every(${n}, ${fn})`) },
 

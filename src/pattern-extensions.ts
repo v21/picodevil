@@ -263,6 +263,8 @@ function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }
 /**
  * Cuts the video into n slices and plays only the slices selected by the index pattern.
  * Unlike chop (which plays all slices sequentially), slice lets you pick which slices to play and in what order.
+ * As in Strudel, the index pattern sets the rhythm: each index event takes whichever source
+ * event is playing at that moment, so `s("a b").slice(4, "0 1 2 3")` is 4 events (a, a, b, b).
  *
  * @param {number | Pattern} n number of slices to divide the video into
  * @param {number | string | Pattern} ipat index pattern selecting which slices to play
@@ -277,18 +279,16 @@ function mergeSlice(original: any, sliceBeginEnd: { begin: number; end: number }
  */
 PatternProto.slice = function (n: any, ipat: any) {
   const pat = this;
-  const nPat = reify(n);
   const idxPat = reify(ipat);
-  const func = (o: any) => {
-    return nPat.innerBind((nVal: number) =>
-      idxPat.fmap((i: number) => {
+  return reify(n).innerBind((nVal: number) =>
+    idxPat.outerBind((i: number) =>
+      pat.fmap((o: any) => {
         const begin = Array.isArray(nVal) ? nVal[i] : i / nVal;
         const end = Array.isArray(nVal) ? nVal[i + 1] : (i + 1) / nVal;
         return mergeSlice(o, { begin, end });
       })
-    );
-  };
-  return pat.squeezeBind(func);
+    )
+  ).setSteps(idxPat._steps);
 };
 
 /**

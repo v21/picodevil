@@ -311,6 +311,24 @@ describe("slice integration", () => {
     expect(sorted[3].value.begin).toBeCloseTo(0.65);
     expect(sorted[3].value.end).toBeCloseTo(0.8);
   });
+
+  // Strudel semantics: the index pattern owns the structure; the source is
+  // sampled at each index event's time, not squeezed into each source event.
+  it("index pattern owns structure across a multi-event source", () => {
+    const evs = video("a.mp4 b.mp4").slice(4, mini("0 1 2 3")).queryArc(0, 1);
+    const sorted = [...evs].sort((a: any, b: any) => Number(a.whole.begin) - Number(b.whole.begin));
+    expect(sorted.map((e: any) => Number(e.whole.begin))).toEqual([0, 0.25, 0.5, 0.75]);
+    expect(sorted.map((e: any) => e.value.src)).toEqual(["a.mp4", "a.mp4", "b.mp4", "b.mp4"]);
+    expect(sorted.map((e: any) => e.value.begin)).toEqual([0, 0.25, 0.5, 0.75]);
+  });
+
+  it("slowed source doesn't stretch the index pattern", () => {
+    const evs = video("a.mp4").slow(2).slice(4, mini("0 1 2 3")).queryArc(0, 2);
+    expect(evs).toHaveLength(8);
+    for (const ev of evs) {
+      expect(Number(ev.whole.end) - Number(ev.whole.begin)).toBeCloseTo(0.25);
+    }
+  });
 });
 
 describe("splice integration", () => {
@@ -338,6 +356,19 @@ describe("splice integration", () => {
     // splice(4, "0 1 2 3"): 4 events each 0.25 cycles, each slice = 1/4 of video
     // speed = sliceDur * videoDur * cps / wholeDur = 0.25 * 10 * 0.5 / 0.25 = 5
     const evs = video("test.mp4").splice(4, mini("0 1 2 3")).queryArc(0, 1);
+    expect(evs).toHaveLength(4);
+    for (const ev of evs) {
+      expect(ev.value.speed).toBeCloseTo(5);
+    }
+  });
+
+  it("splice speed fits the index event, not a squeezed source event", () => {
+    clearAll();
+    addMedia("test.mp4", "test.mp4");
+    updateEntry("test.mp4", { duration: 10, type: "video" });
+    setRuntimeCps(0.5);
+    // index events are 0.25 cycles regardless of the 2-event source
+    const evs = video("test.mp4 test.mp4").splice(4, mini("0 1 2 3")).queryArc(0, 1);
     expect(evs).toHaveLength(4);
     for (const ev of evs) {
       expect(ev.value.speed).toBeCloseTo(5);
