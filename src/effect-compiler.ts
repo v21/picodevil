@@ -47,8 +47,9 @@ export const OP_MODULATE    = 8;
  *  — and any reducer via `smearMode` (`.smearop`): avg / min / max / median /
  *  range / sharpen etc. */
 export const OP_SMEAR       = 9;
-/** Radial alpha falloff in cell-local space (`.vignette`). Multiplies alpha only,
- *  so it sits with the colour ops, just before the final ALPHA multiply. */
+/** Radial alpha falloff in cell-local space — the whole of the `vignette()`
+ *  source (a white tile whose alpha this shapes). Multiplies alpha only, so it
+ *  sits with the colour ops, just before the final ALPHA multiply. */
 export const OP_VIGNETTE    = 10;
 /** Alpha keyed off a matte texture's luminance (`.matte`). Like VIGNETTE it only
  *  multiplies alpha, so it sits with the colour ops, just before VIGNETTE. */
@@ -79,9 +80,9 @@ export interface EffectInputs {
   tintHue:      number;
   tintStrength: number;
   barrel:       number;
-  /** Vignette amount: 0 = off, 1 = corners transparent with the inscribed
-   *  ellipse untouched, higher eats inward, negative fades the centre instead.
-   *  Mapped to a band of q by vignetteBand(). */
+  /** Vignette amount, set only by the `vignette()` source: 0 = off, 1 = corners
+   *  transparent with the inscribed ellipse untouched, higher eats inward,
+   *  negative fades the centre instead. Mapped to a band of q by vignetteBand(). */
   vignette:     number;
   cropOffX:     number;
   cropOffY:     number;

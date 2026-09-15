@@ -41,6 +41,7 @@ import { video } from "./video-pattern";
 import { image } from "./image-pattern";
 import { text } from "./text-pattern";
 import { qr } from "./qr-pattern";
+import { vignette } from "./vignette-pattern";
 import { screen, s } from "./screen-pattern";
 import { stackN } from "./grid-stack";
 import { index, indexCycle, indexWith, indexCycleWith } from "./index-patterns";
@@ -106,7 +107,7 @@ export function getPatternGlobals(): Record<string, unknown> {
   return {
     ...buildMethodGlobals(),
     mini,
-    color, video, image, text, qr, screen, s,
+    color, video, image, text, qr, vignette, screen, s,
     stackN, index, indexCycle, indexWith, indexCycleWith,
     stack, cat, slowcat, fastcat, sequence, seq, arrange, slowcatPrime, polymeter,
     stepcat, stackLeft, stackRight, stackCentre, stackBy,

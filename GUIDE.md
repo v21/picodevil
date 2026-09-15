@@ -195,6 +195,37 @@ $: qr('https://picodevil.com').grid(2, 2, 3)   // placed in the last cell of a 2
 
 > **Scannability note:** white-on-black (the look when it's over the default black canvas) is *inverted* from a standard dark-on-light QR. Modern phone cameras read inverted codes fine; some older or third-party scanners don't.
 
+### `vignette(n)`
+
+A soft radial fade, as a **source**: white in the middle, fading to transparency towards the corners. On its own it draws a soft-edged glow; its real job is feeding [`.matte()`](#luminance-mattes), which is how you get the classic corner fade:
+
+```js
+$: video("clip.mp4").matte(vignette(1))
+```
+
+The falloff is measured in the drawn tile's **own** `[0,1]` frame, so on a rectangular tile the region it leaves alone is the **ellipse inscribed in the tile** — an oval, not a circle in screen pixels.
+
+`n` is how far the fade has closed in. `0` is off (a plain white tile). At `1` the middle of each edge is still fully opaque and the corners have gone completely, with a smooth falloff between the two. Above that it keeps eating inward — `2` takes the edge midpoints, and by about `4.4` the whole thing has gone. Negative values sweep the same soft band the other way, out from the centre: the middle fades and the corners stay. No argument defaults to 1.
+
+```js
+$: video("clip.mp4").matte(vignette(1))               // classic corner fade
+$: video("clip.mp4").matte(vignette(2))               // tighter — closes in on the centre
+$: video("clip.mp4").matte(vignette(-1.5))            // inverted: hole in the middle
+$: s("all").matte(vignette(sine.range(0, 3)))         // breathing iris over everything
+$: video("clip.mp4").gridMod(3, 2).matte(vignette(1)) // an oval per cell
+```
+
+Because it is a source and not an effect, it takes the universal controls like any other tile — so the mask can be sized, moved and recoloured independently of whatever it is keying, and it can be drawn straight to the canvas:
+
+```js
+$: vignette(1).tint(0.6, 1).width(0.5)                // a soft coloured glow, half width
+$: video("clip.mp4"); vignette(-3.414).brightness(-1) // darkened corners, drawn on top
+```
+
+`.mattespace()` decides how the fade rides the tile it keys. The default `'uv'` means an earlier `.barrel()` or `.modulate()` warps the fade along with the image; `'tile'` pins it to the cell's frame whatever the warps did.
+
+> This used to be `.vignette(n)`, an effect on the tile. `.matte(vignette(n))` renders the same pixels, at the cost of one hidden framebuffer pass — and in exchange the fade is a first-class pattern you can transform, stack and swap for any other matte.
+
 ### `screen(mininotation)` / `s(mininotation)`
 
 Auto-detects the type of each token: looks up the media registry first, then checks file extension, then falls back to treating it as a CSS color.
@@ -327,7 +358,7 @@ $: video("clip.mp4").alpha(0.5)
 $: color("red").alpha("1 0.5 0")   // patterned alpha
 ```
 
-For a soft radial fade rather than a flat one, see [vignette](#vignette).
+For a soft radial fade rather than a flat one, see [`vignette(n)`](#vignetten).
 
 ### Colour effects
 
@@ -384,24 +415,6 @@ $: video("clip.mp4").objectfit("fill").barrel(0.5) // barrel on a single video
 $: s("all").barrel(sine.range(0, 0.6))             // pulsing warp
 $: s("clip.mp4").cropStack(3,3).tile().barrel(0.5)          // per-tile: each cell warps on its own centre
 $: s("clip.mp4").barrel(0.5).render().cropStack(3,3).tile() // whole-frame warp, THEN sliced
-```
-
-### Vignette
-
-`.vignette(n)` fades the tile out radially towards transparency. Like the warps above it works in the drawn tile's **own** `[0,1]` frame, so on a rectangular source the region it leaves alone is the **ellipse inscribed in the tile** — an oval, not a circle in screen pixels.
-
-`n` is how far the fade has closed in. `0` is off. At `1` the middle of each edge is still fully opaque and the corners have gone completely, with a smooth falloff between the two. Above that it keeps eating inward — `2` takes the edge midpoints, and by about `4.4` the whole tile has gone. Negative values sweep the same soft band the other way, out from the centre: the middle fades and the corners stay. No argument defaults to 1.
-
-Only transparency is touched, so it composites like `.alpha()` (and multiplies with it). Like the warps, it's per-tile on a crop — and the same [`.render()`](#bake-a-chain-with-render) trick moves it: `.vignette(1).render().cropStack(2,3)` ovals the whole frame and *then* slices it, where `.cropStack(2,3).vignette(1)` gives each tile its own oval. (Grids are geometry rather than a crop, so `.gridMod()` is always one oval per cell, wherever you write it.)
-
-```js
-$: video("clip.mp4").vignette(1)                      // classic corner fade
-$: video("clip.mp4").vignette(2)                      // tighter — closes in on the centre
-$: video("clip.mp4").vignette(-1.5)                   // inverted: hole in the middle
-$: s("all").vignette(sine.range(0, 3))                // breathing iris over everything
-$: video("clip.mp4").gridMod(3, 2).vignette(1)        // an oval per cell
-$: video("clip.mp4").cropStack(2, 3).tile().vignette(1)          // an oval per crop tile
-$: video("clip.mp4").vignette(1).render().cropStack(2, 3).tile() // whole-frame oval, THEN sliced
 ```
 
 ### Smear — the multi-tap sampler
@@ -589,6 +602,8 @@ $: s("clip.mp4").matte(s("white ~"))   // visible on the first half-cycle only
 `.matte` shares `.modulate`'s one-call-one-framebuffer rule, and both can sit on the same chain with independent spaces.
 
 > Note: `.matte` is unrelated to Strudel's `.mask("1 0 1 0")`, which silences *events* rather than shading pixels.
+
+[`vignette(n)`](#vignetten) is a matte source in its own right — a radial fade to feed straight into `.matte()`.
 
 The wider modulation vocabulary (`.modulateScale`, generated `noise()`/`osc()` sources, a colour-keyed `chromakey()`, …) is still planned.
 

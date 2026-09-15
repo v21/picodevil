@@ -543,7 +543,6 @@ const videoMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
-  numericArg.map(a => ({ code: `.vignette(${a})` })),
   // signed radius: >0 linear line, <0 circular ring, 0 jitter-only
   fc.tuple(rotArg, fc.double({ min: -64, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
@@ -578,6 +577,8 @@ const modulatorExpr: fc.Arbitrary<string> = fc.oneof(
   { weight: 2, arbitrary: fc.tuple(miniArb(MODULATOR_TOKENS, 1), scaleArg).map(([p, sc]) => `s("${p}").scale(${sc})`) },
   // nested modulate
   { weight: 1, arbitrary: miniArb(MODULATOR_TOKENS, 1).map(p => `s("${p}").modulate(s("red"), 0.2)`) },
+  // vignette() — the radial-fade source; .matte(vignette(n)) is the old .vignette(n)
+  { weight: 2, arbitrary: numericArg.map(a => `vignette(${a})`) },
 );
 const modAmtArg = fc.constantFrom("0.05", "0.1", "0.3", "-0.2", "sine", "rand");
 const modSpaceArg = fc.constantFrom("'uv'", "'tile'", "'screen'", '"uv screen"', '"tile screen"');
@@ -608,7 +609,6 @@ const sharedMethod: fc.Arbitrary<MethodCall> = fc.oneof(
   rotArg.map(a => ({ code: `.rotate(${a})` })),
   fc.tuple(rotArg, rotArg).map(([t, ax]) => ({ code: `.rotate(${t}, ${ax})` })),
   numericArg.map(a => ({ code: `.barrel(${a})` })),
-  numericArg.map(a => ({ code: `.vignette(${a})` })),
   fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }))
     .map(([ang, n]) => ({ code: `.smear(${ang}, ${Math.round(n)})` })),
   fc.tuple(rotArg, fc.double({ min: 0, max: 64, noNaN: true }), fc.constantFrom(...SMEAR_OP_MODES))
@@ -867,6 +867,16 @@ export const screenExpr: fc.Arbitrary<GeneratedExpr> = fc.oneof(
       fc.array(sharedMethod, { minLength: 0, maxLength: 3 }),
     ).map(([str, methods]) => ({
       code: `qr('${str}')${methods.map(m => m.code).join("")}`,
+    }))
+  },
+
+  // vignette() — a source in its own right (white fading to transparency)
+  {
+    weight: 1, arbitrary: fc.tuple(
+      numericArg,
+      fc.array(sharedMethod, { minLength: 0, maxLength: 3 }),
+    ).map(([a, methods]) => ({
+      code: `vignette(${a})${methods.map(m => m.code).join("")}`,
     }))
   },
 

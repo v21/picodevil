@@ -746,6 +746,12 @@ export class FrameRenderer {
       source = { kind: 'text', canvas: this.getTextCanvas(ev) };
     } else if (ev._type === 'qr') {
       source = { kind: 'qr', canvas: this.getQrCanvas(ev) };
+    } else if (ev._type === 'vignette') {
+      // A vignette source is just a white tile whose alpha the OP_VIGNETTE shader
+      // op shapes into the radial falloff (ev.vignette, below). White because the
+      // premultiplied luminance .matte() reads back is then exactly that alpha —
+      // and because it recolours cleanly with .tint().
+      source = { kind: 'color', r: 1, g: 1, b: 1 };
     } else {
       warn(`screen ${screenIndex} event ${eventIndex}: unknown _type "${ev._type}"`);
       return null;

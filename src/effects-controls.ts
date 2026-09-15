@@ -205,50 +205,6 @@ PatternProto.barrel = function (value?: any) {
   return barrel(value, this);
 };
 
-/**
- * Fades the tile out radially, towards transparency at the corners — a soft
- * oval mask over a rectangular source.
- *
- * The falloff is measured in the cell's own frame, so the untouched region is
- * the **ellipse inscribed in the cell**, not a circle: 0 at the centre, the
- * middle of each edge is the ellipse itself, and the corners sit furthest out.
- *
- * - `0` — off, nothing fades (default when the field is absent).
- * - `1` — edge midpoints still fully opaque, corners fully transparent, smooth
- *   falloff between the two.
- * - `>1` — the fade keeps eating inward; around `4.4` the whole tile is gone.
- * - `<0` — sweeps the same soft band outward from the centre instead: the
- *   middle fades out and the corners stay.
- *
- * Only alpha is touched, so it composites like any other transparency — and,
- * being a pixel effect, it bakes at a `.render()` boundary: `.vignette(1).render()`
- * ovals the source before whatever follows, while `.render().vignette(1)` ovals
- * the baked frame.
- *
- * @param {number | string | Pattern} [value=1] fade amount: 0 = off, 1 = corners transparent, negative = fade the centre
- * @returns {Pattern} pattern with the vignette applied
- * @example
- * // classic corner fade
- * $: video("clip.mp4").vignette(1)
- *
- * // tighter — closes in on the centre
- * $: video("clip.mp4").vignette(2)
- *
- * // inverted: hole in the middle, corners intact
- * $: video("clip.mp4").vignette(-1.5)
- *
- * // breathing iris over the whole composition
- * $: s("all").vignette(sine.range(0, 3))
- *
- * // soft-edged oval over a hard-edged one
- * $: color("red"); $: video("clip.mp4").vignette(1).scale(0.5)
- */
-export const vignette = createMixParam("vignette");
-PatternProto.vignette = function (value?: any) {
-  if (value === undefined) value = 1;
-  return vignette(value, this);
-};
-
 const _smear = createMixParam("smear");
 const _smearAngle = createMixParam("smearAngle");
 const _smearJitter = createMixParam("smearJitter");

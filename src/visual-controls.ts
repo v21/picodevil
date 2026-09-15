@@ -7,7 +7,7 @@
  */
 import { reify, Pattern, Hap, register } from "@strudel/core";
 import { createMixParam, samplePerEvent } from "./create-mix-param";
-import "./effects-controls"; // registers alpha, opacity, pixelate, grey, huerot, contrast, brightness, tint, vignette
+import "./effects-controls"; // registers alpha, opacity, pixelate, grey, huerot, contrast, brightness, tint
 import "./pattern-extensions"; // registers addOn on Pattern.prototype
 import { resolveMedia } from "./media-registry";
 import { resolveValue } from "./resolve-pattern-value";

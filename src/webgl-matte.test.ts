@@ -305,3 +305,49 @@ describe("matte batching", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// vignette() as a source
+// ---------------------------------------------------------------------------
+
+// vignette() is a source, not an effect: it draws a white tile whose alpha is the
+// radial falloff, and `.matte()` reads the PREMULTIPLIED luminance of that — which
+// for white is exactly that alpha. So `.matte(vignette(n))` must land on the same
+// alpha the old `.vignette(n)` effect produced, pixel for pixel.
+describe("vignette source through matte", () => {
+  const PROBES: [number, number][] = [[50, 50], [50, 1], [1, 50], [2, 2], [80, 20], [97, 97]];
+
+  for (const amount of [1, 2, 0.5, -1.5, -3.414]) {
+    it(`amount ${amount} matches what the old .vignette(${amount}) did`, () => {
+      const viaMatte = withRenderer((renderer, canvas) => {
+        renderer.beginFrame();
+        fillFBO(renderer, "m", [makeTile({ source: WHITE, vignette: amount })]);
+        renderer.drawTile(makeTile({ source: RED, matteSrc: "m" }));
+        renderer.endFrame();
+        return PROBES.map(([x, y]) => readPixel(canvas, x, y)[3]);
+      });
+      const direct = withRenderer((renderer, canvas) => {
+        renderer.beginFrame();
+        renderer.drawTile(makeTile({ source: RED, vignette: amount }));
+        renderer.endFrame();
+        return PROBES.map(([x, y]) => readPixel(canvas, x, y)[3]);
+      });
+      // ±2/255: the matte path round-trips the falloff through an 8-bit FBO.
+      for (let i = 0; i < PROBES.length; i++) {
+        expect(Math.abs(viaMatte[i] - direct[i])).toBeLessThanOrEqual(2);
+      }
+    });
+  }
+
+  it("keeps the tile's own alpha as a multiplier, like the effect did", () => {
+    const a = withRenderer((renderer, canvas) => {
+      renderer.beginFrame();
+      fillFBO(renderer, "m", [makeTile({ source: WHITE, vignette: 1 })]);
+      renderer.drawTile(makeTile({ source: RED, matteSrc: "m", alpha: 0.5 }));
+      renderer.endFrame();
+      return readPixel(canvas, 50, 50)[3];
+    });
+    expect(a).toBeGreaterThan(120);
+    expect(a).toBeLessThan(136);
+  });
+});
