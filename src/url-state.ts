@@ -106,15 +106,19 @@ export function hashLooksCorrupt(hash: string): boolean {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let urlWarnCallback: ((msg: string | null) => void) | null = null;
+/** Latched once the size warning has fired, so it isn't repeated on every save. */
+let urlWarnShown = false;
 
 /** Register a callback to receive URL-encoding warnings (e.g. state too large). Pass null to clear. */
 export function setUrlWarnCallback(cb: ((msg: string | null) => void) | null) {
   urlWarnCallback = cb;
+  urlWarnShown = false;
 }
 
 /**
  * Debounced save: encodes current code + media into the URL hash.
- * If the encoded state exceeds the warn limit, calls the registered warn callback.
+ * The first time the encoded state exceeds the warn limit, calls the registered
+ * warn callback; subsequent oversize saves stay quiet.
  * Calls are coalesced within a 500ms window.
  */
 export function saveToUrl(code: string, media: MediaEntry[], fft?: FftConfig) {
@@ -124,9 +128,12 @@ export function saveToUrl(code: string, media: MediaEntry[], fft?: FftConfig) {
     try {
       const encoded = encodeUrlState(code, media, fft);
       if (encoded.length > URL_WARN_BYTES) {
-        // urlWarnCallback?.(
-        //   `URL state is large (${encoded.length} chars) — the link may be too long to share reliably`,
-        // );
+        if (!urlWarnShown) {
+          urlWarnShown = true;
+          urlWarnCallback?.(
+            `URL state is large (${encoded.length} chars) — the link may be too long to share reliably`,
+          );
+        }
       } else {
         urlWarnCallback?.(null);
       }
