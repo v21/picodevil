@@ -62,3 +62,49 @@ describe("getPatternGlobals curried method wrappers", () => {
     expect(globals.p).toBeUndefined();
   });
 });
+
+// Strudel exposes zero-argument transforms as `rev(pat)`, so `.sometimes(rev)` and
+// `.every(4, palindrome)` pass them bare. Ours must apply too, not return a factory.
+describe("bare zero-argument transforms", () => {
+  const srcs = (pat: any, t = 0.1) => query(pat, t).map((v: any) => v.src);
+
+  it("rev applied to a pattern reverses it", () => {
+    const g: any = getPatternGlobals();
+    const result = g.rev(mini("a b"));
+    expect(typeof result.query).toBe("function");
+    expect(query(result)).toEqual(["b"]);
+  });
+
+  it("sometimesBy(1, rev) reverses every event instead of replacing it", () => {
+    const g: any = getPatternGlobals();
+    const pat = video(mini("a.mp4 b.mp4"));
+    expect(srcs(pat.sometimesBy(1, g.rev))).toEqual(srcs(pat.rev()));
+  });
+
+  it("inside(2, rev) works bare", () => {
+    const g: any = getPatternGlobals();
+    const pat = video(mini("a.mp4 b.mp4 c.mp4 d.mp4"));
+    expect(srcs(pat.inside(2, g.rev))).toEqual(srcs(pat.inside(2, (x: any) => x.rev())));
+  });
+
+  it("picodevil's own zero-arg methods (tile) work bare", () => {
+    const g: any = getPatternGlobals();
+    const result = g.tile(color(mini("red")));
+    expect(typeof result.query).toBe("function");
+    expect(query(result)[0].width).toBe(1);
+  });
+
+  it("methods that take arguments stay factories, even when given a pattern", () => {
+    const g: any = getPatternGlobals();
+    expect(typeof g.fast(mini("2"))).toBe("function");
+    expect(typeof g.fit(mini("contain"))).toBe("function"); // optional arg: ambiguous, so factory
+  });
+
+  it("an unapplied wrapper that ends up as an event value is tagged with its method name", () => {
+    const g: any = getPatternGlobals();
+    const evs = query(video(mini("a.mp4")).sometimesBy(1, g.fast));
+    expect(evs).toHaveLength(1);
+    expect(evs[0]._type).toBeUndefined();
+    expect(evs[0]._pdMethod).toBe("fast");
+  });
+});

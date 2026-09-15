@@ -93,8 +93,18 @@ export function queryNeeded(
 
       const hap = events[ei];
       const ev = hap?.value;
-      if (ev == null || typeof ev !== "object") continue;
-      if (!ev._type) continue;
+      if (ev == null) continue;
+      // A value with no source here almost always means a transform handed to
+      // sometimes/every/inside/… didn't return a pattern, and stack()/cat() wrapped
+      // the stray value as an event. Nothing to draw — say why instead of going black.
+      // `_pdMethod` tags our method wrappers (eval-sandbox.ts), e.g. a bare `fast`.
+      if (typeof ev !== "object" || !ev._type) {
+        const m = ev._pdMethod;
+        warn(m
+          ? `screen ${si}: \`${m}\` was passed without being applied, so there's nothing to draw — write ${m}(…) or x => x.${m}(…)`
+          : `screen ${si}: an event has no source (nothing to draw) — a transform passed to sometimes/every/… probably didn't return a pattern`);
+        continue;
+      }
 
       const fe: FrameEvent = { screenIndex: si, eventIndex: ei, ev, hap };
       allEvents.push(fe);

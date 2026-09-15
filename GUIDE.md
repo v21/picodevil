@@ -1335,7 +1335,9 @@ $: s("a,b,c,d").shuffleIndex(rand.segment(1)).rarely(croph(-1))  // ~25% of tile
 $: s("a,b,c,d").index().degradeBy(0.5).rowscols(2).gridMod()     // ~half the tiles drop out
 ```
 
-The transform argument can be written either as a control directly (`speed(-1)`) or as a function (`x => x.speed(-1)`) — both work in the editor.
+The transform argument can be written either as a control directly (`speed(-1)`) or as a function (`x => x.speed(-1)`) — both work in the editor. Zero-argument transforms can also be passed bare, as in Strudel: `.sometimes(rev)`, `.every(4, palindrome)`.
+
+> **`sometimes(rev)` leaves gaps in a sequence.** The reversed events land on mirrored steps while their original steps are dropped, so with several events per cycle some steps end up empty (black) and others doubled — about a quarter of each at 50%. That's Strudel's behaviour too (silent and doubled hits). For whole-cycle reversal, use `someCycles(rev)`.
 
 > Without a stacking op upstream there's no per-tile seed, so co-active events share one time-based coin flip — i.e. plain Strudel behaviour, all-or-none across the stack.
 

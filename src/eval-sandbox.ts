@@ -56,6 +56,17 @@ const METHOD_GLOBALS_BLOCKLIST = new Set([
   'p',
 ]);
 
+// Methods that take no arguments. Strudel's globals for these are `f(pat)`, so
+// `.sometimes(rev)` / `.every(4, palindrome)` pass them bare: handed a single pattern,
+// these apply to it rather than returning a transform. The first two rows are core's
+// single-argument register() calls; the last are picodevil's. Methods with optional
+// args (`fit`, `sync`, `grey`, …) can't join — `fit(pat)` could mean either.
+const ZERO_ARG_METHODS = new Set([
+  "rev", "revv", "palindrome", "brak", "press", "inv", "invert",
+  "round", "floor", "ceil", "toBipolar", "fromBipolar", "ratio", "keyDown",
+  "tile", "render", "sec", "ms",
+]);
+
 let _methodGlobals: Record<string, unknown> | null = null;
 
 const VALID_IDENTIFIER = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
@@ -73,7 +84,18 @@ function buildMethodGlobals(): Record<string, unknown> {
     if (!isUsableAsParam(name)) continue;
     const desc = Object.getOwnPropertyDescriptor((Pattern as any).prototype, name);
     if (!desc || typeof desc.value !== 'function') continue;
-    result[name] = (...args: unknown[]) => (pat: any) => (pat as any)[name](...args);
+    const zeroArg = ZERO_ARG_METHODS.has(name);
+    const factory = (...args: unknown[]) => {
+      if (zeroArg && args.length === 1 && args[0] instanceof Pattern) return (args[0] as any)[name]();
+      const transform = (pat: any) => pat[name](...args);
+      (transform as any)._pdMethod = name;
+      return transform;
+    };
+    // Tagged so that if a wrapper ends up as an event value instead of being applied
+    // (a bare `fast` handed to sometimes/every), source-query can name it in a warning.
+    // Enumerable on purpose: the tag survives the `{...value}` spreads downstream.
+    (factory as any)._pdMethod = name;
+    result[name] = factory;
   }
   return (_methodGlobals = result);
 }

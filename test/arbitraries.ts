@@ -405,6 +405,7 @@ const _strudelBuilders = fc.letrec((tie: any) => ({
     { weight: 2, arbitrary: posArg.map((p: string) => `x => x.x(${p})`) },
     { weight: 1, arbitrary: fc.constant("x => x.palindrome()") },
     { weight: 1, arbitrary: fc.constant("x => x.brak()") },
+    { weight: 2, arbitrary: fc.constantFrom("rev", "palindrome", "brak", "revv") }, // bare, Strudel-style
     { weight: 1, arbitrary: periodArg.map((n: string) => `x => x.iter(${n})`) },
     { weight: 1, arbitrary: (tie("strudelMethod") as fc.Arbitrary<string>).map((m: string) => `x => x${m}`) },
   ),
